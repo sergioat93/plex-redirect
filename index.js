@@ -1,17 +1,34 @@
 const express = require('express');
+const https = require('https');
 const app = express();
+
+// ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
+// Obtén una gratis en: https://www.themoviedb.org/settings/api
+const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
+
+// Función helper para hacer requests HTTPS
+function httpsGet(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }).on('error', reject);
+    });
+}
 
 // Función para obtener datos de TMDB
 async function fetchTMDBData(tmdbId, type = 'tv') {
     try {
-        // TMDB API Key pública (limitada)
-        const apiKey = '3fd2be6f0c70a2a598f084ddfb75487c';
-        const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${apiKey}&language=es-ES`;
+        const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
         
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        
-        const data = await response.json();
+        const data = await httpsGet(url);
         return {
             title: data.name || data.title,
             overview: data.overview,
@@ -28,13 +45,9 @@ async function fetchTMDBData(tmdbId, type = 'tv') {
 // Función para obtener datos específicos de temporada de TMDB
 async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
     try {
-        const apiKey = '3fd2be6f0c70a2a598f084ddfb75487c';
-        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}?api_key=${apiKey}&language=es-ES`;
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=es-ES`;
         
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        
-        const data = await response.json();
+        const data = await httpsGet(url);
         return {
             name: data.name,
             overview: data.overview,
@@ -566,33 +579,43 @@ app.get('/list', async (req, res) => {
   
   // Intentar mejorar datos con TMDB si disponible
   if (seasonInfo && seasonInfo.tmdbId) {
+    console.log('Obteniendo datos de TMDB para ID:', seasonInfo.tmdbId, 'Temporada:', seasonNumber);
     try {
       // Obtener datos generales de la serie
       const seriesData = await fetchTMDBData(seasonInfo.tmdbId, 'tv');
+      console.log('Datos de serie obtenidos:', seriesData);
       
       // Obtener datos específicos de la temporada
       const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumber);
+      console.log('Datos de temporada obtenidos:', seasonData);
       
       if (seasonData && seasonData.overview) {
         seasonSummary = seasonData.overview;
+        console.log('Usando descripción de temporada de TMDB');
       } else if (seriesData && seriesData.overview && !seasonSummary) {
         seasonSummary = seriesData.overview;
+        console.log('Usando descripción de serie de TMDB');
       }
       
       if (seasonData && seasonData.posterPath) {
         seasonPoster = seasonData.posterPath;
+        console.log('Usando poster de temporada de TMDB:', seasonPoster);
       } else if (seriesData && seriesData.posterPath && (!seasonPoster || seasonPoster.includes('thumb'))) {
         seasonPoster = seriesData.posterPath;
+        console.log('Usando poster de serie de TMDB:', seasonPoster);
       }
       
       if (seriesData && seriesData.releaseYear && !seasonYear) {
         seasonYear = seriesData.releaseYear.toString();
+        console.log('Usando año de TMDB:', seasonYear);
       }
       
       console.log('TMDB data improved:', { seasonSummary: !!seasonSummary, seasonPoster: !!seasonPoster, seasonYear: !!seasonYear });
     } catch (error) {
       console.error('Error fetching TMDB data:', error);
     }
+  } else {
+    console.log('No TMDB ID disponible. seasonInfo:', seasonInfo);
   }
   
   res.send(`
