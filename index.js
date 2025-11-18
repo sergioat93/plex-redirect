@@ -13,7 +13,11 @@ app.get('/', (req, res) => {
     episodeTitle = '',
     seasonNumber = '',
     episodeNumber = '',
-    posterUrl = ''
+    posterUrl = '',
+    year = '',
+    description = '',
+    episodeDescription = '',
+    contentType = ''
   } = req.query;
   
   // Decodificar el partKey para mostrar espacios en lugar de %20
@@ -124,9 +128,11 @@ app.get('/', (req, res) => {
         
         .poster {
           width: 100%;
+          aspect-ratio: 2/3;
           border-radius: 12px;
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
           transition: transform 0.3s ease;
+          object-fit: cover;
         }
         
         .poster:hover {
@@ -182,6 +188,54 @@ app.get('/', (req, res) => {
           color: #bbb;
           margin: 16px 0;
           font-weight: 500;
+        }
+        
+        .description {
+          color: #bbb;
+          line-height: 1.6;
+          margin: 16px 0;
+        }
+        
+        .description.collapsed {
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        .description-toggle {
+          background: transparent;
+          border: none;
+          color: #e5a00d;
+          cursor: pointer;
+          font-size: 0.9rem;
+          margin-top: 8px;
+          padding: 0;
+          text-decoration: underline;
+        }
+        
+        .filename {
+          color: #fff;
+          font-weight: 600;
+          word-break: break-word;
+        }
+        
+        .filename.collapsed {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        .filename-toggle {
+          background: transparent;
+          border: none;
+          color: #e5a00d;
+          cursor: pointer;
+          font-size: 0.85rem;
+          margin-left: 8px;
+          padding: 0;
+          text-decoration: underline;
         }
         
         .metadata {
@@ -272,19 +326,31 @@ app.get('/', (req, res) => {
         .technical-toggle {
           background: transparent;
           border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #888;
-          padding: 10px 16px;
+          color: #bbb;
+          padding: 12px 16px;
           border-radius: 8px;
           cursor: pointer;
-          font-size: 0.85rem;
+          font-size: 0.9rem;
           transition: all 0.2s;
           width: 100%;
           text-align: left;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
         }
         
         .technical-toggle:hover {
           border-color: rgba(229, 160, 13, 0.3);
           color: #e5a00d;
+        }
+        
+        .technical-toggle-icon {
+          font-size: 0.8rem;
+          transition: transform 0.2s;
+        }
+        
+        .technical-toggle.open .technical-toggle-icon {
+          transform: rotate(90deg);
         }
         
         .technical-content {
@@ -294,27 +360,35 @@ app.get('/', (req, res) => {
         }
         
         .technical-content.open {
-          max-height: 500px;
+          max-height: 600px;
           margin-top: 16px;
         }
         
         .info-table {
           width: 100%;
-          border-collapse: collapse;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+        
+        .info-table tr {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .info-table tr:last-child {
+          border-bottom: none;
         }
         
         .info-table td {
-          padding: 10px 12px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 12px 16px;
           font-size: 0.85rem;
+          vertical-align: top;
         }
         
         .info-table td.label {
-          color: #e5a00d;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          width: 35%;
+          color: #888;
+          font-weight: 500;
+          width: 40%;
+          min-width: 120px;
         }
         
         .info-table td.value {
@@ -322,6 +396,7 @@ app.get('/', (req, res) => {
           font-family: 'Courier New', monospace;
           font-size: 0.8rem;
           word-break: break-all;
+          line-height: 1.4;
         }
         
         @media (max-width: 768px) {
@@ -362,10 +437,27 @@ app.get('/', (req, res) => {
         function toggleTechnical() {
           const content = document.getElementById('technical-content');
           const button = document.getElementById('technical-toggle');
+          const icon = button.querySelector('.technical-toggle-icon');
           content.classList.toggle('open');
-          button.textContent = content.classList.contains('open') 
-            ? '▼ Ocultar detalles técnicos' 
-            : '▶ Mostrar detalles técnicos';
+          button.classList.toggle('open');
+        }
+        
+        function toggleDescription() {
+          const description = document.getElementById('description');
+          const button = document.getElementById('description-toggle');
+          description.classList.toggle('collapsed');
+          button.textContent = description.classList.contains('collapsed') 
+            ? 'Ver más' 
+            : 'Ver menos';
+        }
+        
+        function toggleFilename() {
+          const filename = document.getElementById('filename');
+          const button = document.getElementById('filename-toggle');
+          filename.classList.toggle('collapsed');
+          button.textContent = filename.classList.contains('collapsed') 
+            ? '+' 
+            : '-';
         }
       </script>
     </head>
@@ -396,16 +488,37 @@ app.get('/', (req, res) => {
               <div class="episode-info">
                 ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
                 ${episodeNumber ? `<span class="badge">Episodio ${episodeNumber}</span>` : ''}
+                ${year ? `<span class="badge">${year}</span>` : ''}
                 ${fileSize ? `<span class="badge">${fileSize}</span>` : ''}
               </div>
               
               ${episodeTitle ? `<div class="episode-title">${episodeTitle}</div>` : ''}
               
+              ${description && contentType === 'season' ? `
+                <div class="description ${description.length > 300 ? 'collapsed' : ''}" id="description">
+                  ${description}
+                </div>
+                ${description.length > 300 ? `
+                  <button class="description-toggle" id="description-toggle" onclick="toggleDescription()">
+                    Ver más
+                  </button>
+                ` : ''}
+              ` : ''}
+              
+              ${episodeDescription && contentType === 'episode' ? `
+                <div class="description">${episodeDescription}</div>
+              ` : ''}
+              
               <div class="metadata">
-                ${fileName ? `
-                  <div class="metadata-item">
+                ${fileName && contentType === 'episode' ? `
+                  <div class="metadata-item" style="grid-column: 1 / -1;">
                     <span class="metadata-label">Archivo</span>
-                    <span class="metadata-value">${fileName.length > 30 ? fileName.substring(0, 30) + '...' : fileName}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="filename ${fileName.length > 50 ? 'collapsed' : ''}" id="filename">${fileName}</span>
+                      ${fileName.length > 50 ? `
+                        <button class="filename-toggle" id="filename-toggle" onclick="toggleFilename()">+</button>
+                      ` : ''}
+                    </div>
                   </div>
                 ` : ''}
                 ${baseURI ? `
@@ -423,7 +536,7 @@ app.get('/', (req, res) => {
               <svg class="download-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
               </svg>
-              Descargar ahora
+              ${contentType === 'season' ? 'Descargar temporada' : 'Descargar ahora'}
             </a>
             
             <div class="status-message">
@@ -432,28 +545,29 @@ app.get('/', (req, res) => {
             
             <div class="technical-details">
               <button class="technical-toggle" id="technical-toggle" onclick="toggleTechnical()">
-                ▶ Mostrar detalles técnicos
+                <span>Mostrar detalles técnicos</span>
+                <span class="technical-toggle-icon">▶</span>
               </button>
               <div class="technical-content" id="technical-content">
                 <table class="info-table">
                   <tr>
-                    <td class="label">Access Token:</td>
+                    <td class="label">Access Token</td>
                     <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
                   </tr>
                   <tr>
-                    <td class="label">Part Key:</td>
+                    <td class="label">Part Key</td>
                     <td class="value">${partKey}</td>
                   </tr>
                   <tr>
-                    <td class="label">Base URL:</td>
+                    <td class="label">Base URL</td>
                     <td class="value">${baseURI}</td>
                   </tr>
                   <tr>
-                    <td class="label">Nombre del archivo:</td>
+                    <td class="label">Nombre del archivo</td>
                     <td class="value">${fileName}</td>
                   </tr>
                   <tr>
-                    <td class="label">Tamaño:</td>
+                    <td class="label">Tamaño</td>
                     <td class="value">${fileSize || 'Desconocido'}</td>
                   </tr>
                 </table>
