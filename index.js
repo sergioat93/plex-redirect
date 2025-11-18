@@ -129,6 +129,83 @@ async function fetchTMDBMovieData(tmdbId) {
     }
 }
 
+// Función para obtener datos completos de serie desde TMDB
+async function fetchTMDBSeriesData(tmdbId) {
+    try {
+        // Obtener datos básicos de la serie
+        const seriesUrl = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,videos,external_ids`;
+        const seriesData = await httpsGet(seriesUrl);
+        
+        // Extraer géneros
+        const genres = seriesData.genres ? seriesData.genres.map(g => g.name) : [];
+        
+        // Extraer creadores
+        const creators = seriesData.created_by && seriesData.created_by.length > 0
+            ? seriesData.created_by.map(c => c.name).join(', ')
+            : 'N/A';
+        
+        // Extraer primeros 5 actores del cast
+        const cast = seriesData.credits && seriesData.credits.cast
+            ? seriesData.credits.cast.slice(0, 5).map(actor => actor.name).join(', ')
+            : 'N/A';
+        
+        // Extraer trailer de YouTube
+        const trailer = seriesData.videos && seriesData.videos.results
+            ? seriesData.videos.results.find(video => video.type === 'Trailer' && video.site === 'YouTube')
+            : null;
+        
+        // Determinar estado de la serie
+        const getStatus = (status) => {
+            const statusMap = {
+                'Returning Series': 'En emisión',
+                'Ended': 'Finalizada',
+                'Canceled': 'Cancelada',
+                'In Production': 'En producción',
+                'Planned': 'Planificada'
+            };
+            return statusMap[status] || status || 'Desconocido';
+        };
+        
+        // Calcular duración promedio de episodios
+        const formatRuntime = (minutes) => {
+            if (!minutes || minutes.length === 0) return 'N/A';
+            const avgMinutes = Array.isArray(minutes) ? minutes[0] : minutes;
+            return `${avgMinutes} min`;
+        };
+        
+        return {
+            title: seriesData.name || 'Sin título',
+            originalTitle: seriesData.original_name || 'N/A',
+            tagline: seriesData.tagline || '',
+            overview: seriesData.overview || 'Sin descripción disponible',
+            posterPath: seriesData.poster_path ? `https://image.tmdb.org/t/p/w500${seriesData.poster_path}` : null,
+            backdropPath: seriesData.backdrop_path ? `https://image.tmdb.org/t/p/original${seriesData.backdrop_path}` : null,
+            firstAirDate: seriesData.first_air_date || 'N/A',
+            lastAirDate: seriesData.last_air_date || 'N/A',
+            year: seriesData.first_air_date ? new Date(seriesData.first_air_date).getFullYear() : 'N/A',
+            status: getStatus(seriesData.status),
+            numberOfSeasons: seriesData.number_of_seasons || 0,
+            numberOfEpisodes: seriesData.number_of_episodes || 0,
+            episodeRuntime: formatRuntime(seriesData.episode_run_time),
+            genres: genres,
+            genresString: genres.join(', ') || 'N/A',
+            rating: seriesData.vote_average ? seriesData.vote_average.toFixed(1) : 'N/A',
+            voteCount: seriesData.vote_count ? seriesData.vote_count.toLocaleString('es-ES') : 'N/A',
+            creators: creators,
+            cast: cast,
+            originalLanguage: seriesData.original_language ? seriesData.original_language.toUpperCase() : 'N/A',
+            countries: seriesData.production_countries ? seriesData.production_countries.map(c => c.name).join(', ') : 'N/A',
+            networks: seriesData.networks ? seriesData.networks.map(n => n.name).join(', ') : 'N/A',
+            imdbId: seriesData.external_ids && seriesData.external_ids.imdb_id ? seriesData.external_ids.imdb_id : null,
+            trailerKey: trailer ? trailer.key : null,
+            inProduction: seriesData.in_production || false
+        };
+    } catch (error) {
+        console.error('Error fetching TMDB series data:', error);
+        return null;
+    }
+}
+
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -1371,10 +1448,7 @@ app.get('/list', async (req, res) => {
         function downloadEpisode(globalIndex, fromSequential = false) {
           const download = allEpisodes[globalIndex];
           
-          // Crear iframe oculto para descarga directa
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          
+          // Construir URL con parámetros
           const params = new URLSearchParams();
           params.set('accessToken', download.accessToken);
           params.set('partKey', download.partKey);
@@ -1389,22 +1463,19 @@ app.get('/list', async (req, res) => {
           params.set('posterUrl', download.posterUrl);
           params.set('autoDownload', 'true');
           
-          iframe.src = 'https://plex-redirect.onrender.com/?' + params.toString();
-          document.body.appendChild(iframe);
+          // Abrir en nueva pestaña
+          window.open('https://plex-redirect.onrender.com/?' + params.toString(), '_blank');
           
-          // Remover iframe después de un tiempo
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-            if (fromSequential) {
-              downloadIndex++;
-              if (downloadIndex < allEpisodes.length) {
-                updateProgress();
-                setTimeout(() => downloadEpisode(downloadIndex, true), 3000);
-              } else {
-                finishSequentialDownload();
-              }
+          // Continuar con la siguiente descarga si es secuencial
+          if (fromSequential) {
+            downloadIndex++;
+            if (downloadIndex < allEpisodes.length) {
+              updateProgress();
+              setTimeout(() => downloadEpisode(downloadIndex, true), 1500);
+            } else {
+              finishSequentialDownload();
             }
-          }, 2000);
+          }
         }
         
         function downloadCurrentPage() {
@@ -1435,7 +1506,7 @@ app.get('/list', async (req, res) => {
             downloadEpisode(globalIndex);
             pageDownloadIndex++;
             
-            setTimeout(downloadNextPageEpisode, 3000);
+            setTimeout(downloadNextPageEpisode, 1500);
           }
           
           downloadNextPageEpisode();
@@ -2362,6 +2433,575 @@ app.get('/movie', async (req, res) => {
             window.location.href = '${downloadURL}';
           }, 1000);
         };
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// Ruta para series
+app.get('/series', async (req, res) => {
+  const {
+    accessToken = '',
+    baseURI = '',
+    seriesId = '',
+    title: seriesTitle = '',
+    posterUrl = '',
+    tmdbId = '',
+    totalSize = '',
+    seasons: seasonsParam = '[]'
+  } = req.query;
+  
+  // Parsear temporadas
+  let seasons = [];
+  try {
+    seasons = JSON.parse(seasonsParam);
+  } catch (e) {
+    console.error('Error parsing seasons:', e);
+  }
+  
+  // Obtener datos de TMDB si está disponible
+  let seriesData = null;
+  if (tmdbId) {
+    seriesData = await fetchTMDBSeriesData(tmdbId);
+  }
+  
+  // Usar poster y backdrop de TMDB si están disponibles
+  const seriesPoster = (seriesData && seriesData.posterPath) || posterUrl || '';
+  const seriesBackdrop = (seriesData && seriesData.backdropPath) || '';
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${seriesTitle} - PlexDL</title>
+      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+          background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+          color: #e5e5e5;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+        }
+        
+        .modal-content {
+          background: #282828;
+          border-radius: 16px;
+          width: 100%;
+          max-width: 1200px;
+          max-height: 90vh;
+          overflow-y: auto;
+          position: relative;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        
+        .modal-content::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .modal-content::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .modal-content::-webkit-scrollbar-thumb {
+          background-color: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        
+        .modal-backdrop-header {
+          position: relative;
+          background-size: cover;
+          background-position: center top;
+          background-repeat: no-repeat;
+          background-image: url('${seriesBackdrop}');
+          min-height: 250px;
+          display: flex;
+          align-items: flex-end;
+          padding: 2.5rem 3.5rem 1.5rem 3.5rem;
+          border-radius: 12px 12px 0 0;
+        }
+        
+        .modal-backdrop-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            rgba(40, 40, 40, 0.3) 0%,
+            rgba(40, 40, 40, 0.7) 50%,
+            #282828 100%
+          );
+          border-radius: 12px 12px 0 0;
+        }
+        
+        .modal-header-content {
+          position: relative;
+          z-index: 1;
+          width: 100%;
+        }
+        
+        .modal-title {
+          font-size: 3rem;
+          font-weight: 700;
+          margin-bottom: 0.5rem;
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
+          line-height: 1.1;
+          color: white;
+        }
+        
+        .modal-tagline {
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 1.1rem;
+          font-style: italic;
+          text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+          margin-bottom: 1rem;
+        }
+        
+        .modal-badges-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+        
+        .modal-badges-row {
+          display: flex;
+          gap: 1rem;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        
+        .modal-icons-row {
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+          margin-left: auto;
+        }
+        
+        .year-badge,
+        .status-badge,
+        .seasons-badge {
+          background: #e5a00d;
+          color: #000;
+          padding: 0.4rem 0.8rem;
+          border-radius: 20px;
+          font-weight: 600;
+          font-size: 0.9rem;
+        }
+        
+        .rating-badge {
+          background: rgba(249, 168, 37, 0.2);
+          border: 2px solid #f9a825;
+          padding: 0.3rem 0.8rem;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: #f9a825;
+          font-weight: 600;
+        }
+        
+        .genres-list {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        
+        .genre-tag {
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          padding: 0.3rem 0.8rem;
+          border-radius: 15px;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.9);
+          transition: all 0.3s ease;
+        }
+        
+        .badge-icon-link {
+          display: inline-flex;
+          align-items: center;
+          transition: transform 0.2s ease;
+        }
+        
+        .badge-icon-link:hover {
+          transform: scale(1.1);
+        }
+        
+        .badge-icon {
+          height: 24px;
+          width: 24px;
+          object-fit: contain;
+        }
+        
+        .modal-hero {
+          padding: 2rem 3.5rem;
+          display: flex;
+          gap: 2rem;
+        }
+        
+        .modal-poster-container {
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        
+        .modal-poster-hero {
+          width: 280px;
+          position: relative;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        
+        .modal-poster-hero img {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+        
+        .modal-main-info {
+          flex: 1;
+        }
+        
+        .modal-details-table {
+          display: grid;
+          grid-template-columns: 1fr;
+          justify-content: space-between;
+          gap: 0;
+          margin-bottom: 1rem;
+          background: rgba(255, 255, 255, 0.07);
+          padding: 0.5rem;
+          border-radius: 8px;
+        }
+        
+        .detail-item {
+          display: flex;
+          justify-content: space-between;
+          padding: 0.5rem 0;
+          border-bottom: 1px solid rgba(229, 160, 13, 0.08);
+        }
+        
+        .detail-item:last-child {
+          border-bottom: none;
+        }
+        
+        .detail-item strong {
+          color: #e5e5e5;
+          font-weight: 600;
+        }
+        
+        .detail-item span {
+          color: #e5e5e5;
+          text-align: right;
+        }
+        
+        .synopsis-container {
+          position: relative;
+        }
+        
+        .modal-synopsis {
+          line-height: 1.7;
+          font-size: 1.08rem;
+          text-align: justify;
+          margin-bottom: 0;
+          color: #cccccc;
+          max-height: 8.5em;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+          position: relative;
+          padding-right: 0;
+        }
+        
+        .modal-synopsis.expanded {
+          max-height: none;
+        }
+        
+        .modal-synopsis::after {
+          content: '...';
+          position: absolute;
+          bottom: 0;
+          right: 1.8rem;
+          background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
+          padding-left: 5rem;
+          color: #cccccc;
+          width: 8rem;
+          text-align: right;
+        }
+        
+        .modal-synopsis.expanded::after {
+          content: '';
+          display: none;
+        }
+        
+        .synopsis-toggle {
+          position: absolute;
+          bottom: 0;
+          right: 0;
+          background: #282828;
+          border: none;
+          color: #e5a00d;
+          font-size: 1.3rem;
+          font-weight: bold;
+          cursor: pointer;
+          padding: 0 0.25rem;
+          transition: transform 0.2s ease;
+          line-height: 1.7;
+          z-index: 2;
+        }
+        
+        .synopsis-toggle:hover {
+          transform: scale(1.15);
+          color: #f0b825;
+        }
+        
+        .seasons-section {
+          padding: 2rem 3.5rem;
+          background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .seasons-title {
+          font-size: 1.5rem;
+          font-weight: 700;
+          margin-bottom: 1.5rem;
+          color: #e5a00d;
+        }
+        
+        .seasons-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 1.5rem;
+        }
+        
+        .season-card {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          overflow: hidden;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          border: 2px solid transparent;
+        }
+        
+        .season-card:hover {
+          transform: translateY(-4px);
+          border-color: #e5a00d;
+          box-shadow: 0 8px 24px rgba(229, 160, 13, 0.3);
+        }
+        
+        .season-poster {
+          width: 100%;
+          aspect-ratio: 2/3;
+          object-fit: cover;
+          background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .season-info {
+          padding: 1rem;
+        }
+        
+        .season-name {
+          font-size: 1rem;
+          font-weight: 600;
+          margin-bottom: 0.5rem;
+          color: #fff;
+        }
+        
+        .season-episodes {
+          font-size: 0.85rem;
+          color: #999;
+        }
+        
+        @media (max-width: 768px) {
+          .modal-hero {
+            flex-direction: column;
+            padding: 1.5rem;
+          }
+          
+          .modal-poster-hero {
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+          }
+          
+          .modal-backdrop-header {
+            padding: 2rem 1.5rem 1rem;
+          }
+          
+          .modal-title {
+            font-size: 2rem;
+          }
+          
+          .modal-badges-container {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+          }
+          
+          .modal-icons-row {
+            margin-left: 0;
+          }
+          
+          .seasons-section {
+            padding: 1.5rem;
+          }
+          
+          .seasons-grid {
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 1rem;
+          }
+          
+          .detail-item {
+            flex-direction: column;
+            gap: 0.3rem;
+          }
+          
+          .detail-item strong {
+            min-width: auto;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="modal-content">
+        <!-- Header con backdrop -->
+        <div class="modal-backdrop-header">
+          <div class="modal-backdrop-overlay"></div>
+          <div class="modal-header-content">
+            <h1 class="modal-title">${seriesTitle}</h1>
+            ${seriesData && seriesData.tagline ? `<div class="modal-tagline">${seriesData.tagline}</div>` : ''}
+            <div class="modal-badges-container">
+              <div class="modal-badges-row">
+                ${seriesData && seriesData.year ? `<span class="year-badge">${seriesData.year}</span>` : ''}
+                ${seriesData && seriesData.status ? `<span class="status-badge">${seriesData.status}</span>` : ''}
+                ${seriesData && seriesData.numberOfSeasons ? `<span class="seasons-badge">${seriesData.numberOfSeasons} Temporadas</span>` : ''}
+                ${seriesData && seriesData.rating !== 'N/A' ? `
+                  <span class="rating-badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    ${seriesData.rating}
+                  </span>
+                ` : ''}
+                ${seriesData && seriesData.genres && seriesData.genres.length > 0 ? `
+                  <div class="genres-list">
+                    ${seriesData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
+                  </div>
+                ` : ''}
+              </div>
+              <div class="modal-icons-row">
+                ${tmdbId ? `
+                  <a href="https://www.themoviedb.org/tv/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${seriesData && seriesData.imdbId ? `
+                  <a href="https://www.imdb.com/title/${seriesData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${seriesData && seriesData.trailerKey ? `
+                  <a href="https://www.youtube.com/watch?v=${seriesData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                  </a>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Hero con poster e info -->
+        <div class="modal-hero">
+          <div class="modal-poster-container">
+            <div class="modal-poster-hero">
+              <img src="${seriesPoster}" alt="${seriesTitle}">
+            </div>
+          </div>
+          
+          <div class="modal-main-info">
+            ${seriesData ? `
+              <div class="modal-details-table">
+                <div class="detail-item"><strong>Votos:</strong> <span>${seriesData.voteCount}</span></div>
+                <div class="detail-item"><strong>Título original:</strong> <span>${seriesData.originalTitle}</span></div>
+                <div class="detail-item"><strong>Primera emisión:</strong> <span>${seriesData.firstAirDate}</span></div>
+                <div class="detail-item"><strong>Última emisión:</strong> <span>${seriesData.lastAirDate}</span></div>
+                <div class="detail-item"><strong>Países:</strong> <span>${seriesData.countries}</span></div>
+                <div class="detail-item"><strong>Cadenas:</strong> <span>${seriesData.networks}</span></div>
+                <div class="detail-item"><strong>Idioma original:</strong> <span>${seriesData.originalLanguage}</span></div>
+                <div class="detail-item"><strong>Creadores:</strong> <span>${seriesData.creators}</span></div>
+                <div class="detail-item"><strong>Reparto:</strong> <span>${seriesData.cast}</span></div>
+                <div class="detail-item"><strong>Número de episodios:</strong> <span>${seriesData.numberOfEpisodes}</span></div>
+                <div class="detail-item"><strong>Duración por episodio:</strong> <span>${seriesData.episodeRuntime}</span></div>
+                ${totalSize ? `<div class="detail-item"><strong>Tamaño total:</strong> <span>${totalSize}</span></div>` : ''}
+              </div>
+              <div class="synopsis-container">
+                <div class="modal-synopsis" id="synopsis-text">
+                  ${seriesData.overview}
+                </div>
+                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
+              </div>
+            ` : `
+              <div class="synopsis-container">
+                <div class="modal-synopsis">
+                  Serie lista para ver. Selecciona una temporada abajo.
+                </div>
+              </div>
+            `}
+          </div>
+        </div>
+        
+        <!-- Sección de temporadas -->
+        <div class="seasons-section">
+          <h2 class="seasons-title">Temporadas</h2>
+          <div class="seasons-grid">
+            ${seasons.map(season => `
+              <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', ${season.index}, '${seriesTitle}', '${tmdbId}')">
+                <img src="${season.poster}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
+                <div class="season-info">
+                  <div class="season-name">${season.title}</div>
+                  <div class="season-episodes">${season.episodeCount} episodios</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        function toggleSynopsis() {
+          const synopsis = document.getElementById('synopsis-text');
+          const button = document.getElementById('synopsis-toggle');
+          if (synopsis && button) {
+            synopsis.classList.toggle('expanded');
+            button.textContent = synopsis.classList.contains('expanded') ? '−' : '+';
+          }
+        }
+        
+        function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId) {
+          // Redirigir a la página /list con los datos de la temporada
+          const params = new URLSearchParams();
+          params.set('accessToken', accessToken);
+          params.set('baseURI', baseURI);
+          params.set('seasonRatingKey', seasonRatingKey);
+          params.set('seasonNumber', seasonNumber);
+          params.set('seriesTitle', seriesTitle);
+          if (tmdbId) params.set('tmdbId', tmdbId);
+          
+          window.location.href = '/list?' + params.toString();
+        }
       </script>
     </body>
     </html>
