@@ -575,8 +575,8 @@ app.get('/list', (req, res) => {
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
           border: 1px solid rgba(255, 255, 255, 0.05);
           display: grid;
-          grid-template-columns: 200px 1fr;
-          gap: 32px;
+          grid-template-columns: 280px 1fr;
+          gap: 40px;
           align-items: center;
         }
         
@@ -584,29 +584,60 @@ app.get('/list', (req, res) => {
           width: 100%;
           border-radius: 12px;
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+          aspect-ratio: 2/3;
+          object-fit: cover;
         }
         
         .series-info h1 {
-          font-size: 2.5rem;
+          font-size: 2.8rem;
           font-weight: 700;
           color: #fff;
-          margin-bottom: 12px;
+          margin-bottom: 16px;
+          line-height: 1.2;
         }
         
         .series-meta {
           display: flex;
-          gap: 16px;
-          margin-top: 16px;
+          gap: 12px;
+          margin-top: 20px;
+          flex-wrap: wrap;
         }
         
         .meta-badge {
           background: rgba(229, 160, 13, 0.15);
           border: 1px solid rgba(229, 160, 13, 0.3);
-          padding: 8px 16px;
+          padding: 10px 18px;
           border-radius: 20px;
-          font-size: 0.9rem;
+          font-size: 0.95rem;
           font-weight: 600;
           color: #e5a00d;
+        }
+        
+        .download-season-btn {
+          margin-top: 24px;
+          padding: 14px 28px;
+          background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
+          color: #000;
+          border: none;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
+        }
+        
+        .download-season-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 24px rgba(229, 160, 13, 0.5);
+        }
+        
+        .download-season-btn svg {
+          width: 22px;
+          height: 22px;
         }
         
         .episodes-grid {
@@ -622,17 +653,20 @@ app.get('/list', (req, res) => {
           overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.05);
           transition: all 0.3s ease;
-          display: grid;
-          grid-template-columns: 200px 1fr auto;
-          gap: 24px;
-          align-items: center;
-          padding: 16px;
         }
         
         .episode-card:hover {
           border-color: rgba(229, 160, 13, 0.3);
           transform: translateY(-2px);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        .episode-main {
+          display: grid;
+          grid-template-columns: 200px 1fr auto;
+          gap: 24px;
+          align-items: center;
+          padding: 16px;
         }
         
         .episode-poster {
@@ -697,6 +731,79 @@ app.get('/list', (req, res) => {
         .download-btn svg {
           width: 20px;
           height: 20px;
+        }
+        
+        .episode-technical {
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 0;
+        }
+        
+        .technical-header {
+          padding: 16px 20px;
+          cursor: pointer;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          transition: background 0.2s;
+          user-select: none;
+        }
+        
+        .technical-header:hover {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        
+        .technical-header h4 {
+          margin: 0;
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .technical-toggle {
+          width: 20px;
+          height: 20px;
+          transition: transform 0.3s;
+        }
+        
+        .technical-toggle.open {
+          transform: rotate(180deg);
+        }
+        
+        .technical-content {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+        }
+        
+        .technical-content.open {
+          max-height: 600px;
+        }
+        
+        .technical-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 12px;
+          padding: 0 20px 20px 20px;
+        }
+        
+        .technical-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        
+        .technical-label {
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.5);
+          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        .technical-value {
+          font-size: 0.9rem;
+          color: rgba(255, 255, 255, 0.9);
+          font-family: 'Courier New', monospace;
         }
         
         .technical-section {
@@ -816,11 +923,9 @@ app.get('/list', (req, res) => {
         
         function toggleTechnical(index) {
           const content = document.getElementById('technical-content-' + index);
-          const button = document.getElementById('technical-toggle-' + index);
+          const toggle = document.getElementById('technical-toggle-' + index);
           content.classList.toggle('open');
-          button.textContent = content.classList.contains('open') 
-            ? '▼ Ocultar detalles técnicos' 
-            : '▶ Mostrar detalles técnicos';
+          toggle.classList.toggle('open');
         }
       </script>
     </head>
@@ -843,37 +948,82 @@ app.get('/list', (req, res) => {
               ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
               <div class="meta-badge">${downloads.length} ${downloads.length === 1 ? 'Episodio' : 'Episodios'}</div>
             </div>
+            <button class="download-season-btn" onclick="downloadAllEpisodes()">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
+                <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+              </svg>
+              Descargar Temporada Completa
+            </button>
           </div>
         </div>
         
         <div class="episodes-grid">
           ${downloads.map((download, index) => `
             <div class="episode-card">
-              ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
-              
-              <div class="episode-info">
-                <div class="episode-number">
-                  ${download.seasonNumber ? `Temporada ${download.seasonNumber}` : ''} 
-                  ${download.episodeNumber ? `• Episodio ${download.episodeNumber}` : ''}
+              <div class="episode-main">
+                ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
+                
+                <div class="episode-info">
+                  <div class="episode-number">
+                    ${download.seasonNumber ? `Temporada ${download.seasonNumber}` : ''} 
+                    ${download.episodeNumber ? `• Episodio ${download.episodeNumber}` : ''}
+                  </div>
+                  <div class="episode-title">${download.episodeTitle || download.fileName}</div>
+                  <div class="episode-meta">
+                    ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
+                    <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
+                  </div>
                 </div>
-                <div class="episode-title">${download.episodeTitle || download.fileName}</div>
-                <div class="episode-meta">
-                  ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
-                  <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
-                </div>
+                
+                <button class="download-btn" onclick="downloadEpisode(${index})">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                  </svg>
+                  Descargar
+                </button>
               </div>
               
-              <button class="download-btn" onclick="downloadEpisode(${index})">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-                </svg>
-                Descargar
-              </button>
+              <div class="episode-technical">
+                <div class="technical-header" onclick="toggleTechnical(${index})">
+                  <h4>Detalles técnicos</h4>
+                  <svg class="technical-toggle" id="technical-toggle-${index}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14.975L6.172 9.147l1.414-1.414L12 12.147l4.414-4.414 1.414 1.414z"/>
+                  </svg>
+                </div>
+                <div class="technical-content" id="technical-content-${index}">
+                  <div class="technical-grid">
+                    <div class="technical-item">
+                      <div class="technical-label">Access Token</div>
+                      <div class="technical-value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</div>
+                    </div>
+                    <div class="technical-item">
+                      <div class="technical-label">Part Key</div>
+                      <div class="technical-value">${decodeURIComponent(download.partKey)}</div>
+                    </div>
+                    <div class="technical-item">
+                      <div class="technical-label">Base URL</div>
+                      <div class="technical-value">${download.baseURI}</div>
+                    </div>
+                    <div class="technical-item">
+                      <div class="technical-label">Nombre del archivo</div>
+                      <div class="technical-value">${download.fileName}</div>
+                    </div>
+                    <div class="technical-item">
+                      <div class="technical-label">Tamaño</div>
+                      <div class="technical-value">${download.fileSize || 'Desconocido'}</div>
+                    </div>
+                    <div class="technical-item">
+                      <div class="technical-label">URL de descarga</div>
+                      <div class="technical-value">${download.downloadURL}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           `).join('')}
         </div>
         
-        <div class="technical-section">
+        <div class="technical-section" style="display: none;">
           ${downloads.map((download, index) => `
             <div style="margin-bottom: ${index < downloads.length - 1 ? '16px' : '0'};">
               <button class="technical-toggle" id="technical-toggle-${index}" onclick="toggleTechnical(${index})">
