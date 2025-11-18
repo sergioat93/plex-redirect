@@ -789,6 +789,14 @@ app.get('/list', async (req, res) => {
             fileUrl = `${baseURI}${part.key}?download=1&X-Plex-Token=${accessToken}`;
           }
           
+          // Formatear tamaño de archivo
+          let fileSizeFormatted = 'N/A';
+          if (fileSize > 0) {
+            const gb = fileSize / (1024 * 1024 * 1024);
+            const mb = fileSize / (1024 * 1024);
+            fileSizeFormatted = gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(2)} MB`;
+          }
+          
           return {
             title: ep.title || '',
             episodeNumber: parseInt(ep.index) || 0,
@@ -796,6 +804,7 @@ app.get('/list', async (req, res) => {
             url: fileUrl,
             fileName: fileName,
             fileSize: fileSize,
+            fileSizeFormatted: fileSizeFormatted,
             posterUrl: ep.thumb ? `${baseURI}${ep.thumb}?X-Plex-Token=${accessToken}` : null,
             summary: ep.summary || ''
           };
@@ -1597,6 +1606,18 @@ app.get('/list', async (req, res) => {
         const totalPages = ${totalPages};
         const startIndex = ${startIndex};
         
+        // Función para formatear tamaño de archivo
+        function formatFileSize(bytes) {
+          if (!bytes || bytes === 0) return 'N/A';
+          const gb = bytes / (1024 * 1024 * 1024);
+          const mb = bytes / (1024 * 1024);
+          if (gb >= 1) {
+            return gb.toFixed(2) + ' GB';
+          } else {
+            return mb.toFixed(2) + ' MB';
+          }
+        }
+        
         let isDownloading = false;
         let downloadIndex = 0;
         
@@ -1770,68 +1791,81 @@ app.get('/list', async (req, res) => {
       </script>
     </head>
     <body>
-      <!-- Header con backdrop -->
-      <div class="modal-backdrop-header" style="background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(26,26,26,1) 100%), ${backdropPath ? `url('${backdropPath}')` : (seasonPoster ? `url('${seasonPoster}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)')}; background-size: cover; background-position: center; padding: 3rem; position: relative;">
-        <div style="position: relative; z-index: 2;">
-          <h1 style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9); line-height: 1.1; color: white;">${seriesTitle}</h1>
-          <div style="color: rgba(255, 255, 255, 0.9); font-size: 1.1rem; font-style: italic; text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8); margin-bottom: 1rem;">Temporada ${seasonNumberFromEpisode}</div>
+      <!-- Header con backdrop y poster -->
+      <div style="background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(26,26,26,1) 100%), ${backdropPath ? `url('${backdropPath}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)'}; background-size: cover; background-position: center; padding: 3rem; position: relative;">
+        <div style="max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 280px 1fr; gap: 2rem; align-items: flex-start;">
+          <!-- Poster de la temporada -->
+          ${seasonPoster ? `<img src="${seasonPoster}" alt="${seriesTitle}" style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); object-fit: cover;">` : '<div style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
           
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-              ${totalSizeFormatted ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${totalSizeFormatted}</span>` : ''}
-              ${seasonYear ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${seasonYear}</span>` : ''}
-              <span style="background: rgba(249, 168, 37, 0.2); border: 2px solid #f9a825; padding: 0.3rem 0.8rem; border-radius: 20px; color: #f9a825; font-weight: 600;">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
+          <!-- Información -->
+          <div style="position: relative; z-index: 2;">
+            <h1 style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9); line-height: 1.1; color: white;">${seriesTitle}</h1>
+            <div style="color: rgba(255, 255, 255, 0.9); font-size: 1.1rem; font-style: italic; text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8); margin-bottom: 1rem;">Temporada ${seasonNumberFromEpisode}</div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+              <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                ${totalSizeFormatted ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${totalSizeFormatted}</span>` : ''}
+                ${seasonYear ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${seasonYear}</span>` : ''}
+                <span style="background: rgba(249, 168, 37, 0.2); border: 2px solid #f9a825; padding: 0.3rem 0.8rem; border-radius: 20px; color: #f9a825; font-weight: 600;">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
+              </div>
+              
+              <div style="display: flex; gap: 0.75rem; align-items: center;">
+                ${seasonInfo && seasonInfo.tmdbId ? `
+                  <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-block;">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                  </a>
+                ` : ''}
+                ${imdbId ? `
+                  <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-block;">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                  </a>
+                ` : ''}
+                ${trailerKey ? `
+                  <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-block;">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                  </a>
+                ` : ''}
+              </div>
             </div>
             
-            <div style="display: flex; gap: 0.75rem; align-items: center;">
-              ${seasonInfo && seasonInfo.tmdbId ? `
-                <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-block;">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                </a>
-              ` : ''}
-              ${imdbId ? `
-                <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-block;">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                </a>
-              ` : ''}
-              ${trailerKey ? `
-                <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-block;">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                </a>
-              ` : ''}
+            ${seasonSummary ? `
+              <div style="position: relative; margin-bottom: 1.5rem;">
+                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative; padding-right: 0;">
+                  ${seasonSummary}
+                </div>
+                <div style="content: '...'; position: absolute; bottom: 0; right: 1.8rem; background: linear-gradient(to right, transparent 0%, rgba(0,0,0,0.8) 25%, rgba(0,0,0,0.8) 100%); padding-left: 5rem; color: #cccccc; width: 8rem; text-align: right; display: block;" id="synopsis-ellipsis">...</div>
+                <button id="synopsis-toggle" onclick="toggleSynopsis()" style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.8); border: none; color: #e5a00d; font-size: 1.3rem; font-weight: bold; cursor: pointer; padding: 0 0.25rem; transition: transform 0.2s ease; line-height: 1.7; z-index: 2;" onmouseover="this.style.transform='scale(1.15)'; this.style.color='#f0b825';" onmouseout="this.style.transform='scale(1)'; this.style.color='#e5a00d';">+</button>
+              </div>
+            ` : ''}
+            
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease; box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3); flex: 1;justify-content: center;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(229, 160, 13, 0.3)';">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                </svg>
+                Descargar Temporada Completa
+              </button>
+              
+              <button onclick="window.history.back()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+                Volver a Serie
+              </button>
+            </div>
+            
+            <div class="progress-indicator" id="progress-indicator" style="margin-top: 1.5rem; display: none;">
+              <div class="progress-text" id="progress-text" style="color: #e5a00d; font-weight: 600; margin-bottom: 0.5rem;"></div>
+              <div class="progress-bar" style="background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden;">
+                <div class="progress-fill" id="progress-fill" style="background: linear-gradient(90deg, #e5a00d 0%, #f0b825 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
       
-      <!-- Contenido principal -->
+      <!-- Lista de episodios -->
       <div style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
-        <!-- Sinopsis y botón de descarga -->
-        <div style="background: rgba(30, 30, 30, 0.95); backdrop-filter: blur(10px); border-radius: 16px; padding: 2.5rem; margin-bottom: 2rem; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.05);">
-          ${seasonSummary ? `
-            <div style="position: relative; margin-bottom: 1.5rem;">
-              <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative; padding-right: 0;">
-                ${seasonSummary}
-              </div>
-              <div style="content: '...'; position: absolute; bottom: 0; right: 1.8rem; background: linear-gradient(to right, transparent 0%, rgba(30,30,30,0.95) 25%, rgba(30,30,30,0.95) 100%); padding-left: 5rem; color: #cccccc; width: 8rem; text-align: right; display: block;" id="synopsis-ellipsis">...</div>
-              <button id="synopsis-toggle" onclick="toggleSynopsis()" style="position: absolute; bottom: 0; right: 0; background: rgba(30,30,30,0.95); border: none; color: #e5a00d; font-size: 1.3rem; font-weight: bold; cursor: pointer; padding: 0 0.25rem; transition: transform 0.2s ease; line-height: 1.7; z-index: 2;" onmouseover="this.style.transform='scale(1.15)'; this.style.color='#f0b825';" onmouseout="this.style.transform='scale(1)'; this.style.color='#e5a00d';">+</button>
-            </div>
-          ` : ''}
-          
-          <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease; box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3); width: 100%; justify-content: center;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(229, 160, 13, 0.3)';">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-            </svg>
-            Descargar Temporada Completa
-          </button>
-          
-          <div class="progress-indicator" id="progress-indicator" style="margin-top: 1.5rem; display: none;">
-            <div class="progress-text" id="progress-text" style="color: #e5a00d; font-weight: 600; margin-bottom: 0.5rem;"></div>
-            <div class="progress-bar" style="background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden;">
-              <div class="progress-fill" id="progress-fill" style="background: linear-gradient(90deg, #e5a00d 0%, #f0b825 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
-            </div>
-          </div>
-        </div>
         
         <div class="episodes-grid">
           ${currentPageEpisodes.map((download, index) => {
@@ -1847,7 +1881,7 @@ app.get('/list', async (req, res) => {
                 </div>
                 <div class="episode-title">${download.episodeTitle || download.fileName}</div>
                 <div class="episode-meta">
-                  ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
+                  ${download.fileSizeFormatted ? `<span>📦 ${download.fileSizeFormatted}</span>` : ''}
                   <div class="filename-meta">
                     <span>📄 <span class="filename-text" id="filename-meta-${index}">${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span></span>
                     ${download.fileName.length > 40 ? `<button class="expand-btn-meta" id="expand-btn-meta-${index}" onclick="toggleFilenameMeta(${index})">+</button>` : ''}
