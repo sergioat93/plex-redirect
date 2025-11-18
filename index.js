@@ -4,7 +4,7 @@ const app = express();
 app.get('/', (req, res) => {
   const {
     accessToken = '',
-    partKey = '',
+    partKey: encodedPartKey = '',
     baseURI = '',
     fileSize = '',
     fileName = '',
@@ -15,6 +15,9 @@ app.get('/', (req, res) => {
     episodeNumber = '',
     posterUrl = ''
   } = req.query;
+  
+  // Decodificar el partKey para mostrar espacios en lugar de %20
+  const partKey = decodeURIComponent(encodedPartKey);
 
   res.send(`
     <!DOCTYPE html>
@@ -115,15 +118,15 @@ app.get('/', (req, res) => {
       <script>
         window.onload = function() {
           setTimeout(function() {
-            window.location.href = "${downloadURL}";
+            window.open("${downloadURL}", '_blank');
           }, 2000);
         }
       </script>
     </head>
     <body>
       <div class="container">
-        ${posterUrl ? `<img class="poster" src="${posterUrl}" alt="Carátula">` : ''}
         <h1>Scloud - Descarga Plex</h1>
+        ${posterUrl ? `<img class="poster" src="${posterUrl}" alt="Carátula">` : ''}
         <div class="subtitle">
           ${title ? `<b>${title}</b>` : ''} 
           ${seasonNumber ? ` - Temporada ${seasonNumber}` : ''} 
