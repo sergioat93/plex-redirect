@@ -1,6 +1,52 @@
 const express = require('express');
 const app = express();
 
+// Función para obtener datos de TMDB
+async function fetchTMDBData(tmdbId, type = 'tv') {
+    try {
+        // TMDB API Key pública (limitada)
+        const apiKey = '3fd2be6f0c70a2a598f084ddfb75487c';
+        const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${apiKey}&language=es-ES`;
+        
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        
+        const data = await response.json();
+        return {
+            title: data.name || data.title,
+            overview: data.overview,
+            posterPath: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
+            releaseYear: data.first_air_date ? new Date(data.first_air_date).getFullYear() : 
+                        data.release_date ? new Date(data.release_date).getFullYear() : null
+        };
+    } catch (error) {
+        console.error('Error fetching TMDB data:', error);
+        return null;
+    }
+}
+
+// Función para obtener datos específicos de temporada de TMDB
+async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
+    try {
+        const apiKey = '3fd2be6f0c70a2a598f084ddfb75487c';
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}?api_key=${apiKey}&language=es-ES`;
+        
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        
+        const data = await response.json();
+        return {
+            name: data.name,
+            overview: data.overview,
+            posterPath: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
+            airDate: data.air_date
+        };
+    } catch (error) {
+        console.error('Error fetching TMDB season data:', error);
+        return null;
+    }
+}
+
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -474,7 +520,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-app.get('/list', (req, res) => {
+app.get('/list', async (req, res) => {
   const downloadsParam = req.query.downloads;
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 10;
@@ -512,11 +558,42 @@ app.get('/list', (req, res) => {
   
   // Obtener información de la serie/temporada
   const firstEpisode = episodes[0];
-  const seriesTitle = seasonInfo ? seasonInfo.seasonTitle : (firstEpisode.title || 'Contenido');
+  let seriesTitle = seasonInfo ? seasonInfo.seasonTitle : (firstEpisode.title || 'Contenido');
   const seasonNumber = firstEpisode.seasonNumber || '';
-  const seasonSummary = seasonInfo ? seasonInfo.seasonSummary : '';
-  const seasonYear = seasonInfo ? seasonInfo.seasonYear : '';
-  const seasonPoster = seasonInfo ? seasonInfo.seasonPoster : (firstEpisode.posterUrl || '');
+  let seasonSummary = seasonInfo ? seasonInfo.seasonSummary : '';
+  let seasonYear = seasonInfo ? seasonInfo.seasonYear : '';
+  let seasonPoster = seasonInfo ? seasonInfo.seasonPoster : (firstEpisode.posterUrl || '');
+  
+  // Intentar mejorar datos con TMDB si disponible
+  if (seasonInfo && seasonInfo.tmdbId) {
+    try {
+      // Obtener datos generales de la serie
+      const seriesData = await fetchTMDBData(seasonInfo.tmdbId, 'tv');
+      
+      // Obtener datos específicos de la temporada
+      const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumber);
+      
+      if (seasonData && seasonData.overview) {
+        seasonSummary = seasonData.overview;
+      } else if (seriesData && seriesData.overview && !seasonSummary) {
+        seasonSummary = seriesData.overview;
+      }
+      
+      if (seasonData && seasonData.posterPath) {
+        seasonPoster = seasonData.posterPath;
+      } else if (seriesData && seriesData.posterPath && (!seasonPoster || seasonPoster.includes('thumb'))) {
+        seasonPoster = seriesData.posterPath;
+      }
+      
+      if (seriesData && seriesData.releaseYear && !seasonYear) {
+        seasonYear = seriesData.releaseYear.toString();
+      }
+      
+      console.log('TMDB data improved:', { seasonSummary: !!seasonSummary, seasonPoster: !!seasonPoster, seasonYear: !!seasonYear });
+    } catch (error) {
+      console.error('Error fetching TMDB data:', error);
+    }
+  }
   
   res.send(`
     <!DOCTYPE html>
