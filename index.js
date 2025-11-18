@@ -1,231 +1,6 @@
 const express = require('express');
 const app = express();
 
-// --- Página especial para recuperar datos del localStorage ---
-function getStorageRetrieverPage(storageId) {
-  return `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>Cargando Lista de Descargas...</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          background: #1a1a1a;
-          color: #e5e5e5;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          margin: 0;
-          padding: 20px;
-        }
-        .loader {
-          text-align: center;
-          max-width: 600px;
-        }
-        .spinner {
-          border: 4px solid #333;
-          border-top: 4px solid #e5a00d;
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 20px;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .debug-info {
-          background: #333;
-          padding: 15px;
-          border-radius: 8px;
-          font-family: 'Courier New', monospace;
-          font-size: 12px;
-          text-align: left;
-          margin-top: 20px;
-          color: #ccc;
-        }
-        .error {
-          color: #ff6b6b;
-        }
-        .success {
-          color: #4ecdc4;
-        }
-        .retry-btn {
-          padding: 10px 20px;
-          background: #e5a00d;
-          color: #000;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          margin-top: 15px;
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="loader">
-        <div class="spinner"></div>
-        <h2>Cargando episodios...</h2>
-        <p>Recuperando datos del almacenamiento local...</p>
-        <div class="debug-info" id="debug-info">
-          <div>ID de almacenamiento: ${storageId}</div>
-          <div>Estado: Buscando datos...</div>
-        </div>
-      </div>
-      
-      <script>
-        (function() {
-          const storageId = '${storageId}';
-          const debugInfo = document.getElementById('debug-info');
-          
-          function addDebug(message, type) {
-            type = type || 'info';
-            const div = document.createElement('div');
-            div.className = type;
-            div.textContent = new Date().toLocaleTimeString() + ': ' + message;
-            debugInfo.appendChild(div);
-            console.log('PlexDL Debug:', message);
-          }
-          
-          function showError(message) {
-            document.querySelector('.spinner').style.display = 'none';
-            document.querySelector('h2').textContent = 'Error';
-            document.querySelector('p').innerHTML = message + '<br><button class="retry-btn" onclick="location.reload()">Intentar de nuevo</button>';
-          }
-          
-          try {
-            addDebug('Iniciando recuperación de datos');
-            addDebug('Buscando clave: ' + storageId);
-            
-            // Mostrar todas las claves de localStorage que empiecen con 'plex_downloads_'
-            const allKeys = Object.keys(localStorage);
-            const plexKeys = allKeys.filter(function(key) { return key.startsWith('plex_downloads_'); });
-            addDebug('Claves encontradas en localStorage: ' + plexKeys.length);
-            
-            for (var i = 0; i < plexKeys.length; i++) {
-              addDebug('  - ' + plexKeys[i]);
-            }
-            
-            const data = localStorage.getItem(storageId);
-            
-            if (data) {
-              addDebug('Datos encontrados, tamaño: ' + data.length + ' caracteres', 'success');
-              
-              try {
-                const downloads = JSON.parse(data);
-                addDebug('JSON parseado correctamente, ' + downloads.length + ' elementos', 'success');
-                
-                // Intentar comprimir primero
-                const compressed = downloads.map(function(d) {
-                  if (d.isSeasonInfo) {
-                    return { s: 1, t: d.seasonTitle, u: d.seasonSummary, y: d.seasonYear, p: d.seasonPoster };
-                  }
-                  return {
-                    a: d.accessToken, k: d.partKey, b: d.baseURI, z: d.fileSize,
-                    f: d.fileName, d: d.downloadURL, t: d.title, e: d.episodeTitle,
-                    n: d.seasonNumber, i: d.episodeNumber, p: d.posterUrl
-                  };
-                });
-                
-                const compressedString = btoa(JSON.stringify(compressed)).replace(/=/g, '');
-                
-                addDebug('Datos comprimidos a ' + compressedString.length + ' caracteres', 'success');
-                
-                const params = new URLSearchParams();
-                params.set('c', compressedString);
-                
-                // Limpiar localStorage
-                localStorage.removeItem(storageId);
-                addDebug('Datos eliminados del localStorage', 'success');
-                
-                // Redirigir
-                addDebug('Redirigiendo a la página de lista...', 'success');
-                setTimeout(function() {
-                  window.location.href = '/list?' + params.toString();
-                }, 1000);
-                
-              } catch (e) {
-                addDebug('Error al procesar JSON: ' + e.message, 'error');
-                showError('No se pudo procesar la lista de episodios.<br>Error: ' + e.message);
-              }
-            } else {
-              addDebug('No se encontraron datos con la clave especificada', 'error');
-              addDebug('Verificando si existen otros datos de Plex...', 'info');
-              
-              // Intentar encontrar datos similares
-              var alternativeKey = null;
-              for (var j = 0; j < plexKeys.length; j++) {
-                if (plexKeys[j] !== storageId) {
-                  alternativeKey = plexKeys[j];
-                  break;
-                }
-              }
-              
-              if (alternativeKey) {
-                addDebug('Encontrada clave alternativa: ' + alternativeKey, 'success');
-                const altData = localStorage.getItem(alternativeKey);
-                if (altData) {
-                  addDebug('Usando datos alternativos...', 'success');
-                  localStorage.setItem(storageId, altData);
-                  location.reload();
-                  return;
-                }
-              }
-              
-              showError('No se encontraron datos en el almacenamiento local.<br>Es posible que los datos hayan expirado o que localStorage esté deshabilitado.');
-            }
-          } catch (globalError) {
-            console.error('Error global:', globalError);
-            showError('Error inesperado: ' + globalError.message);
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `;
-}
-
-// --- Función de descompresión ---
-function decompressString(compressed) {
-  // Añadir padding si es necesario
-  const padded = compressed + '='.repeat((4 - compressed.length % 4) % 4);
-  const decoded = atob(padded);
-  const compressedData = JSON.parse(decoded);
-  
-  // Expandir claves acortadas
-  const expanded = compressedData.map(d => {
-    if (d.s) { // isSeasonInfo
-      return {
-        isSeasonInfo: true,
-        seasonTitle: d.t,
-        seasonSummary: d.u,
-        seasonYear: d.y,
-        seasonPoster: d.p
-      };
-    }
-    return {
-      accessToken: d.a,
-      partKey: d.k,
-      baseURI: d.b,
-      fileSize: d.z,
-      fileName: d.f,
-      downloadURL: d.d,
-      title: d.t,
-      episodeTitle: d.e,
-      seasonNumber: d.n,
-      episodeNumber: d.i,
-      posterUrl: d.p
-    };
-  });
-  
-  return JSON.stringify(expanded);
-}
-
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -701,32 +476,18 @@ app.get('/', (req, res) => {
 
 app.get('/list', (req, res) => {
   const downloadsParam = req.query.downloads;
-  const compressedParam = req.query.c;
-  const storageId = req.query.id;
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 10;
+  
+  if (!downloadsParam) {
+    return res.status(400).send('No downloads provided');
+  }
   
   let downloads = [];
-  
-  if (storageId) {
-    // Retornar página especial que accede al localStorage
-    res.send(getStorageRetrieverPage(storageId));
-    return;
-  } else if (compressedParam) {
-    // Descomprimir datos
-    try {
-      const decompressed = decompressString(compressedParam);
-      downloads = JSON.parse(decompressed);
-    } catch (e) {
-      return res.status(400).send('Invalid compressed format');
-    }
-  } else if (downloadsParam) {
-    // Método legacy sin compresión
-    try {
-      downloads = JSON.parse(downloadsParam);
-    } catch (e) {
-      return res.status(400).send('Invalid downloads format');
-    }
-  } else {
-    return res.status(400).send('No downloads provided');
+  try {
+    downloads = JSON.parse(downloadsParam);
+  } catch (e) {
+    return res.status(400).send('Invalid downloads format');
   }
   
   if (!Array.isArray(downloads) || downloads.length === 0) {
@@ -741,6 +502,13 @@ app.get('/list', (req, res) => {
     seasonInfo = downloads[0];
     episodes = downloads.slice(1);
   }
+  
+  // Calcular paginación
+  const totalEpisodes = episodes.length;
+  const totalPages = Math.ceil(totalEpisodes / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalEpisodes);
+  const currentPageEpisodes = episodes.slice(startIndex, endIndex);
   
   // Obtener información de la serie/temporada
   const firstEpisode = episodes[0];
@@ -880,7 +648,13 @@ app.get('/list', (req, res) => {
           margin-bottom: 24px;
         }
         
-        .download-season-btn {
+        .action-buttons {
+          display: flex;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        
+        .download-season-btn, .download-page-btn {
           padding: 14px 28px;
           background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
           color: #000;
@@ -893,24 +667,136 @@ app.get('/list', (req, res) => {
           display: flex;
           align-items: center;
           gap: 10px;
-          width: fit-content;
+          white-space: nowrap;
           box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
         }
         
-        .download-season-btn:hover {
+        .download-page-btn {
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          color: #fff;
+          box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+        }
+        
+        .download-season-btn:hover, .download-page-btn:hover {
           transform: translateY(-2px);
+        }
+        
+        .download-season-btn:hover {
           box-shadow: 0 6px 24px rgba(229, 160, 13, 0.5);
         }
         
-        .download-season-btn:disabled {
+        .download-page-btn:hover {
+          box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
+        }
+        
+        .download-season-btn:disabled, .download-page-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
           transform: none;
         }
         
-        .download-season-btn svg {
+        .download-season-btn svg, .download-page-btn svg {
           width: 24px;
           height: 24px;
+        }
+        
+        .pagination-controls {
+          background: rgba(30, 30, 30, 0.95);
+          backdrop-filter: blur(10px);
+          border-radius: 16px;
+          padding: 24px;
+          margin-bottom: 32px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .breadcrumbs {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 20px;
+          font-size: 0.9rem;
+          color: #888;
+        }
+        
+        .breadcrumbs .current {
+          color: #e5a00d;
+          font-weight: 600;
+        }
+        
+        .pagination-nav {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 20px;
+        }
+        
+        .page-btn {
+          padding: 10px 16px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: #ccc;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 0.9rem;
+          text-decoration: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .page-btn:hover {
+          background: rgba(229, 160, 13, 0.15);
+          border-color: rgba(229, 160, 13, 0.3);
+          color: #e5a00d;
+        }
+        
+        .page-btn.current {
+          background: rgba(229, 160, 13, 0.2);
+          border-color: rgba(229, 160, 13, 0.4);
+          color: #e5a00d;
+          font-weight: 600;
+        }
+        
+        .page-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        
+        .episode-jump {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          justify-content: center;
+          margin-top: 16px;
+        }
+        
+        .episode-jump input {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          padding: 8px 12px;
+          color: #fff;
+          font-size: 0.9rem;
+          width: 80px;
+          text-align: center;
+        }
+        
+        .episode-jump button {
+          padding: 8px 16px;
+          background: rgba(229, 160, 13, 0.2);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          border-radius: 6px;
+          color: #e5a00d;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 0.9rem;
+        }
+        
+        .episode-jump button:hover {
+          background: rgba(229, 160, 13, 0.3);
         }
         
         .episodes-grid {
@@ -1126,12 +1012,18 @@ app.get('/list', (req, res) => {
         }
       </style>
       <script>
-        const downloads = ${JSON.stringify(episodes)};
+        const allEpisodes = ${JSON.stringify(episodes)};
+        const currentPageEpisodes = ${JSON.stringify(currentPageEpisodes)};
+        const page = ${page};
+        const pageSize = ${pageSize};
+        const totalPages = ${totalPages};
+        const startIndex = ${startIndex};
+        
         let isDownloading = false;
         let downloadIndex = 0;
         
-        function downloadEpisode(index, fromSequential = false) {
-          const download = downloads[index];
+        function downloadEpisode(globalIndex, fromSequential = false) {
+          const download = allEpisodes[globalIndex];
           
           // Crear iframe oculto para descarga directa
           const iframe = document.createElement('iframe');
@@ -1159,7 +1051,7 @@ app.get('/list', (req, res) => {
             document.body.removeChild(iframe);
             if (fromSequential) {
               downloadIndex++;
-              if (downloadIndex < downloads.length) {
+              if (downloadIndex < allEpisodes.length) {
                 updateProgress();
                 setTimeout(() => downloadEpisode(downloadIndex, true), 3000);
               } else {
@@ -1167,6 +1059,37 @@ app.get('/list', (req, res) => {
               }
             }
           }, 2000);
+        }
+        
+        function downloadCurrentPage() {
+          if (isDownloading) return;
+          
+          isDownloading = true;
+          let pageDownloadIndex = 0;
+          
+          const btn = document.getElementById('download-page-btn');
+          const progress = document.getElementById('progress-indicator');
+          
+          btn.disabled = true;
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg> Descargando...';
+          
+          function downloadNextPageEpisode() {
+            if (pageDownloadIndex >= currentPageEpisodes.length) {
+              // Terminar descarga de página
+              isDownloading = false;
+              btn.disabled = false;
+              btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/></svg> Descargar Esta Página (' + currentPageEpisodes.length + ' episodios)';
+              return;
+            }
+            
+            const globalIndex = startIndex + pageDownloadIndex;
+            downloadEpisode(globalIndex);
+            pageDownloadIndex++;
+            
+            setTimeout(downloadNextPageEpisode, 3000);
+          }
+          
+          downloadNextPageEpisode();
         }
         
         function downloadSeasonSequential() {
@@ -1180,7 +1103,7 @@ app.get('/list', (req, res) => {
           
           btn.disabled = true;
           btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg> Descargando...';
-          progress.classList.add('show');
+          if (progress) progress.classList.add('show');
           
           updateProgress();
           downloadEpisode(0, true);
@@ -1189,9 +1112,11 @@ app.get('/list', (req, res) => {
         function updateProgress() {
           const progressText = document.getElementById('progress-text');
           const progressFill = document.getElementById('progress-fill');
-          const percentage = Math.round((downloadIndex / downloads.length) * 100);
+          if (!progressText || !progressFill) return;
           
-          progressText.textContent = \`Descargando episodio \${downloadIndex + 1} de \${downloads.length} (\${percentage}%)\`;
+          const percentage = Math.round((downloadIndex / allEpisodes.length) * 100);
+          
+          progressText.textContent = \`Descargando episodio \${downloadIndex + 1} de \${allEpisodes.length} (\${percentage}%)\`;
           progressFill.style.width = percentage + '%';
         }
         
@@ -1201,11 +1126,24 @@ app.get('/list', (req, res) => {
           const progress = document.getElementById('progress-indicator');
           
           btn.disabled = false;
-          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/></svg> Descargar Temporada';
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/></svg> Descargar Temporada Completa';
           
-          setTimeout(() => {
-            progress.classList.remove('show');
-          }, 2000);
+          if (progress) {
+            setTimeout(() => {
+              progress.classList.remove('show');
+            }, 2000);
+          }
+        }
+        
+        function jumpToEpisode() {
+          const episodeNumber = parseInt(document.getElementById('episode-input').value);
+          if (episodeNumber && episodeNumber >= 1 && episodeNumber <= allEpisodes.length) {
+            const targetPage = Math.ceil(episodeNumber / pageSize);
+            const downloadsParam = encodeURIComponent(JSON.stringify(${JSON.stringify(downloads)}));
+            window.location.href = \`/list?downloads=\${downloadsParam}&page=\${targetPage}&pageSize=\${pageSize}\`;
+          } else {
+            alert('Por favor, ingresa un número de episodio válido (1-' + allEpisodes.length + ')');
+          }
         }
         
         function toggleTechnical(index) {
@@ -1236,15 +1174,28 @@ app.get('/list', (req, res) => {
             <div class="series-meta">
               ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
               ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
-              <div class="meta-badge">${episodes.length} ${episodes.length === 1 ? 'Episodio' : 'Episodios'}</div>
+              <div class="meta-badge">${totalEpisodes} ${totalEpisodes === 1 ? 'Episodio' : 'Episodios'}</div>
+              ${totalPages > 1 ? `<div class="meta-badge">Página ${page} de ${totalPages}</div>` : ''}
             </div>
             ${seasonSummary ? `<div class="series-description">${seasonSummary}</div>` : ''}
-            <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-              </svg>
-              Descargar Temporada
-            </button>
+            
+            <div class="action-buttons">
+              <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                </svg>
+                Descargar Temporada Completa
+              </button>
+              
+              ${currentPageEpisodes.length > 1 ? `
+                <button class="download-page-btn" id="download-page-btn" onclick="downloadCurrentPage()">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                  </svg>
+                  Descargar Esta Página (${currentPageEpisodes.length} episodios)
+                </button>
+              ` : ''}
+            </div>
             <div class="progress-indicator" id="progress-indicator">
               <div class="progress-text" id="progress-text"></div>
               <div class="progress-bar">
@@ -1254,8 +1205,77 @@ app.get('/list', (req, res) => {
           </div>
         </div>
         
+        ${totalPages > 1 ? `
+        <div class="pagination-controls">
+          <div class="breadcrumbs">
+            <span>${seriesTitle}</span>
+            <span>•</span>
+            <span>Temporada ${seasonNumber}</span>
+            <span>•</span>
+            <span class="current">Episodios ${startIndex + 1}-${endIndex} de ${totalEpisodes}</span>
+          </div>
+          
+          <div class="pagination-nav">
+            ${page > 1 ? `
+              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=1&pageSize=${pageSize}" class="page-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.41 7.41L17 6l-6 6 6 6 1.41-1.41L13.83 12l4.58-4.59z"/>
+                  <path d="M12.41 7.41L11 6l-6 6 6 6 1.41-1.41L7.83 12l4.58-4.59z"/>
+                </svg>
+                Primera
+              </a>
+              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${page - 1}&pageSize=${pageSize}" class="page-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                </svg>
+                Anterior
+              </a>
+            ` : ''}
+            
+            ${(() => {
+              let pageNumbers = '';
+              const startPage = Math.max(1, page - 2);
+              const endPage = Math.min(totalPages, page + 2);
+              
+              for (let i = startPage; i <= endPage; i++) {
+                const isCurrentPage = i === page;
+                pageNumbers += `
+                  <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${i}&pageSize=${pageSize}" 
+                     class="page-btn ${isCurrentPage ? 'current' : ''}">${i}</a>
+                `;
+              }
+              return pageNumbers;
+            })()}
+            
+            ${page < totalPages ? `
+              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${page + 1}&pageSize=${pageSize}" class="page-btn">
+                Siguiente
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                </svg>
+              </a>
+              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${totalPages}&pageSize=${pageSize}" class="page-btn">
+                Última
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M5.59 7.41L7 6l6 6-6 6-1.41-1.41L10.17 12L5.59 7.41z"/>
+                  <path d="M11.59 7.41L13 6l6 6-6 6-1.41-1.41L16.17 12L11.59 7.41z"/>
+                </svg>
+              </a>
+            ` : ''}
+          </div>
+          
+          <div class="episode-jump">
+            <span>Ir al episodio:</span>
+            <input type="number" id="episode-input" min="1" max="${totalEpisodes}" placeholder="Nº">
+            <button onclick="jumpToEpisode()">Ir</button>
+          </div>
+        </div>
+        ` : ''}
+        
         <div class="episodes-grid">
-          ${episodes.map((download, index) => `
+          ${currentPageEpisodes.map((download, index) => {
+            const globalIndex = startIndex + index;
+            return `
             <div class="episode-card">
               ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
               
@@ -1303,14 +1323,14 @@ app.get('/list', (req, res) => {
                 </div>
               </div>
               
-              <button class="download-btn" onclick="downloadEpisode(${index})">
+              <button class="download-btn" onclick="downloadEpisode(${globalIndex})">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
                 </svg>
                 Descargar
               </button>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
       </div>
     </body>
