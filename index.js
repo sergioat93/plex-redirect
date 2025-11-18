@@ -1652,23 +1652,10 @@ app.get('/list', async (req, res) => {
         function downloadEpisode(globalIndex, fromSequential = false) {
           const download = allEpisodes[globalIndex];
           
-          // Construir URL con parámetros
-          const params = new URLSearchParams();
-          params.set('accessToken', download.accessToken);
-          params.set('partKey', download.partKey);
-          params.set('baseURI', download.baseURI);
-          params.set('fileSize', download.fileSize);
-          params.set('fileName', download.fileName);
-          params.set('downloadURL', download.downloadURL);
-          params.set('title', download.title);
-          params.set('episodeTitle', download.episodeTitle);
-          params.set('seasonNumber', download.seasonNumber);
-          params.set('episodeNumber', download.episodeNumber);
-          params.set('posterUrl', download.posterUrl);
-          params.set('autoDownload', 'true');
-          
-          // Abrir en nueva pestaña
-          window.open('https://plex-redirect.onrender.com/?' + params.toString(), '_blank');
+          // Descargar directamente usando la URL de Plex
+          if (download.url) {
+            window.location.href = download.url;
+          }
           
           // Continuar con la siguiente descarga si es secuencial
           if (fromSequential) {
@@ -1807,11 +1794,11 @@ app.get('/list', async (req, res) => {
           if (synopsis && button) {
             if (synopsis.style.maxHeight === 'none') {
               synopsis.style.maxHeight = '10.2em';
-              button.textContent = '+';
+              button.textContent = 'Ver más';
               if (ellipsis) ellipsis.style.display = 'block';
             } else {
               synopsis.style.maxHeight = 'none';
-              button.textContent = '−';
+              button.textContent = 'Ver menos';
               if (ellipsis) ellipsis.style.display = 'none';
             }
           }
@@ -1861,8 +1848,9 @@ app.get('/list', async (req, res) => {
                 <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative; padding-right: 0;">
                   ${seasonSummary}
                 </div>
-                <div style="content: '...'; position: absolute; bottom: 0; right: 1.8rem; background: transparent; padding-left: 5rem; color: #cccccc; width: 8rem; text-align: right; display: block;" id="synopsis-ellipsis">...</div>
-                <button id="synopsis-toggle" onclick="toggleSynopsis()" style="position: absolute; bottom: 0; right: 0; background: transparent; border: none; color: #e5a00d; font-size: 1.3rem; font-weight: bold; cursor: pointer; padding: 0 0.25rem; transition: transform 0.2s ease; line-height: 1.7; z-index: 2;" onmouseover="this.style.transform='scale(1.15)'; this.style.color='#f0b825';" onmouseout="this.style.transform='scale(1)'; this.style.color='#e5a00d';">+</button>
+                <div style="position: absolute; bottom: 0; right: 0; background: linear-gradient(to right, transparent 0%, rgba(26,26,26,0.9) 20%, rgba(26,26,26,1) 100%); padding-left: 3rem; display: block;" id="synopsis-ellipsis">
+                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0 0.25rem; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
+                </div>
               </div>
             ` : ''}
             
