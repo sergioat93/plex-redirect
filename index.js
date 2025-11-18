@@ -694,7 +694,7 @@ app.get('/', (req, res) => {
                     <span class="metadata-value">${fileName.length > 30 ? fileName.substring(0, 30) + '...' : fileName}</span>
                   </div>
                 ` : ''}
-                ${baseURI ? `
+                ${baseURI && baseURI.startsWith('http') ? `
                   <div class="metadata-item">
                     <span class="metadata-label">Servidor</span>
                     <span class="metadata-value">${new URL(baseURI).hostname}</span>
