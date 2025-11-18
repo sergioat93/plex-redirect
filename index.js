@@ -2040,26 +2040,27 @@ app.get('/movie', async (req, res) => {
           text-align: justify;
           margin-bottom: 0;
           color: #cccccc;
-          max-height: 9.18em;
+          max-height: 8.5em;
           overflow: hidden;
           transition: max-height 0.3s ease;
           position: relative;
-          padding-right: 3rem;
+          padding-right: 0;
         }
         
         .modal-synopsis.expanded {
           max-height: none;
-          padding-right: 0;
         }
         
         .modal-synopsis::after {
           content: '...';
           position: absolute;
           bottom: 0;
-          right: 2rem;
-          background: linear-gradient(to right, transparent, #282828 20%, #282828);
-          padding-left: 2rem;
+          right: 1.8rem;
+          background: linear-gradient(to right, transparent 0%, #282828 15%, #282828 100%);
+          padding-left: 3rem;
           color: #cccccc;
+          width: 5rem;
+          text-align: right;
         }
         
         .modal-synopsis.expanded::after {
@@ -2071,7 +2072,7 @@ app.get('/movie', async (req, res) => {
           position: absolute;
           bottom: 0;
           right: 0;
-          background: transparent;
+          background: #282828;
           border: none;
           color: #e5a00d;
           font-size: 1.3rem;
@@ -2080,7 +2081,7 @@ app.get('/movie', async (req, res) => {
           padding: 0 0.25rem;
           transition: transform 0.2s ease;
           line-height: 1.7;
-          z-index: 1;
+          z-index: 2;
         }
         
         .synopsis-toggle:hover {
