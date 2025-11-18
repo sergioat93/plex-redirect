@@ -2045,6 +2045,7 @@ app.get('/movie', async (req, res) => {
           -webkit-line-clamp: 4;
           -webkit-box-orient: vertical;
           transition: all 0.3s ease;
+          position: relative;
         }
         
         .modal-synopsis.expanded {
@@ -2055,18 +2056,19 @@ app.get('/movie', async (req, res) => {
           background: transparent;
           border: none;
           color: #e5a00d;
-          font-size: 1.5rem;
+          font-size: 1.2rem;
           font-weight: bold;
           cursor: pointer;
-          padding: 0.5rem;
-          margin-top: 0.5rem;
+          padding: 0 0.25rem;
+          margin-left: 0.25rem;
           transition: transform 0.2s ease;
-          display: block;
+          display: inline;
           line-height: 1;
+          vertical-align: baseline;
         }
         
         .synopsis-toggle:hover {
-          transform: scale(1.2);
+          transform: scale(1.15);
           color: #f0b825;
         }
         
@@ -2273,14 +2275,13 @@ app.get('/movie', async (req, res) => {
               </div>
               <div class="synopsis-container">
                 <div class="modal-synopsis" id="synopsis-text">
-                  <p>${movieData.overview}</p>
+                  ${movieData.overview}<button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
                 </div>
-                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
               </div>
             ` : `
               <div class="synopsis-container">
                 <div class="modal-synopsis">
-                  <p>Película lista para descargar. Haz clic en el botón de descarga para comenzar.</p>
+                  Película lista para descargar. Haz clic en el botón de descarga para comenzar.
                 </div>
               </div>
             `}
