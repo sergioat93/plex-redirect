@@ -1869,11 +1869,26 @@ app.get('/movie', async (req, res) => {
           margin-bottom: 1rem;
         }
         
+        .modal-badges-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+        
         .modal-badges-row {
           display: flex;
           gap: 1rem;
           align-items: center;
           flex-wrap: wrap;
+        }
+        
+        .modal-icons-row {
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+          margin-left: auto;
         }
         
         .year-badge,
@@ -1932,7 +1947,7 @@ app.get('/movie', async (req, res) => {
         }
         
         .modal-hero {
-          padding: 2rem 3.5rem;
+          padding: 1rem 3.5rem;
           display: flex;
           gap: 2rem;
         }
@@ -2015,12 +2030,44 @@ app.get('/movie', async (req, res) => {
           text-align: right;
         }
         
+        .synopsis-container {
+          position: relative;
+        }
+        
         .modal-synopsis {
           line-height: 1.7;
           font-size: 1.08rem;
           text-align: justify;
           margin-bottom: 0;
           color: #cccccc;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 4;
+          -webkit-box-orient: vertical;
+          transition: all 0.3s ease;
+        }
+        
+        .modal-synopsis.expanded {
+          -webkit-line-clamp: unset;
+        }
+        
+        .synopsis-toggle {
+          background: transparent;
+          border: none;
+          color: #e5a00d;
+          font-size: 1.5rem;
+          font-weight: bold;
+          cursor: pointer;
+          padding: 0.5rem;
+          margin-top: 0.5rem;
+          transition: transform 0.2s ease;
+          display: block;
+          line-height: 1;
+        }
+        
+        .synopsis-toggle:hover {
+          transform: scale(1.2);
+          color: #f0b825;
         }
         
         .external-links a {
@@ -2041,7 +2088,7 @@ app.get('/movie', async (req, res) => {
         
         .file-info {
           background: rgba(0, 0, 0, 0.3);
-          padding: 1rem 3.5rem;
+          padding: 0.5rem 3.5rem;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
@@ -2124,6 +2171,16 @@ app.get('/movie', async (req, res) => {
             font-size: 2rem;
           }
           
+          .modal-badges-container {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+          }
+          
+          .modal-icons-row {
+            margin-left: 0;
+          }
+          
           .file-info {
             padding: 1rem 1.5rem;
           }
@@ -2147,38 +2204,42 @@ app.get('/movie', async (req, res) => {
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
             ${movieData && movieData.tagline ? `<div class="modal-tagline">${movieData.tagline}</div>` : ''}
-            <div class="modal-badges-row">
-              ${fileSize ? `<span class="filesize-badge">${fileSize}</span>` : ''}
-              ${movieData && movieData.year ? `<span class="year-badge">${movieData.year}</span>` : ''}
-              ${movieData && movieData.runtime ? `<span class="runtime-badge">${movieData.runtime}</span>` : ''}
-              ${movieData && movieData.rating !== 'N/A' ? `
-                <span class="rating-badge">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                  </svg>
-                  ${movieData.rating}
-                </span>
-              ` : ''}
-              ${movieData && movieData.genres && movieData.genres.length > 0 ? `
-                <div class="genres-list">
-                  ${movieData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
-                </div>
-              ` : ''}
-              ${tmdbId ? `
-                <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
-                </a>
-              ` : ''}
-              ${movieData && movieData.imdbId ? `
-                <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
-                </a>
-              ` : ''}
-              ${movieData && movieData.trailerKey ? `
-                <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
-                </a>
-              ` : ''}
+            <div class="modal-badges-container">
+              <div class="modal-badges-row">
+                ${fileSize ? `<span class="filesize-badge">${fileSize}</span>` : ''}
+                ${movieData && movieData.year ? `<span class="year-badge">${movieData.year}</span>` : ''}
+                ${movieData && movieData.runtime ? `<span class="runtime-badge">${movieData.runtime}</span>` : ''}
+                ${movieData && movieData.rating !== 'N/A' ? `
+                  <span class="rating-badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    ${movieData.rating}
+                  </span>
+                ` : ''}
+                ${movieData && movieData.genres && movieData.genres.length > 0 ? `
+                  <div class="genres-list">
+                    ${movieData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
+                  </div>
+                ` : ''}
+              </div>
+              <div class="modal-icons-row">
+                ${tmdbId ? `
+                  <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${movieData && movieData.imdbId ? `
+                  <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${movieData && movieData.trailerKey ? `
+                  <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
+                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                  </a>
+                ` : ''}
+              </div>
             </div>
           </div>
         </div>
@@ -2210,12 +2271,17 @@ app.get('/movie', async (req, res) => {
                 <div class="detail-item"><strong>Presupuesto:</strong> <span>${movieData.budget}</span></div>
                 <div class="detail-item"><strong>Recaudación:</strong> <span>${movieData.revenue}</span></div>
               </div>
-              <div class="modal-synopsis">
-                <p>${movieData.overview}</p>
+              <div class="synopsis-container">
+                <div class="modal-synopsis" id="synopsis-text">
+                  <p>${movieData.overview}</p>
+                </div>
+                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
               </div>
             ` : `
-              <div class="modal-synopsis">
-                <p>Película lista para descargar. Haz clic en el botón de descarga para comenzar.</p>
+              <div class="synopsis-container">
+                <div class="modal-synopsis">
+                  <p>Película lista para descargar. Haz clic en el botón de descarga para comenzar.</p>
+                </div>
               </div>
             `}
           </div>
@@ -2263,6 +2329,13 @@ app.get('/movie', async (req, res) => {
           button.textContent = content.classList.contains('open') 
             ? '▼ Ocultar detalles técnicos' 
             : '▶ Mostrar detalles técnicos';
+        }
+        
+        function toggleSynopsis() {
+          const synopsis = document.getElementById('synopsis-text');
+          const button = document.getElementById('synopsis-toggle');
+          synopsis.classList.toggle('expanded');
+          button.textContent = synopsis.classList.contains('expanded') ? '−' : '+';
         }
         
         // Auto-descargar al cargar la página
