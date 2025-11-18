@@ -2720,7 +2720,7 @@ app.get('/series', async (req, res) => {
           text-align: justify;
           margin-bottom: 0;
           color: #cccccc;
-          max-height: 8.5em;
+          max-height: 6.8em;
           overflow: hidden;
           transition: max-height 0.3s ease;
           position: relative;
@@ -2888,7 +2888,6 @@ app.get('/series', async (req, res) => {
                 ${totalSize ? `<span class="filesize-badge">${totalSize}</span>` : ''}
                 ${seriesData && seriesData.year ? `<span class="year-badge">${seriesData.year}</span>` : ''}
                 ${seriesData && seriesData.status ? `<span class="status-badge">${seriesData.status}</span>` : ''}
-                ${seriesData && seriesData.numberOfSeasons ? `<span class="seasons-badge">${seriesData.numberOfSeasons} Temporadas</span>` : ''}
                 ${seriesData && seriesData.rating !== 'N/A' ? `
                   <span class="rating-badge">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -2941,6 +2940,7 @@ app.get('/series', async (req, res) => {
                 <div class="detail-item"><strong>Plataforma:</strong> <span>${seriesData.networks}</span></div>
                 <div class="detail-item"><strong>Creadores:</strong> <span>${seriesData.creators}</span></div>
                 <div class="detail-item"><strong>Reparto:</strong> <span>${seriesData.cast}</span></div>
+                <div class="detail-item"><strong>Número de temporadas:</strong> <span>${seriesData.numberOfSeasons}</span></div>
                 <div class="detail-item"><strong>Número de episodios:</strong> <span>${seriesData.numberOfEpisodes}</span></div>
               </div>
               <div class="synopsis-container">
