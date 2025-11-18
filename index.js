@@ -682,18 +682,81 @@ app.get('/', (req, res) => {
 
 app.get('/list', async (req, res) => {
   const downloadsParam = req.query.downloads;
+  const seasonRatingKey = req.query.seasonRatingKey;
+  const accessToken = req.query.accessToken;
+  const baseURI = req.query.baseURI;
+  const seasonNumber = req.query.seasonNumber;
+  const seriesTitleParam = req.query.seriesTitle;
+  const tmdbId = req.query.tmdbId;
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 10;
   
-  if (!downloadsParam) {
-    return res.status(400).send('No downloads provided');
-  }
-  
   let downloads = [];
-  try {
-    downloads = JSON.parse(downloadsParam);
-  } catch (e) {
-    return res.status(400).send('Invalid downloads format');
+  
+  // Si recibimos seasonRatingKey, obtener episodios de Plex
+  if (seasonRatingKey && accessToken && baseURI) {
+    try {
+      const seasonUrl = `${baseURI}/library/metadata/${seasonRatingKey}/children?X-Plex-Token=${accessToken}`;
+      const seasonData = await httpsGet(seasonUrl);
+      
+      if (seasonData && seasonData.MediaContainer && seasonData.MediaContainer.Metadata) {
+        const episodes = seasonData.MediaContainer.Metadata;
+        
+        // Construir array de downloads con la información de cada episodio
+        downloads = episodes.map(ep => {
+          let fileUrl = null;
+          let fileSize = 0;
+          let fileName = '';
+          
+          if (ep.Media && ep.Media[0] && ep.Media[0].Part && ep.Media[0].Part[0]) {
+            const part = ep.Media[0].Part[0];
+            fileName = part.file ? part.file.split('/').pop() : '';
+            fileSize = part.size || 0;
+            fileUrl = `${baseURI}${part.key}?download=1&X-Plex-Token=${accessToken}`;
+          }
+          
+          return {
+            title: ep.title || '',
+            episodeNumber: ep.index || 0,
+            seasonNumber: parseInt(seasonNumber) || ep.parentIndex || 0,
+            url: fileUrl,
+            fileName: fileName,
+            fileSize: fileSize,
+            posterUrl: ep.thumb ? `${baseURI}${ep.thumb}?X-Plex-Token=${accessToken}` : null,
+            summary: ep.summary || ''
+          };
+        });
+        
+        // Agregar información de la temporada al inicio
+        if (downloads.length > 0) {
+          downloads.unshift({
+            isSeasonInfo: true,
+            seriesTitle: seriesTitleParam || '',
+            seasonTitle: `Temporada ${seasonNumber}`,
+            seasonNumber: parseInt(seasonNumber) || 0,
+            seasonSummary: '',
+            seasonYear: '',
+            seasonPoster: '',
+            tmdbId: tmdbId || null
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching season data from Plex:', error);
+      return res.status(500).send('Error fetching season data');
+    }
+  }
+  // Si recibimos downloads directamente
+  else if (downloadsParam) {
+    try {
+      downloads = JSON.parse(downloadsParam);
+    } catch (e) {
+      return res.status(400).send('Invalid downloads format');
+    }
+  }
+  // Si no tenemos ninguno de los dos
+  else {
+    return res.status(400).send('No downloads or season data provided');
   }
   
   if (!Array.isArray(downloads) || downloads.length === 0) {
