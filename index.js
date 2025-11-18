@@ -1454,8 +1454,8 @@ function generateListPage(downloads, res) {
       </style>
       <script>
         function downloadEpisode(index) {
-          const downloads = ${JSON.stringify(downloads)};
-          const download = downloads[index];
+          const downloadsData = ${JSON.stringify(downloads)};
+          const download = downloadsData[index];
           
           // Crear formulario POST para evitar URLs largas
           const form = document.createElement('form');
@@ -1492,16 +1492,16 @@ function generateListPage(downloads, res) {
         }
         
         function downloadAllEpisodes() {
-          const downloads = ${JSON.stringify(downloads)};
+          const downloadsData = ${JSON.stringify(downloads)};
           let currentIndex = 0;
           
           function downloadNext() {
-            if (currentIndex >= downloads.length) {
+            if (currentIndex >= downloadsData.length) {
               alert('¡Descarga de temporada completa iniciada!');
               return;
             }
             
-            const download = downloads[currentIndex];
+            const download = downloadsData[currentIndex];
             
             // Crear formulario POST para cada descarga
             const form = document.createElement('form');
@@ -1539,7 +1539,7 @@ function generateListPage(downloads, res) {
             currentIndex++;
             
             // Continuar con el siguiente episodio después de 3 segundos
-            if (currentIndex < downloads.length) {
+            if (currentIndex < downloadsData.length) {
               setTimeout(downloadNext, 3000);
             }
           }
