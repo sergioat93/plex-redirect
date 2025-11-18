@@ -2592,6 +2592,15 @@ app.get('/series', async (req, res) => {
           margin-left: auto;
         }
         
+        .filesize-badge {
+          background: #e5a00d;
+          color: #000;
+          padding: 0.4rem 0.8rem;
+          border-radius: 20px;
+          font-weight: 600;
+          font-size: 0.9rem;
+        }
+
         .year-badge,
         .status-badge,
         .seasons-badge {
@@ -2735,11 +2744,10 @@ app.get('/series', async (req, res) => {
           content: '...';
           position: absolute;
           bottom: 0;
-          right: 1.8rem;
+          right: 1.2rem;
           background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
-          padding-left: 5rem;
           color: #cccccc;
-          width: 8rem;
+          width: 2,2rem;
           text-align: right;
         }
         
