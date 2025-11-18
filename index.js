@@ -1826,7 +1826,7 @@ app.get('/movie', async (req, res) => {
           background-position: center top;
           background-repeat: no-repeat;
           background-image: url('${movieBackdrop}');
-          min-height: 250px;
+          min-height: 240px;
           display: flex;
           align-items: flex-end;
           padding: 2.5rem 3.5rem 1.5rem 3.5rem;
@@ -2040,31 +2040,43 @@ app.get('/movie', async (req, res) => {
           text-align: justify;
           margin-bottom: 0;
           color: #cccccc;
+          max-height: 6.8em;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 4;
-          -webkit-box-orient: vertical;
-          transition: all 0.3s ease;
+          transition: max-height 0.3s ease;
           position: relative;
         }
         
         .modal-synopsis.expanded {
-          -webkit-line-clamp: unset;
+          max-height: none;
+        }
+        
+        .modal-synopsis::after {
+          content: '... ';
+          position: absolute;
+          bottom: 0;
+          right: 2.5rem;
+          background: #282828;
+          padding-left: 0.5rem;
+        }
+        
+        .modal-synopsis.expanded::after {
+          content: '';
+          display: none;
         }
         
         .synopsis-toggle {
-          background: transparent;
+          position: absolute;
+          bottom: 0;
+          right: 0;
+          background: #282828;
           border: none;
           color: #e5a00d;
           font-size: 1.2rem;
           font-weight: bold;
           cursor: pointer;
           padding: 0 0.25rem;
-          margin-left: 0.25rem;
           transition: transform 0.2s ease;
-          display: inline;
-          line-height: 1;
-          vertical-align: baseline;
+          line-height: 1.7;
         }
         
         .synopsis-toggle:hover {
@@ -2275,8 +2287,9 @@ app.get('/movie', async (req, res) => {
               </div>
               <div class="synopsis-container">
                 <div class="modal-synopsis" id="synopsis-text">
-                  ${movieData.overview}<button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
+                  ${movieData.overview}
                 </div>
+                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
               </div>
             ` : `
               <div class="synopsis-container">
