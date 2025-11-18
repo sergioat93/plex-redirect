@@ -1826,7 +1826,7 @@ app.get('/movie', async (req, res) => {
           background-position: center top;
           background-repeat: no-repeat;
           background-image: url('${movieBackdrop}');
-          min-height: 230px;
+          min-height: 233px;
           display: flex;
           align-items: flex-end;
           padding: 2.5rem 3.5rem 1.5rem 3.5rem;
@@ -2055,11 +2055,10 @@ app.get('/movie', async (req, res) => {
           content: '...';
           position: absolute;
           bottom: 0;
-          right: 1.8rem;
+          right: 1.2rem;
           background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
-          padding-left: 5rem;
           color: #cccccc;
-          width: 8rem;
+          width: 2.2rem;
           text-align: right;
         }
         
