@@ -1,6 +1,10 @@
 const express = require('express');
 const app = express();
 
+// Middleware para parsear el body de las peticiones
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -479,6 +483,28 @@ app.get('/list', (req, res) => {
     return res.status(400).send('Invalid downloads format');
   }
   
+  generateListPage(downloads, res);
+});
+
+app.post('/list', (req, res) => {
+  const downloadsParam = req.body.downloads;
+  
+  if (!downloadsParam) {
+    return res.status(400).send('No downloads provided');
+  }
+  
+  let downloads = [];
+  try {
+    downloads = JSON.parse(downloadsParam);
+  } catch (e) {
+    return res.status(400).send('Invalid downloads format');
+  }
+  
+  generateListPage(downloads, res);
+});
+
+function generateListPage(downloads, res) {
+  
   if (!Array.isArray(downloads) || downloads.length === 0) {
     return res.status(400).send('No downloads found');
   }
@@ -788,8 +814,9 @@ app.get('/list', (req, res) => {
           padding: 16px 20px;
           cursor: pointer;
           display: flex;
-          justify-content: space-between;
+          justify-content: center;
           align-items: center;
+          gap: 8px;
           transition: background 0.2s;
           user-select: none;
           background: rgba(255, 255, 255, 0.02);
@@ -799,8 +826,13 @@ app.get('/list', (req, res) => {
           background: rgba(255, 255, 255, 0.05);
         }
         
-        .technical-header h4 {
-          margin: 0;
+        .technical-text {
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .technical-text {
           font-size: 0.95rem;
           font-weight: 600;
           color: rgba(255, 255, 255, 0.9);
@@ -845,8 +877,8 @@ app.get('/list', (req, res) => {
         
         .technical-label {
           font-size: 0.85rem;
-          color: rgba(255, 255, 255, 0.6);
-          font-weight: 500;
+          color: #e5a00d;
+          font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           min-width: 120px;
@@ -1019,8 +1051,20 @@ app.get('/list', (req, res) => {
         function toggleTechnical(index) {
           const content = document.getElementById('technical-content-' + index);
           const toggle = document.getElementById('technical-toggle-' + index);
+          const headers = document.querySelectorAll(`[onclick="toggleTechnical(${index})"]`);
+          const text = headers.length > 0 ? headers[0].querySelector('.technical-text') : null;
+          
           content.classList.toggle('open');
           toggle.classList.toggle('open');
+          
+          // Cambiar el texto del botón
+          if (text) {
+            if (content.classList.contains('open')) {
+              text.textContent = 'Ocultar detalles técnicos';
+            } else {
+              text.textContent = 'Mostrar detalles técnicos';
+            }
+          }
         }
         
         function toggleFilename(index, fullName) {
@@ -1052,12 +1096,12 @@ app.get('/list', (req, res) => {
           ${seriesPoster ? `<img class="series-poster" src="${seriesPoster}" alt="${seriesTitle}">` : ''}
           <div class="series-info">
             <h1>${seriesTitle}</h1>
-            <div class="season-overview">${seasonOverview}</div>
             <div class="series-meta">
               ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
               ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
               <div class="meta-badge">${downloads.length} ${downloads.length === 1 ? 'Episodio' : 'Episodios'}</div>
             </div>
+            <div class="season-overview">${seasonOverview}</div>
             <button class="download-season-btn" onclick="downloadAllEpisodes()">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width: 24px; height: 24px;">
                 <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
@@ -1103,7 +1147,7 @@ app.get('/list', (req, res) => {
               
               <div class="episode-technical">
                 <div class="technical-header" onclick="toggleTechnical(${index})">
-                  <h4>Detalles técnicos</h4>
+                  <span class="technical-text">Mostrar detalles técnicos</span>
                   <svg class="technical-toggle" id="technical-toggle-${index}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 14.975L6.172 9.147l1.414-1.414L12 12.147l4.414-4.414 1.414 1.414z"/>
                   </svg>
@@ -1111,27 +1155,27 @@ app.get('/list', (req, res) => {
                 <div class="technical-content" id="technical-content-${index}">
                   <div class="technical-list">
                     <div class="technical-row">
-                      <div class="technical-label">Access Token</div>
+                      <div class="technical-label">Access Token:</div>
                       <div class="technical-value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</div>
                     </div>
                     <div class="technical-row">
-                      <div class="technical-label">Part Key</div>
+                      <div class="technical-label">Part Key:</div>
                       <div class="technical-value">${decodeURIComponent(download.partKey)}</div>
                     </div>
                     <div class="technical-row">
-                      <div class="technical-label">Base URL</div>
+                      <div class="technical-label">Base URL:</div>
                       <div class="technical-value">${download.baseURI}</div>
                     </div>
                     <div class="technical-row">
-                      <div class="technical-label">Nombre del archivo</div>
+                      <div class="technical-label">Nombre del archivo:</div>
                       <div class="technical-value">${download.fileName}</div>
                     </div>
                     <div class="technical-row">
-                      <div class="technical-label">Tamaño</div>
+                      <div class="technical-label">Tamaño:</div>
                       <div class="technical-value">${download.fileSize || 'Desconocido'}</div>
                     </div>
                     <div class="technical-row">
-                      <div class="technical-label">URL de descarga</div>
+                      <div class="technical-label">URL de descarga:</div>
                       <div class="technical-value">${download.downloadURL}</div>
                     </div>
                   </div>
@@ -1182,7 +1226,7 @@ app.get('/list', (req, res) => {
     </body>
     </html>
   `);
-});
+}
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
