@@ -1915,6 +1915,22 @@ app.get('/movie', async (req, res) => {
           transition: all 0.3s ease;
         }
         
+        .badge-icon-link {
+          display: inline-flex;
+          align-items: center;
+          transition: transform 0.2s ease;
+        }
+        
+        .badge-icon-link:hover {
+          transform: scale(1.1);
+        }
+        
+        .badge-icon {
+          height: 24px;
+          width: 24px;
+          object-fit: contain;
+        }
+        
         .modal-hero {
           padding: 2rem 3.5rem;
           display: flex;
@@ -2029,38 +2045,9 @@ app.get('/movie', async (req, res) => {
           border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .file-info-container {
+        .technical-details {
           max-width: 800px;
           margin: 0 auto;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-        
-        .technical-details {
-          flex: 1;
-        }
-        
-        .footer-links {
-          display: flex;
-          gap: 0.75rem;
-          align-items: center;
-        }
-        
-        .footer-links a {
-          transition: transform 0.3s ease, opacity 0.3s ease;
-          display: block;
-        }
-        
-        .footer-links a:hover {
-          transform: scale(1.1);
-          opacity: 0.8;
-        }
-        
-        .footer-logo {
-          height: 28px;
-          width: auto;
-          object-fit: contain;
         }
         
         .technical-toggle {
@@ -2141,23 +2128,6 @@ app.get('/movie', async (req, res) => {
             padding: 1rem 1.5rem;
           }
           
-          .file-info-container {
-            flex-direction: column;
-            gap: 1rem;
-          }
-          
-          .footer-links {
-            justify-content: center;
-          }
-          
-          .modal-links-row {
-            padding: 1.5rem;
-          }
-          
-          .file-info {
-            padding: 1rem 1.5rem;
-          }
-          
           .detail-item {
             flex-direction: column;
             gap: 0.3rem;
@@ -2193,6 +2163,21 @@ app.get('/movie', async (req, res) => {
                 <div class="genres-list">
                   ${movieData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
                 </div>
+              ` : ''}
+              ${tmdbId ? `
+                <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                </a>
+              ` : ''}
+              ${movieData && movieData.imdbId ? `
+                <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
+                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                </a>
+              ` : ''}
+              ${movieData && movieData.trailerKey ? `
+                <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
+                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                </a>
               ` : ''}
             </div>
           </div>
@@ -2238,52 +2223,33 @@ app.get('/movie', async (req, res) => {
         
         <!-- Info del archivo -->
         <div class="file-info">
-          <div class="file-info-container">
-            <div class="technical-details">
-              <button class="technical-toggle" id="technical-toggle" onclick="toggleTechnical()">
-                ▶ Mostrar detalles técnicos
-              </button>
-              <div class="technical-content" id="technical-content">
-                <table class="info-table">
-                  <tr>
-                    <td class="label">Access Token</td>
-                    <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Part Key</td>
-                    <td class="value">${encodedPartKey}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Base URL</td>
-                    <td class="value">${baseURI}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Nombre del archivo</td>
-                    <td class="value">${fileName}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Tamaño</td>
-                    <td class="value">${fileSize || 'Desconocido'}</td>
-                  </tr>
-                </table>
-              </div>
-            </div>
-            <div class="footer-links">
-              ${tmdbId ? `
-                <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="footer-logo">
-                </a>
-              ` : ''}
-              ${movieData && movieData.imdbId ? `
-                <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="footer-logo">
-                </a>
-              ` : ''}
-              ${movieData && movieData.trailerKey ? `
-                <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
-                  <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="footer-logo">
-                </a>
-              ` : ''}
+          <div class="technical-details">
+            <button class="technical-toggle" id="technical-toggle" onclick="toggleTechnical()">
+              ▶ Mostrar detalles técnicos
+            </button>
+            <div class="technical-content" id="technical-content">
+              <table class="info-table">
+                <tr>
+                  <td class="label">Access Token</td>
+                  <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td class="label">Part Key</td>
+                  <td class="value">${encodedPartKey}</td>
+                </tr>
+                <tr>
+                  <td class="label">Base URL</td>
+                  <td class="value">${baseURI}</td>
+                </tr>
+                <tr>
+                  <td class="label">Nombre del archivo</td>
+                  <td class="value">${fileName}</td>
+                </tr>
+                <tr>
+                  <td class="label">Tamaño</td>
+                  <td class="value">${fileSize || 'Desconocido'}</td>
+                </tr>
+              </table>
             </div>
           </div>
         </div>
