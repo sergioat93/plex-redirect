@@ -155,7 +155,7 @@ app.get('/', (req, res) => {
       <meta charset="UTF-8">
       <title>${title || 'Plex'} - Descarga</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -683,7 +683,7 @@ app.get('/list', async (req, res) => {
       <meta charset="UTF-8">
       <title>${seriesTitle}${seasonNumber ? ` - Temporada ${seasonNumber}` : ''} - Lista de Descargas</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -1774,7 +1774,7 @@ app.get('/movie', async (req, res) => {
       <meta charset="UTF-8">
       <title>${movieTitle} - Descarga</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -1970,10 +1970,11 @@ app.get('/movie', async (req, res) => {
         .modal-details-table {
           display: grid;
           grid-template-columns: 1fr;
+          justify-content: space-between;
           gap: 0;
-          margin-bottom: 1.5rem;
+          margin-bottom: 1rem;
           background: rgba(0, 0, 0, 0.3);
-          padding: 1.5rem;
+          padding: 0.5rem;
           border-radius: 8px;
         }
         
@@ -1999,10 +2000,10 @@ app.get('/movie', async (req, res) => {
         }
         
         .modal-synopsis {
-          background: rgba(0, 0, 0, 0.2);
-          padding: 1.5rem;
-          border-radius: 8px;
-          line-height: 1.6;
+          line-height: 1.7;
+          font-size: 1.08rem;
+          text-align: justify;
+          margin-bottom: 0;
           color: #cccccc;
         }
         
@@ -2038,24 +2039,65 @@ app.get('/movie', async (req, res) => {
           background: rgba(0, 0, 0, 0.3);
           padding: 1rem 3.5rem;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 1rem;
         }
         
-        .file-name {
-          font-family: 'Courier New', monospace;
-          color: #999;
-          font-size: 0.9rem;
-          word-break: break-all;
+        .technical-details {
+          max-width: 800px;
+          margin: 0 auto;
         }
         
-        .file-size {
+        .technical-toggle {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: #888;
+          padding: 10px 16px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          transition: all 0.2s;
+          width: 100%;
+          text-align: center;
+          display: block;
+        }
+        
+        .technical-toggle:hover {
+          border-color: rgba(229, 160, 13, 0.3);
           color: #e5a00d;
-          font-weight: 600;
-          font-size: 1rem;
+        }
+        
+        .technical-content {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+        }
+        
+        .technical-content.open {
+          max-height: 500px;
+          margin-top: 16px;
+        }
+        
+        .info-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        
+        .info-table td {
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          font-size: 0.85rem;
+        }
+        
+        .info-table td.label {
+          color: #888;
+          font-weight: 500;
+          width: 35%;
+        }
+        
+        .info-table td.value {
+          color: #bbb;
+          font-family: 'Courier New', monospace;
+          font-size: 0.8rem;
+          word-break: break-all;
         }
         
         @media (max-width: 768px) {
@@ -2169,17 +2211,17 @@ app.get('/movie', async (req, res) => {
           <div class="external-links">
             ${tmdbId ? `
               <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
-                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/TMDB.png" alt="TMDB" class="site-logo">
+                <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="site-logo">
               </a>
             ` : ''}
             ${movieData && movieData.imdbId ? `
               <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
-                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/IMDB.png" alt="IMDb" class="site-logo">
+                <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="site-logo">
               </a>
             ` : ''}
             ${movieData && movieData.trailerKey ? `
               <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
-                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/youtube.png" alt="YouTube" class="site-logo">
+                <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="site-logo">
               </a>
             ` : ''}
           </div>
@@ -2187,12 +2229,48 @@ app.get('/movie', async (req, res) => {
         
         <!-- Info del archivo -->
         <div class="file-info">
-          <div class="file-name">${fileName}</div>
-          ${fileSize ? `<div class="file-size">${fileSize}</div>` : ''}
+          <div class="technical-details">
+            <button class="technical-toggle" id="technical-toggle" onclick="toggleTechnical()">
+              ▶ Mostrar detalles técnicos
+            </button>
+            <div class="technical-content" id="technical-content">
+              <table class="info-table">
+                <tr>
+                  <td class="label">Access Token</td>
+                  <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td class="label">Part Key</td>
+                  <td class="value">${encodedPartKey}</td>
+                </tr>
+                <tr>
+                  <td class="label">Base URL</td>
+                  <td class="value">${baseURI}</td>
+                </tr>
+                <tr>
+                  <td class="label">Nombre del archivo</td>
+                  <td class="value">${fileName}</td>
+                </tr>
+                <tr>
+                  <td class="label">Tamaño</td>
+                  <td class="value">${fileSize || 'Desconocido'}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
       
       <script>
+        function toggleTechnical() {
+          const content = document.getElementById('technical-content');
+          const button = document.getElementById('technical-toggle');
+          content.classList.toggle('open');
+          button.textContent = content.classList.contains('open') 
+            ? '▼ Ocultar detalles técnicos' 
+            : '▶ Mostrar detalles técnicos';
+        }
+        
         // Auto-descargar al cargar la página
         window.onload = function() {
           setTimeout(function() {
