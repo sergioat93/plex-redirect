@@ -1,6 +1,127 @@
 const express = require('express');
 const app = express();
 
+// --- Página especial para recuperar datos del localStorage ---
+function getStorageRetrieverPage(storageId) {
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Cargando Lista de Descargas...</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #1a1a1a;
+          color: #e5e5e5;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          margin: 0;
+        }
+        .loader {
+          text-align: center;
+        }
+        .spinner {
+          border: 4px solid #333;
+          border-top: 4px solid #e5a00d;
+          border-radius: 50%;
+          width: 50px;
+          height: 50px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 20px;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="loader">
+        <div class="spinner"></div>
+        <h2>Cargando episodios...</h2>
+        <p>Recuperando datos del almacenamiento local...</p>
+      </div>
+      
+      <script>
+        const storageId = '${storageId}';
+        const data = localStorage.getItem(storageId);
+        
+        if (data) {
+          try {
+            const downloads = JSON.parse(data);
+            const params = new URLSearchParams();
+            
+            // Intentar comprimir primero
+            const compressed = btoa(JSON.stringify(downloads.map(d => {
+              if (d.isSeasonInfo) {
+                return { s: 1, t: d.seasonTitle, u: d.seasonSummary, y: d.seasonYear, p: d.seasonPoster };
+              }
+              return {
+                a: d.accessToken, k: d.partKey, b: d.baseURI, z: d.fileSize,
+                f: d.fileName, d: d.downloadURL, t: d.title, e: d.episodeTitle,
+                n: d.seasonNumber, i: d.episodeNumber, p: d.posterUrl
+              };
+            }))).replace(/=/g, '');
+            
+            params.set('c', compressed);
+            
+            // Limpiar localStorage
+            localStorage.removeItem(storageId);
+            
+            // Redirigir
+            window.location.href = '/list?' + params.toString();
+          } catch (e) {
+            document.body.innerHTML = '<div class="loader"><h2>Error</h2><p>No se pudo cargar la lista de episodios.</p></div>';
+          }
+        } else {
+          document.body.innerHTML = '<div class="loader"><h2>Error</h2><p>No se encontraron datos en el almacenamiento local.</p></div>';
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
+
+// --- Función de descompresión ---
+function decompressString(compressed) {
+  // Añadir padding si es necesario
+  const padded = compressed + '='.repeat((4 - compressed.length % 4) % 4);
+  const decoded = atob(padded);
+  const compressedData = JSON.parse(decoded);
+  
+  // Expandir claves acortadas
+  const expanded = compressedData.map(d => {
+    if (d.s) { // isSeasonInfo
+      return {
+        isSeasonInfo: true,
+        seasonTitle: d.t,
+        seasonSummary: d.u,
+        seasonYear: d.y,
+        seasonPoster: d.p
+      };
+    }
+    return {
+      accessToken: d.a,
+      partKey: d.k,
+      baseURI: d.b,
+      fileSize: d.z,
+      fileName: d.f,
+      downloadURL: d.d,
+      title: d.t,
+      episodeTitle: d.e,
+      seasonNumber: d.n,
+      episodeNumber: d.i,
+      posterUrl: d.p
+    };
+  });
+  
+  return JSON.stringify(expanded);
+}
+
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -476,16 +597,32 @@ app.get('/', (req, res) => {
 
 app.get('/list', (req, res) => {
   const downloadsParam = req.query.downloads;
-  
-  if (!downloadsParam) {
-    return res.status(400).send('No downloads provided');
-  }
+  const compressedParam = req.query.c;
+  const storageId = req.query.id;
   
   let downloads = [];
-  try {
-    downloads = JSON.parse(downloadsParam);
-  } catch (e) {
-    return res.status(400).send('Invalid downloads format');
+  
+  if (storageId) {
+    // Retornar página especial que accede al localStorage
+    res.send(getStorageRetrieverPage(storageId));
+    return;
+  } else if (compressedParam) {
+    // Descomprimir datos
+    try {
+      const decompressed = decompressString(compressedParam);
+      downloads = JSON.parse(decompressed);
+    } catch (e) {
+      return res.status(400).send('Invalid compressed format');
+    }
+  } else if (downloadsParam) {
+    // Método legacy sin compresión
+    try {
+      downloads = JSON.parse(downloadsParam);
+    } catch (e) {
+      return res.status(400).send('Invalid downloads format');
+    }
+  } else {
+    return res.status(400).send('No downloads provided');
   }
   
   if (!Array.isArray(downloads) || downloads.length === 0) {
