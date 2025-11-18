@@ -571,7 +571,7 @@ app.get('/list', async (req, res) => {
   
   // Obtener información de la serie/temporada
   const firstEpisode = episodes[0];
-  let seriesTitle = seasonInfo ? seasonInfo.seasonTitle : (firstEpisode.title || 'Contenido');
+  let seriesTitle = seasonInfo && seasonInfo.seriesTitle ? seasonInfo.seriesTitle : (seasonInfo ? seasonInfo.seasonTitle : (firstEpisode.title || 'Contenido'));
   const seasonNumber = firstEpisode.seasonNumber || '';
   let seasonSummary = seasonInfo ? seasonInfo.seasonSummary : '';
   let seasonYear = seasonInfo ? seasonInfo.seasonYear : '';
@@ -579,43 +579,31 @@ app.get('/list', async (req, res) => {
   
   // Intentar mejorar datos con TMDB si disponible
   if (seasonInfo && seasonInfo.tmdbId) {
-    console.log('Obteniendo datos de TMDB para ID:', seasonInfo.tmdbId, 'Temporada:', seasonNumber);
     try {
       // Obtener datos generales de la serie
       const seriesData = await fetchTMDBData(seasonInfo.tmdbId, 'tv');
-      console.log('Datos de serie obtenidos:', seriesData);
       
       // Obtener datos específicos de la temporada
       const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumber);
-      console.log('Datos de temporada obtenidos:', seasonData);
       
       if (seasonData && seasonData.overview) {
         seasonSummary = seasonData.overview;
-        console.log('Usando descripción de temporada de TMDB');
       } else if (seriesData && seriesData.overview && !seasonSummary) {
         seasonSummary = seriesData.overview;
-        console.log('Usando descripción de serie de TMDB');
       }
       
       if (seasonData && seasonData.posterPath) {
         seasonPoster = seasonData.posterPath;
-        console.log('Usando poster de temporada de TMDB:', seasonPoster);
       } else if (seriesData && seriesData.posterPath && (!seasonPoster || seasonPoster.includes('thumb'))) {
         seasonPoster = seriesData.posterPath;
-        console.log('Usando poster de serie de TMDB:', seasonPoster);
       }
       
       if (seriesData && seriesData.releaseYear && !seasonYear) {
         seasonYear = seriesData.releaseYear.toString();
-        console.log('Usando año de TMDB:', seasonYear);
       }
-      
-      console.log('TMDB data improved:', { seasonSummary: !!seasonSummary, seasonPoster: !!seasonPoster, seasonYear: !!seasonYear });
     } catch (error) {
       console.error('Error fetching TMDB data:', error);
     }
-  } else {
-    console.log('No TMDB ID disponible. seasonInfo:', seasonInfo);
   }
   
   res.send(`
