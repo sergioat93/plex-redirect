@@ -762,7 +762,7 @@ app.get('/list', async (req, res) => {
   const seriesTitleParam = req.query.seriesTitle;
   const tmdbId = req.query.tmdbId;
   const page = parseInt(req.query.page) || 1;
-  const pageSize = parseInt(req.query.pageSize) || 10;
+  const pageSize = parseInt(req.query.pageSize) || 999;
   
   let downloads = [];
   
