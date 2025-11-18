@@ -1,0 +1,13 @@
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.send('No URL provided');
+  res.redirect(decodeURIComponent(url));
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Servidor escuchando en el puerto ${port}`);
+});
