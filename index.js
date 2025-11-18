@@ -781,11 +781,13 @@ app.get('/list', async (req, res) => {
           let fileUrl = null;
           let fileSize = 0;
           let fileName = '';
+          let partKey = '';
           
           if (ep.Media && ep.Media[0] && ep.Media[0].Part && ep.Media[0].Part[0]) {
             const part = ep.Media[0].Part[0];
             fileName = part.file ? part.file.split('/').pop() : '';
             fileSize = parseInt(part.size) || 0;
+            partKey = part.key || '';
             fileUrl = `${baseURI}${part.key}?download=1&X-Plex-Token=${accessToken}`;
           }
           
@@ -797,16 +799,42 @@ app.get('/list', async (req, res) => {
             fileSizeFormatted = gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(2)} MB`;
           }
           
+          // Decodificar entidades HTML en el nombre de archivo
+          const decodedFileName = fileName
+            .replace(/&#191;/g, '¿')
+            .replace(/&#233;/g, 'é')
+            .replace(/&#225;/g, 'á')
+            .replace(/&#237;/g, 'í')
+            .replace(/&#243;/g, 'ó')
+            .replace(/&#250;/g, 'ú')
+            .replace(/&#241;/g, 'ñ')
+            .replace(/&#193;/g, 'Á')
+            .replace(/&#201;/g, 'É')
+            .replace(/&#205;/g, 'Í')
+            .replace(/&#211;/g, 'Ó')
+            .replace(/&#218;/g, 'Ú')
+            .replace(/&#209;/g, 'Ñ')
+            .replace(/&#161;/g, '¡')
+            .replace(/&#63;/g, '?')
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&#39;/g, "'");
+          
           return {
-            title: ep.title || '',
+            episodeTitle: ep.title || '',
             episodeNumber: parseInt(ep.index) || 0,
             seasonNumber: parseInt(seasonNumber) || parseInt(ep.parentIndex) || 0,
             url: fileUrl,
-            fileName: fileName,
+            fileName: decodedFileName,
             fileSize: fileSize,
             fileSizeFormatted: fileSizeFormatted,
             posterUrl: ep.thumb ? `${baseURI}${ep.thumb}?X-Plex-Token=${accessToken}` : null,
-            summary: ep.summary || ''
+            summary: ep.summary || '',
+            accessToken: accessToken,
+            partKey: encodeURIComponent(partKey),
+            baseURI: baseURI
           };
         });
         
@@ -1833,8 +1861,8 @@ app.get('/list', async (req, res) => {
                 <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative; padding-right: 0;">
                   ${seasonSummary}
                 </div>
-                <div style="content: '...'; position: absolute; bottom: 0; right: 1.8rem; background: linear-gradient(to right, transparent 0%, rgba(0,0,0,0.8) 25%, rgba(0,0,0,0.8) 100%); padding-left: 5rem; color: #cccccc; width: 8rem; text-align: right; display: block;" id="synopsis-ellipsis">...</div>
-                <button id="synopsis-toggle" onclick="toggleSynopsis()" style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.8); border: none; color: #e5a00d; font-size: 1.3rem; font-weight: bold; cursor: pointer; padding: 0 0.25rem; transition: transform 0.2s ease; line-height: 1.7; z-index: 2;" onmouseover="this.style.transform='scale(1.15)'; this.style.color='#f0b825';" onmouseout="this.style.transform='scale(1)'; this.style.color='#e5a00d';">+</button>
+                <div style="content: '...'; position: absolute; bottom: 0; right: 1.8rem; background: transparent; padding-left: 5rem; color: #cccccc; width: 8rem; text-align: right; display: block;" id="synopsis-ellipsis">...</div>
+                <button id="synopsis-toggle" onclick="toggleSynopsis()" style="position: absolute; bottom: 0; right: 0; background: transparent; border: none; color: #e5a00d; font-size: 1.3rem; font-weight: bold; cursor: pointer; padding: 0 0.25rem; transition: transform 0.2s ease; line-height: 1.7; z-index: 2;" onmouseover="this.style.transform='scale(1.15)'; this.style.color='#f0b825';" onmouseout="this.style.transform='scale(1)'; this.style.color='#e5a00d';">+</button>
               </div>
             ` : ''}
             
