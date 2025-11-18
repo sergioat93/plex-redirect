@@ -646,6 +646,39 @@ app.get('/list', (req, res) => {
           font-size: 1rem;
           line-height: 1.6;
           margin-bottom: 24px;
+          position: relative;
+        }
+        
+        .description-text {
+          transition: all 0.3s ease;
+        }
+        
+        .expand-description-btn {
+          background: transparent;
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          color: #e5a00d;
+          padding: 6px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          transition: all 0.2s;
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        
+        .expand-description-btn:hover {
+          background: rgba(229, 160, 13, 0.1);
+          border-color: rgba(229, 160, 13, 0.5);
+        }
+        
+        .expand-description-btn svg {
+          transition: transform 0.3s ease;
+        }
+        
+        .expand-description-btn.expanded svg {
+          transform: rotate(180deg);
         }
         
         .action-buttons {
@@ -1332,6 +1365,22 @@ app.get('/list', (req, res) => {
             button.textContent = '+';
           }
         }
+        
+        function toggleDescription() {
+          const textEl = document.getElementById('description-text');
+          const btnEl = document.getElementById('expand-description-btn');
+          const seasonSummaryFull = \`${seasonSummary}\`;
+          
+          if (btnEl && btnEl.classList.contains('expanded')) {
+            textEl.textContent = seasonSummaryFull.length > 200 ? seasonSummaryFull.substring(0, 200) + '...' : seasonSummaryFull;
+            btnEl.querySelector('span').textContent = 'Más';
+            btnEl.classList.remove('expanded');
+          } else if (btnEl) {
+            textEl.textContent = seasonSummaryFull;
+            btnEl.querySelector('span').textContent = 'Menos';
+            btnEl.classList.add('expanded');
+          }
+        }
       </script>
     </head>
     <body>
@@ -1351,11 +1400,23 @@ app.get('/list', (req, res) => {
             <h1>${seriesTitle}</h1>
             <div class="series-meta">
               ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
-              ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
               <div class="meta-badge">${totalEpisodes} ${totalEpisodes === 1 ? 'Episodio' : 'Episodios'}</div>
+              ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
               ${totalPages > 1 ? `<div class="meta-badge">Página ${page} de ${totalPages}</div>` : ''}
             </div>
-            ${seasonSummary ? `<div class="series-description">${seasonSummary}</div>` : ''}
+            ${seasonSummary ? `
+              <div class="series-description" id="series-description">
+                <div class="description-text" id="description-text">${seasonSummary.length > 200 ? seasonSummary.substring(0, 200) + '...' : seasonSummary}</div>
+                ${seasonSummary.length > 200 ? `
+                  <button class="expand-description-btn" id="expand-description-btn" onclick="toggleDescription()">
+                    <span>Más</span>
+                    <svg width="16" height="16" viewBox="0 0 48 48" fill="currentColor">
+                      <path d="M24.1213 33.2213L7 16.1L9.1 14L24.1213 29.0213L39.1426 14L41.2426 16.1L24.1213 33.2213Z"/>
+                    </svg>
+                  </button>
+                ` : ''}
+              </div>
+            ` : ''}
             
             <div class="action-buttons">
               <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()">
