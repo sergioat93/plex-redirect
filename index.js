@@ -918,7 +918,46 @@ app.get('/list', (req, res) => {
           params.set('episodeNumber', download.episodeNumber);
           params.set('posterUrl', download.posterUrl);
           
-          window.open('https://plex-redirect.onrender.com/?' + params.toString(), '_blank');
+          // Descarga directa sin abrir nueva pestaña
+          location.href = 'https://plex-redirect.onrender.com/?' + params.toString();
+        }
+        
+        function downloadAllEpisodes() {
+          const downloads = ${JSON.stringify(downloads)};
+          let currentIndex = 0;
+          
+          function downloadNext() {
+            if (currentIndex >= downloads.length) {
+              alert('¡Descarga de temporada completa iniciada!');
+              return;
+            }
+            
+            const download = downloads[currentIndex];
+            const params = new URLSearchParams();
+            params.set('accessToken', download.accessToken);
+            params.set('partKey', download.partKey);
+            params.set('baseURI', download.baseURI);
+            params.set('fileSize', download.fileSize);
+            params.set('fileName', download.fileName);
+            params.set('downloadURL', download.downloadURL);
+            params.set('title', download.title);
+            params.set('episodeTitle', download.episodeTitle);
+            params.set('seasonNumber', download.seasonNumber);
+            params.set('episodeNumber', download.episodeNumber);
+            params.set('posterUrl', download.posterUrl);
+            
+            // Abrir en nueva pestaña para descarga automática
+            window.open('https://plex-redirect.onrender.com/?' + params.toString(), '_blank');
+            
+            currentIndex++;
+            
+            // Continuar con el siguiente episodio después de 3 segundos
+            if (currentIndex < downloads.length) {
+              setTimeout(downloadNext, 3000);
+            }
+          }
+          
+          downloadNext();
         }
         
         function toggleTechnical(index) {
