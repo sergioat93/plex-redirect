@@ -1941,8 +1941,8 @@ app.get('/movie', async (req, res) => {
         }
         
         .badge-icon {
-          height: 24px;
-          width: 24px;
+          height: 32px;
+          width: 32px;
           object-fit: contain;
         }
         
