@@ -1128,7 +1128,7 @@ function generateListPage(downloads, res) {
                     <div class="filename-container">
                       <span>📄 
                         <span class="filename-text" id="filename-${index}">${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
-                        ${download.fileName.length > 40 ? `<button class="expand-btn" onclick="toggleFilename(${index}, '${download.fileName.replace(/'/g, "\\'")}')">+</button>` : ''}
+                        ${download.fileName.length > 40 ? `<button class="expand-btn" onclick="toggleFilename(${index}, ${JSON.stringify(download.fileName)})">+</button>` : ''}
                       </span>
                     </div>
                   </div>
