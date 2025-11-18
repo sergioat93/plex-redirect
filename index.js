@@ -788,7 +788,9 @@ app.get('/list', async (req, res) => {
             fileName = part.file ? part.file.split('/').pop() : '';
             fileSize = parseInt(part.size) || 0;
             partKey = part.key || '';
-            fileUrl = `${baseURI}${part.key}?download=1&X-Plex-Token=${accessToken}`;
+            // Construir URL con el nombre del archivo codificado
+            const encodedFileName = encodeURIComponent(fileName);
+            fileUrl = `${baseURI}${part.key}/${encodedFileName}?download=0&X-Plex-Token=${accessToken}`;
           }
           
           // Formatear tamaño de archivo
@@ -1851,11 +1853,11 @@ app.get('/list', async (req, res) => {
             </div>
             
             ${seasonSummary ? `
-              <div style="position: relative; margin-bottom: 1.5rem;">
-                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0.5rem; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative;">
+              <div style="margin-bottom: 1.5rem;">
+                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease;">
                   ${seasonSummary}
                 </div>
-                <div id="synopsis-ellipsis" style="text-align: left; display: block;">
+                <div id="synopsis-ellipsis" style="margin-top: 0.5rem; display: block;">
                   <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
                 </div>
               </div>
