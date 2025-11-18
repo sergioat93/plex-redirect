@@ -123,8 +123,25 @@ app.get('/', (req, res) => {
           padding: 40px;
         }
         
+        .media-section.season-layout {
+          grid-template-columns: 1fr;
+          gap: 0;
+          padding: 40px;
+        }
+        
+        .season-content {
+          display: grid;
+          grid-template-columns: 400px 1fr;
+          gap: 40px;
+          align-items: start;
+        }
+        
         .poster-container {
           position: relative;
+        }
+        
+        .poster-container.season-poster {
+          max-width: 400px;
         }
         
         .poster {
@@ -134,6 +151,11 @@ app.get('/', (req, res) => {
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
           transition: transform 0.3s ease;
           object-fit: cover;
+        }
+        
+        .poster.season-poster {
+          aspect-ratio: 16/9;
+          max-width: 400px;
         }
         
         .poster:hover {
@@ -195,6 +217,12 @@ app.get('/', (req, res) => {
           color: #bbb;
           line-height: 1.6;
           margin: 16px 0;
+        }
+        
+        .description.season-description {
+          font-size: 0.95rem;
+          margin: 20px 0;
+          max-width: 600px;
         }
         
         .description.collapsed {
@@ -407,9 +435,18 @@ app.get('/', (req, res) => {
             padding: 24px;
           }
           
+          .season-content {
+            grid-template-columns: 1fr;
+            gap: 24px;
+          }
+          
           .poster-container {
             max-width: 300px;
             margin: 0 auto;
+          }
+          
+          .poster-container.season-poster {
+            max-width: 100%;
           }
           
           .title {
@@ -475,68 +512,88 @@ app.get('/', (req, res) => {
         </div>
         
         <div class="content-card">
-          <div class="media-section">
-            <div class="poster-container">
-              ${posterUrl ? `
-                <img class="poster" src="${posterUrl}" alt="Carátula">
-                <div class="quality-badge">HD</div>
-              ` : '<div class="poster" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); aspect-ratio: 2/3;"></div>'}
-            </div>
-            
-            <div class="info-section">
-              <h1 class="title">${title || 'Contenido'}</h1>
-              
-              <div class="episode-info">
-                ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
-                ${episodeNumber ? `<span class="badge">Episodio ${episodeNumber}</span>` : ''}
-                ${episodeCount && contentType === 'season' ? `<span class="badge">${episodeCount} Episodios</span>` : ''}
-                ${year ? `<span class="badge">${year}</span>` : ''}
-                ${fileSize ? `<span class="badge">${fileSize}</span>` : ''}
-              </div>
-              
-              ${episodeTitle ? `<div class="episode-title">${episodeTitle}</div>` : ''}
-              
-              ${description && contentType === 'season' ? `
-                <div class="description ${description.length > 300 ? 'collapsed' : ''}" id="description">
-                  ${description}
+          <div class="media-section ${contentType === 'season' ? 'season-layout' : ''}">
+            ${contentType === 'season' ? `
+              <div class="season-content">
+                <div class="poster-container season-poster">
+                  ${posterUrl ? `
+                    <img class="poster season-poster" src="${posterUrl}" alt="Carátula">
+                    <div class="quality-badge">HD</div>
+                  ` : '<div class="poster season-poster" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); aspect-ratio: 16/9;"></div>'}
                 </div>
-                ${description.length > 300 ? `
-                  <button class="description-toggle" id="description-toggle" onclick="toggleDescription()">
-                    Ver más
-                  </button>
-                ` : ''}
-              ` : ''}
-              
-              ${episodeDescription && contentType === 'episode' ? `
-                <div class="description">${episodeDescription}</div>
-              ` : ''}
-              
-              <div class="metadata">
-                ${fileName && contentType === 'episode' ? `
-                  <div class="metadata-item" style="grid-column: 1 / -1;">
-                    <span class="metadata-label">Archivo</span>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <span class="filename ${fileName.length > 50 ? 'collapsed' : ''}" id="filename">${fileName}</span>
-                      ${fileName.length > 50 ? `
-                        <button class="filename-toggle" id="filename-toggle" onclick="toggleFilename()">+</button>
-                      ` : ''}
+                
+                <div class="info-section">
+                  <h1 class="title">${title || 'Contenido'}</h1>
+                  
+                  <div class="episode-info">
+                    ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
+                    ${episodeCount && contentType === 'season' ? `<span class="badge">${episodeCount} Episodios</span>` : ''}
+                    ${year ? `<span class="badge">${year}</span>` : ''}
+                  </div>
+                  
+                  ${description && contentType === 'season' ? `
+                    <div class="description season-description ${description.length > 300 ? 'collapsed' : ''}" id="description">
+                      ${description}
                     </div>
-                  </div>
-                ` : ''}
-                ${baseURI && contentType !== 'season' ? `
-                  <div class="metadata-item">
-                    <span class="metadata-label">Servidor</span>
-                    <span class="metadata-value">${new URL(baseURI).hostname}</span>
-                  </div>
-                ` : ''}
-                ${contentType === 'season' ? `
-                  <div class="metadata-item">
-                    <span class="metadata-label">Tipo</span>
-                    <span class="metadata-value">Temporada Completa</span>
-                  </div>
-                ` : ''}
+                    ${description.length > 300 ? `
+                      <button class="description-toggle" id="description-toggle" onclick="toggleDescription()">
+                        Ver más
+                      </button>
+                    ` : ''}
+                  ` : ''}
+                </div>
               </div>
-            </div>
+            ` : `
+              <div class="poster-container">
+                ${posterUrl ? `
+                  <img class="poster" src="${posterUrl}" alt="Carátula">
+                  <div class="quality-badge">HD</div>
+                ` : '<div class="poster" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); aspect-ratio: 2/3;"></div>'}
+              </div>
+              
+              <div class="info-section">
+                <h1 class="title">${title || 'Contenido'}</h1>
+                
+                <div class="episode-info">
+                  ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
+                  ${episodeNumber ? `<span class="badge">Episodio ${episodeNumber}</span>` : ''}
+                  ${year ? `<span class="badge">${year}</span>` : ''}
+                  ${fileSize ? `<span class="badge">${fileSize}</span>` : ''}
+                </div>
+                
+                ${episodeTitle ? `<div class="episode-title">${episodeTitle}</div>` : ''}
+                
+                ${episodeDescription && contentType === 'episode' ? `
+                  <div class="description">${episodeDescription}</div>
+                ` : ''}
+                
+                <div class="metadata">
+                  ${fileName && contentType === 'episode' ? `
+                    <div class="metadata-item" style="grid-column: 1 / -1;">
+                      <span class="metadata-label">Archivo</span>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="filename ${fileName.length > 50 ? 'collapsed' : ''}" id="filename">${fileName}</span>
+                        ${fileName.length > 50 ? `
+                          <button class="filename-toggle" id="filename-toggle" onclick="toggleFilename()">+</button>
+                        ` : ''}
+                      </div>
+                    </div>
+                  ` : ''}
+                  ${baseURI && contentType !== 'season' ? `
+                    <div class="metadata-item">
+                      <span class="metadata-label">Servidor</span>
+                      <span class="metadata-value">${new URL(baseURI).hostname}</span>
+                    </div>
+                  ` : ''}
+                  ${contentType === 'season' ? `
+                    <div class="metadata-item">
+                      <span class="metadata-label">Tipo</span>
+                      <span class="metadata-value">Temporada Completa</span>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `}
           </div>
           
           <div class="download-section">
