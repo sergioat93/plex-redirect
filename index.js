@@ -6,7 +6,7 @@ const app = express();
 // Obtén una gratis en: https://www.themoviedb.org/settings/api
 const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
 
-// Función helper para hacer requests HTTPS
+// Función helper para hacer requests HTTPS que devuelve JSON
 function httpsGet(url) {
     return new Promise((resolve, reject) => {
         https.get(url, (res) => {
@@ -21,6 +21,79 @@ function httpsGet(url) {
             });
         }).on('error', reject);
     });
+}
+
+// Función helper para hacer requests HTTPS que devuelve texto plano (XML)
+function httpsGetXML(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => resolve(data));
+        }).on('error', reject);
+    });
+}
+
+// Función simple para parsear XML de Plex (sin dependencias externas)
+function parseXML(xmlString) {
+    const result = {
+        MediaContainer: {
+            Metadata: []
+        }
+    };
+    
+    // Extraer todos los elementos <Video> o <Directory>
+    const videoRegex = /<Video[^>]*>(.*?)<\/Video>|<Video([^>]*)\/>/gs;
+    const matches = xmlString.matchAll(videoRegex);
+    
+    for (const match of matches) {
+        const videoTag = match[0];
+        const episode = {};
+        
+        // Extraer atributos del tag Video
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(videoTag)) !== null) {
+            const [, key, value] = attrMatch;
+            episode[key] = value;
+        }
+        
+        // Buscar tags Media y Part dentro del Video
+        const mediaRegex = /<Media[^>]*>/g;
+        const mediaMatch = mediaRegex.exec(videoTag);
+        if (mediaMatch) {
+            episode.Media = [{}];
+            const mediaTag = mediaMatch[0];
+            
+            // Extraer atributos de Media
+            const mediaAttrRegex = /(\w+)="([^"]*)"/g;
+            let mediaAttrMatch;
+            while ((mediaAttrMatch = mediaAttrRegex.exec(mediaTag)) !== null) {
+                const [, key, value] = mediaAttrMatch;
+                episode.Media[0][key] = value;
+            }
+            
+            // Buscar tag Part
+            const partRegex = /<Part[^>]*>/g;
+            const partMatch = partRegex.exec(videoTag);
+            if (partMatch) {
+                episode.Media[0].Part = [{}];
+                const partTag = partMatch[0];
+                
+                // Extraer atributos de Part
+                const partAttrRegex = /(\w+)="([^"]*)"/g;
+                let partAttrMatch;
+                while ((partAttrMatch = partAttrRegex.exec(partTag)) !== null) {
+                    const [, key, value] = partAttrMatch;
+                    episode.Media[0].Part[0][key] = value;
+                }
+            }
+        }
+        
+        result.MediaContainer.Metadata.push(episode);
+    }
+    
+    return result;
 }
 
 // Función para obtener datos de TMDB
@@ -697,7 +770,8 @@ app.get('/list', async (req, res) => {
   if (seasonRatingKey && accessToken && baseURI) {
     try {
       const seasonUrl = `${baseURI}/library/metadata/${seasonRatingKey}/children?X-Plex-Token=${accessToken}`;
-      const seasonData = await httpsGet(seasonUrl);
+      const xmlData = await httpsGetXML(seasonUrl);
+      const seasonData = parseXML(xmlData);
       
       if (seasonData && seasonData.MediaContainer && seasonData.MediaContainer.Metadata) {
         const episodes = seasonData.MediaContainer.Metadata;
@@ -711,14 +785,14 @@ app.get('/list', async (req, res) => {
           if (ep.Media && ep.Media[0] && ep.Media[0].Part && ep.Media[0].Part[0]) {
             const part = ep.Media[0].Part[0];
             fileName = part.file ? part.file.split('/').pop() : '';
-            fileSize = part.size || 0;
+            fileSize = parseInt(part.size) || 0;
             fileUrl = `${baseURI}${part.key}?download=1&X-Plex-Token=${accessToken}`;
           }
           
           return {
             title: ep.title || '',
-            episodeNumber: ep.index || 0,
-            seasonNumber: parseInt(seasonNumber) || ep.parentIndex || 0,
+            episodeNumber: parseInt(ep.index) || 0,
+            seasonNumber: parseInt(seasonNumber) || parseInt(ep.parentIndex) || 0,
             url: fileUrl,
             fileName: fileName,
             fileSize: fileSize,
