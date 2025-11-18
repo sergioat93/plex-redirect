@@ -155,7 +155,7 @@ app.get('/', (req, res) => {
       <meta charset="UTF-8">
       <title>${title || 'Plex'} - Descarga</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -683,7 +683,7 @@ app.get('/list', async (req, res) => {
       <meta charset="UTF-8">
       <title>${seriesTitle}${seasonNumber ? ` - Temporada ${seasonNumber}` : ''} - Lista de Descargas</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -1774,7 +1774,7 @@ app.get('/movie', async (req, res) => {
       <meta charset="UTF-8">
       <title>${movieTitle} - Descarga</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/favicon.ico">
+      <link rel="icon" type="image/x-icon" href="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * {
@@ -1826,10 +1826,10 @@ app.get('/movie', async (req, res) => {
           background-position: center top;
           background-repeat: no-repeat;
           background-image: url('${movieBackdrop}');
-          min-height: 300px;
+          min-height: 250px;
           display: flex;
           align-items: flex-end;
-          padding: 3.5rem 3.5rem 1.5rem 3.5rem;
+          padding: 2.5rem 3.5rem 1.5rem 3.5rem;
           border-radius: 12px 12px 0 0;
         }
         
@@ -1969,8 +1969,8 @@ app.get('/movie', async (req, res) => {
         
         .modal-details-table {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.5rem 1.5rem;
+          grid-template-columns: 1fr;
+          gap: 0;
           margin-bottom: 1.5rem;
           background: rgba(0, 0, 0, 0.3);
           padding: 1.5rem;
@@ -1979,20 +1979,23 @@ app.get('/movie', async (req, res) => {
         
         .detail-item {
           display: flex;
-          gap: 0.5rem;
-          align-items: baseline;
+          justify-content: space-between;
+          padding: 0.75rem 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .detail-item:last-child {
+          border-bottom: none;
         }
         
         .detail-item strong {
           color: #e5e5e5;
           font-weight: 600;
-          white-space: nowrap;
         }
         
         .detail-item span {
           color: #e5e5e5;
           text-align: right;
-          flex: 1;
         }
         
         .modal-synopsis {
@@ -2166,17 +2169,17 @@ app.get('/movie', async (req, res) => {
           <div class="external-links">
             ${tmdbId ? `
               <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
-                <img src="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/TMDB.png" alt="TMDB" class="site-logo">
+                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/TMDB.png" alt="TMDB" class="site-logo">
               </a>
             ` : ''}
             ${movieData && movieData.imdbId ? `
               <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
-                <img src="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/IMDB.png" alt="IMDb" class="site-logo">
+                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/IMDB.png" alt="IMDb" class="site-logo">
               </a>
             ` : ''}
             ${movieData && movieData.trailerKey ? `
               <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
-                <img src="https://raw.githubusercontent.com/tu-usuario/tu-repo/main/youtube.png" alt="YouTube" class="site-logo">
+                <img src="https://github.com/sergioat93/plex-redirect/raw/9cdcec765191f4b75aa115e967ab9720f1edc23e/youtube.png" alt="YouTube" class="site-logo">
               </a>
             ` : ''}
           </div>
