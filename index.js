@@ -79,91 +79,111 @@ function getStorageRetrieverPage(storageId) {
       </div>
       
       <script>
-        const storageId = '${storageId}';
-        const debugInfo = document.getElementById('debug-info');
-        
-        function addDebug(message, type = 'info') {
-          const div = document.createElement('div');
-          div.className = type;
-          div.textContent = new Date().toLocaleTimeString() + ': ' + message;
-          debugInfo.appendChild(div);
-          console.log('PlexDL Debug:', message);
-        }
-        
-        function showError(message) {
-          document.querySelector('.spinner').style.display = 'none';
-          document.querySelector('h2').textContent = 'Error';
-          document.querySelector('p').innerHTML = message + '<br><button class="retry-btn" onclick="location.reload()">Intentar de nuevo</button>';
-        }
-        
-        addDebug('Iniciando recuperación de datos');
-        addDebug('Buscando clave: ' + storageId);
-        
-        // Mostrar todas las claves de localStorage que empiecen con 'plex_downloads_'
-        const allKeys = Object.keys(localStorage);
-        const plexKeys = allKeys.filter(key => key.startsWith('plex_downloads_'));
-        addDebug('Claves encontradas en localStorage: ' + plexKeys.length);
-        plexKeys.forEach(key => addDebug('  - ' + key));
-        
-        const data = localStorage.getItem(storageId);
-        
-        if (data) {
-          addDebug('Datos encontrados, tamaño: ' + data.length + ' caracteres', 'success');
+        (function() {
+          const storageId = '${storageId}';
+          const debugInfo = document.getElementById('debug-info');
+          
+          function addDebug(message, type) {
+            type = type || 'info';
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            debugInfo.appendChild(div);
+            console.log('PlexDL Debug:', message);
+          }
+          
+          function showError(message) {
+            document.querySelector('.spinner').style.display = 'none';
+            document.querySelector('h2').textContent = 'Error';
+            document.querySelector('p').innerHTML = message + '<br><button class="retry-btn" onclick="location.reload()">Intentar de nuevo</button>';
+          }
           
           try {
-            const downloads = JSON.parse(data);
-            addDebug('JSON parseado correctamente, ' + downloads.length + ' elementos', 'success');
+            addDebug('Iniciando recuperación de datos');
+            addDebug('Buscando clave: ' + storageId);
             
-            // Intentar comprimir primero
-            const compressed = btoa(JSON.stringify(downloads.map(d => {
-              if (d.isSeasonInfo) {
-                return { s: 1, t: d.seasonTitle, u: d.seasonSummary, y: d.seasonYear, p: d.seasonPoster };
-              }
-              return {
-                a: d.accessToken, k: d.partKey, b: d.baseURI, z: d.fileSize,
-                f: d.fileName, d: d.downloadURL, t: d.title, e: d.episodeTitle,
-                n: d.seasonNumber, i: d.episodeNumber, p: d.posterUrl
-              };
-            }))).replace(/=/g, '');
+            // Mostrar todas las claves de localStorage que empiecen con 'plex_downloads_'
+            const allKeys = Object.keys(localStorage);
+            const plexKeys = allKeys.filter(function(key) { return key.startsWith('plex_downloads_'); });
+            addDebug('Claves encontradas en localStorage: ' + plexKeys.length);
             
-            addDebug('Datos comprimidos a ' + compressed.length + ' caracteres', 'success');
-            
-            const params = new URLSearchParams();
-            params.set('c', compressed);
-            
-            // Limpiar localStorage
-            localStorage.removeItem(storageId);
-            addDebug('Datos eliminados del localStorage', 'success');
-            
-            // Redirigir
-            addDebug('Redirigiendo a la página de lista...', 'success');
-            setTimeout(() => {
-              window.location.href = '/list?' + params.toString();
-            }, 1000);
-            
-          } catch (e) {
-            addDebug('Error al procesar JSON: ' + e.message, 'error');
-            showError('No se pudo procesar la lista de episodios.<br>Error: ' + e.message);
-          }
-        } else {
-          addDebug('No se encontraron datos con la clave especificada', 'error');
-          addDebug('Verificando si existen otros datos de Plex...', 'info');
-          
-          // Intentar encontrar datos similares
-          const alternativeKey = plexKeys.find(key => key !== storageId);
-          if (alternativeKey) {
-            addDebug('Encontrada clave alternativa: ' + alternativeKey, 'success');
-            const altData = localStorage.getItem(alternativeKey);
-            if (altData) {
-              addDebug('Usando datos alternativos...', 'success');
-              localStorage.setItem(storageId, altData);
-              location.reload();
-              return;
+            for (var i = 0; i < plexKeys.length; i++) {
+              addDebug('  - ' + plexKeys[i]);
             }
+            
+            const data = localStorage.getItem(storageId);
+            
+            if (data) {
+              addDebug('Datos encontrados, tamaño: ' + data.length + ' caracteres', 'success');
+              
+              try {
+                const downloads = JSON.parse(data);
+                addDebug('JSON parseado correctamente, ' + downloads.length + ' elementos', 'success');
+                
+                // Intentar comprimir primero
+                const compressed = downloads.map(function(d) {
+                  if (d.isSeasonInfo) {
+                    return { s: 1, t: d.seasonTitle, u: d.seasonSummary, y: d.seasonYear, p: d.seasonPoster };
+                  }
+                  return {
+                    a: d.accessToken, k: d.partKey, b: d.baseURI, z: d.fileSize,
+                    f: d.fileName, d: d.downloadURL, t: d.title, e: d.episodeTitle,
+                    n: d.seasonNumber, i: d.episodeNumber, p: d.posterUrl
+                  };
+                });
+                
+                const compressedString = btoa(JSON.stringify(compressed)).replace(/=/g, '');
+                
+                addDebug('Datos comprimidos a ' + compressedString.length + ' caracteres', 'success');
+                
+                const params = new URLSearchParams();
+                params.set('c', compressedString);
+                
+                // Limpiar localStorage
+                localStorage.removeItem(storageId);
+                addDebug('Datos eliminados del localStorage', 'success');
+                
+                // Redirigir
+                addDebug('Redirigiendo a la página de lista...', 'success');
+                setTimeout(function() {
+                  window.location.href = '/list?' + params.toString();
+                }, 1000);
+                
+              } catch (e) {
+                addDebug('Error al procesar JSON: ' + e.message, 'error');
+                showError('No se pudo procesar la lista de episodios.<br>Error: ' + e.message);
+              }
+            } else {
+              addDebug('No se encontraron datos con la clave especificada', 'error');
+              addDebug('Verificando si existen otros datos de Plex...', 'info');
+              
+              // Intentar encontrar datos similares
+              var alternativeKey = null;
+              for (var j = 0; j < plexKeys.length; j++) {
+                if (plexKeys[j] !== storageId) {
+                  alternativeKey = plexKeys[j];
+                  break;
+                }
+              }
+              
+              if (alternativeKey) {
+                addDebug('Encontrada clave alternativa: ' + alternativeKey, 'success');
+                const altData = localStorage.getItem(alternativeKey);
+                if (altData) {
+                  addDebug('Usando datos alternativos...', 'success');
+                  localStorage.setItem(storageId, altData);
+                  location.reload();
+                  return;
+                }
+              }
+              
+              showError('No se encontraron datos en el almacenamiento local.<br>Es posible que los datos hayan expirado o que localStorage esté deshabilitado.');
+            }
+          } catch (globalError) {
+            console.error('Error global:', globalError);
+            showError('Error inesperado: ' + globalError.message);
           }
-          
-          showError('No se encontraron datos en el almacenamiento local.<br>Es posible que los datos hayan expirado o que localStorage esté deshabilitado.');
-        }
+        })();
       </script>
     </body>
     </html>
