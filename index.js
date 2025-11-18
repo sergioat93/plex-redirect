@@ -782,7 +782,7 @@ app.get('/list', async (req, res) => {
   // Obtener información de la serie/temporada
   const firstEpisode = episodes[0];
   let seriesTitle = seasonInfo && seasonInfo.seriesTitle ? seasonInfo.seriesTitle : (seasonInfo ? seasonInfo.seasonTitle : (firstEpisode.title || 'Contenido'));
-  const seasonNumber = firstEpisode.seasonNumber || '';
+  const seasonNumberFromEpisode = firstEpisode.seasonNumber || seasonInfo?.seasonNumber || '';
   let seasonSummary = seasonInfo ? seasonInfo.seasonSummary : '';
   let seasonYear = seasonInfo ? seasonInfo.seasonYear : '';
   let seasonPoster = seasonInfo ? seasonInfo.seasonPoster : (firstEpisode.posterUrl || '');
@@ -794,7 +794,7 @@ app.get('/list', async (req, res) => {
       const seriesData = await fetchTMDBData(seasonInfo.tmdbId, 'tv');
       
       // Obtener datos específicos de la temporada
-      const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumber);
+      const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumberFromEpisode);
       
       if (seasonData && seasonData.overview) {
         seasonSummary = seasonData.overview;
@@ -821,7 +821,7 @@ app.get('/list', async (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${seriesTitle}${seasonNumber ? ` - Temporada ${seasonNumber}` : ''} - Lista de Descargas</title>
+      <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Lista de Descargas</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1692,7 +1692,7 @@ app.get('/list', async (req, res) => {
           <div class="series-info">
             <h1>${seriesTitle}</h1>
             <div class="series-meta">
-              ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
+              ${seasonNumberFromEpisode ? `<div class="meta-badge">Temporada ${seasonNumberFromEpisode}</div>` : ''}
               <div class="meta-badge">${totalEpisodes} ${totalEpisodes === 1 ? 'Episodio' : 'Episodios'}</div>
               ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
               ${totalPages > 1 ? `<div class="meta-badge">Página ${page} de ${totalPages}</div>` : ''}
@@ -1807,7 +1807,7 @@ app.get('/list', async (req, res) => {
           <div class="breadcrumbs">
             <span>${seriesTitle}</span>
             <span>•</span>
-            <span>Temporada ${seasonNumber}</span>
+            <span>Temporada ${seasonNumberFromEpisode}</span>
             <span>•</span>
             <span class="current">Episodios ${startIndex + 1}-${endIndex} de ${totalEpisodes}</span>
           </div>
