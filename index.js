@@ -20,9 +20,11 @@ function getStorageRetrieverPage(storageId) {
           align-items: center;
           min-height: 100vh;
           margin: 0;
+          padding: 20px;
         }
         .loader {
           text-align: center;
+          max-width: 600px;
         }
         .spinner {
           border: 4px solid #333;
@@ -37,6 +39,32 @@ function getStorageRetrieverPage(storageId) {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        .debug-info {
+          background: #333;
+          padding: 15px;
+          border-radius: 8px;
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          text-align: left;
+          margin-top: 20px;
+          color: #ccc;
+        }
+        .error {
+          color: #ff6b6b;
+        }
+        .success {
+          color: #4ecdc4;
+        }
+        .retry-btn {
+          padding: 10px 20px;
+          background: #e5a00d;
+          color: #000;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          margin-top: 15px;
+          font-weight: bold;
+        }
       </style>
     </head>
     <body>
@@ -44,16 +72,47 @@ function getStorageRetrieverPage(storageId) {
         <div class="spinner"></div>
         <h2>Cargando episodios...</h2>
         <p>Recuperando datos del almacenamiento local...</p>
+        <div class="debug-info" id="debug-info">
+          <div>ID de almacenamiento: ${storageId}</div>
+          <div>Estado: Buscando datos...</div>
+        </div>
       </div>
       
       <script>
         const storageId = '${storageId}';
+        const debugInfo = document.getElementById('debug-info');
+        
+        function addDebug(message, type = 'info') {
+          const div = document.createElement('div');
+          div.className = type;
+          div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+          debugInfo.appendChild(div);
+          console.log('PlexDL Debug:', message);
+        }
+        
+        function showError(message) {
+          document.querySelector('.spinner').style.display = 'none';
+          document.querySelector('h2').textContent = 'Error';
+          document.querySelector('p').innerHTML = message + '<br><button class="retry-btn" onclick="location.reload()">Intentar de nuevo</button>';
+        }
+        
+        addDebug('Iniciando recuperación de datos');
+        addDebug('Buscando clave: ' + storageId);
+        
+        // Mostrar todas las claves de localStorage que empiecen con 'plex_downloads_'
+        const allKeys = Object.keys(localStorage);
+        const plexKeys = allKeys.filter(key => key.startsWith('plex_downloads_'));
+        addDebug('Claves encontradas en localStorage: ' + plexKeys.length);
+        plexKeys.forEach(key => addDebug('  - ' + key));
+        
         const data = localStorage.getItem(storageId);
         
         if (data) {
+          addDebug('Datos encontrados, tamaño: ' + data.length + ' caracteres', 'success');
+          
           try {
             const downloads = JSON.parse(data);
-            const params = new URLSearchParams();
+            addDebug('JSON parseado correctamente, ' + downloads.length + ' elementos', 'success');
             
             // Intentar comprimir primero
             const compressed = btoa(JSON.stringify(downloads.map(d => {
@@ -67,18 +126,43 @@ function getStorageRetrieverPage(storageId) {
               };
             }))).replace(/=/g, '');
             
+            addDebug('Datos comprimidos a ' + compressed.length + ' caracteres', 'success');
+            
+            const params = new URLSearchParams();
             params.set('c', compressed);
             
             // Limpiar localStorage
             localStorage.removeItem(storageId);
+            addDebug('Datos eliminados del localStorage', 'success');
             
             // Redirigir
-            window.location.href = '/list?' + params.toString();
+            addDebug('Redirigiendo a la página de lista...', 'success');
+            setTimeout(() => {
+              window.location.href = '/list?' + params.toString();
+            }, 1000);
+            
           } catch (e) {
-            document.body.innerHTML = '<div class="loader"><h2>Error</h2><p>No se pudo cargar la lista de episodios.</p></div>';
+            addDebug('Error al procesar JSON: ' + e.message, 'error');
+            showError('No se pudo procesar la lista de episodios.<br>Error: ' + e.message);
           }
         } else {
-          document.body.innerHTML = '<div class="loader"><h2>Error</h2><p>No se encontraron datos en el almacenamiento local.</p></div>';
+          addDebug('No se encontraron datos con la clave especificada', 'error');
+          addDebug('Verificando si existen otros datos de Plex...', 'info');
+          
+          // Intentar encontrar datos similares
+          const alternativeKey = plexKeys.find(key => key !== storageId);
+          if (alternativeKey) {
+            addDebug('Encontrada clave alternativa: ' + alternativeKey, 'success');
+            const altData = localStorage.getItem(alternativeKey);
+            if (altData) {
+              addDebug('Usando datos alternativos...', 'success');
+              localStorage.setItem(storageId, altData);
+              location.reload();
+              return;
+            }
+          }
+          
+          showError('No se encontraron datos en el almacenamiento local.<br>Es posible que los datos hayan expirado o que localStorage esté deshabilitado.');
         }
       </script>
     </body>
