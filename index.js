@@ -314,8 +314,8 @@ app.get('/', (req, res) => {
         }
         
         .info-table td.label {
-          color: #888;
-          font-weight: 500;
+          color: #e5a00d;
+          font-weight: 700;
           width: 35%;
         }
         
@@ -439,23 +439,23 @@ app.get('/', (req, res) => {
               <div class="technical-content" id="technical-content">
                 <table class="info-table">
                   <tr>
-                    <td class="label">Access Token</td>
+                    <td class="label">Access Token:</td>
                     <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
                   </tr>
                   <tr>
-                    <td class="label">Part Key</td>
+                    <td class="label">Part Key:</td>
                     <td class="value">${partKey}</td>
                   </tr>
                   <tr>
-                    <td class="label">Base URL</td>
+                    <td class="label">Base URL:</td>
                     <td class="value">${baseURI}</td>
                   </tr>
                   <tr>
-                    <td class="label">Nombre del archivo</td>
+                    <td class="label">Nombre del archivo:</td>
                     <td class="value">${fileName}</td>
                   </tr>
                   <tr>
-                    <td class="label">Tamaño</td>
+                    <td class="label">Tamaño:</td>
                     <td class="value">${fileSize || 'Desconocido'}</td>
                   </tr>
                 </table>
@@ -944,8 +944,8 @@ function generateListPage(downloads, res) {
         }
         
         .info-table td.label {
-          color: #888;
-          font-weight: 600;
+          color: #e5a00d;
+          font-weight: 700;
           width: 30%;
         }
         
@@ -1194,27 +1194,27 @@ function generateListPage(downloads, res) {
               <div class="technical-content" id="technical-content-${index}">
                 <table class="info-table">
                   <tr>
-                    <td class="label">Access Token</td>
+                    <td class="label">Access Token:</td>
                     <td class="value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</td>
                   </tr>
                   <tr>
-                    <td class="label">Part Key</td>
+                    <td class="label">Part Key:</td>
                     <td class="value">${decodeURIComponent(download.partKey)}</td>
                   </tr>
                   <tr>
-                    <td class="label">Base URL</td>
+                    <td class="label">Base URL:</td>
                     <td class="value">${download.baseURI}</td>
                   </tr>
                   <tr>
-                    <td class="label">Nombre del archivo</td>
+                    <td class="label">Nombre del archivo:</td>
                     <td class="value">${download.fileName}</td>
                   </tr>
                   <tr>
-                    <td class="label">Tamaño</td>
+                    <td class="label">Tamaño:</td>
                     <td class="value">${download.fileSize || 'Desconocido'}</td>
                   </tr>
                   <tr>
-                    <td class="label">URL de descarga</td>
+                    <td class="label">URL de descarga:</td>
                     <td class="value">${download.downloadURL}</td>
                   </tr>
                 </table>
