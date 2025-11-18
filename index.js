@@ -8,7 +8,12 @@ app.get('/', (req, res) => {
     baseURI = '',
     fileSize = '',
     fileName = '',
-    downloadURL = ''
+    downloadURL = '',
+    title = '',
+    episodeTitle = '',
+    seasonNumber = '',
+    episodeNumber = '',
+    posterUrl = ''
   } = req.query;
 
   res.send(`
@@ -16,7 +21,7 @@ app.get('/', (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>PlexDL - Descarga</title>
+      <title>Scloud - Descarga Plex</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <style>
         body {
@@ -34,20 +39,39 @@ app.get('/', (req, res) => {
           box-shadow: 0 4px 24px #0006;
           padding: 32px 24px;
         }
+        .poster {
+          width: 100%;
+          max-width: 220px;
+          border-radius: 8px;
+          margin: 0 auto 16px auto;
+          display: block;
+        }
         h1 {
           font-size: 2rem;
-          margin-bottom: 16px;
+          margin-bottom: 8px;
           color: #f5c518;
+          text-align: center;
         }
-        .info {
-          margin-bottom: 24px;
-        }
-        .info label {
-          font-weight: bold;
-          color: #e0b316;
-        }
-        .info span {
+        .subtitle {
+          font-size: 1.1rem;
           color: #fff;
+          text-align: center;
+          margin-bottom: 16px;
+        }
+        .info-table {
+          width: 100%;
+          margin: 24px 0;
+          border-collapse: collapse;
+        }
+        .info-table td {
+          padding: 6px 8px;
+          border-bottom: 1px solid #333;
+          color: #fff;
+        }
+        .info-table td.label {
+          color: #e0b316;
+          font-weight: bold;
+          width: 40%;
         }
         .download-link {
           display: block;
@@ -85,6 +109,7 @@ app.get('/', (req, res) => {
           margin-top: 24px;
           color: #e0b316;
           font-size: 1.1rem;
+          text-align: center;
         }
       </style>
       <script>
@@ -97,15 +122,22 @@ app.get('/', (req, res) => {
     </head>
     <body>
       <div class="container">
-        <h1>PlexDL - Descarga</h1>
-        <div class="info">
-          <div><label>Access Token:</label> <span>${accessToken}</span></div>
-          <div><label>Part Key Node:</label> <span>${partKey}</span></div>
-          <div><label>Base URI:</label> <span>${baseURI}</span></div>
-          <div><label>File Name:</label> <span>${fileName}</span></div>
-          <div><label>File Size:</label> <span>${fileSize ? fileSize : 'Desconocido'}</span></div>
+        ${posterUrl ? `<img class="poster" src="${posterUrl}" alt="Carátula">` : ''}
+        <h1>Scloud - Descarga Plex</h1>
+        <div class="subtitle">
+          ${title ? `<b>${title}</b>` : ''} 
+          ${seasonNumber ? ` - Temporada ${seasonNumber}` : ''} 
+          ${episodeNumber ? ` - Capítulo ${episodeNumber}` : ''} 
+          ${episodeTitle ? `<br>${episodeTitle}` : ''}
         </div>
         <a class="download-link" href="${downloadURL}">Descargar ahora</a>
+        <table class="info-table">
+          <tr><td class="label">Access Token</td><td>${accessToken}</td></tr>
+          <tr><td class="label">Part Key Node</td><td>${partKey}</td></tr>
+          <tr><td class="label">Base URL</td><td>${baseURI}</td></tr>
+          <tr><td class="label">File Name</td><td>${fileName}</td></tr>
+          <tr><td class="label">File Size</td><td>${fileSize ? fileSize : 'Desconocido'}</td></tr>
+        </table>
         <a class="back-btn" href="javascript:window.history.back()">Volver a Plex</a>
         <div class="wait">Por favor, espera a que tu descarga comience automáticamente...</div>
       </div>
