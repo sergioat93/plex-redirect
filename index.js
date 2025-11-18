@@ -2642,8 +2642,8 @@ app.get('/series', async (req, res) => {
         }
         
         .badge-icon {
-          height: 24px;
-          width: 24px;
+          height: 32px;
+          width: 32px;
           object-fit: contain;
         }
         
@@ -2885,6 +2885,7 @@ app.get('/series', async (req, res) => {
             ${seriesData && seriesData.tagline ? `<div class="modal-tagline">${seriesData.tagline}</div>` : ''}
             <div class="modal-badges-container">
               <div class="modal-badges-row">
+                ${totalSize ? `<span class="filesize-badge">${totalSize}</span>` : ''}
                 ${seriesData && seriesData.year ? `<span class="year-badge">${seriesData.year}</span>` : ''}
                 ${seriesData && seriesData.status ? `<span class="status-badge">${seriesData.status}</span>` : ''}
                 ${seriesData && seriesData.numberOfSeasons ? `<span class="seasons-badge">${seriesData.numberOfSeasons} Temporadas</span>` : ''}
@@ -2934,18 +2935,13 @@ app.get('/series', async (req, res) => {
           <div class="modal-main-info">
             ${seriesData ? `
               <div class="modal-details-table">
-                <div class="detail-item"><strong>Votos:</strong> <span>${seriesData.voteCount}</span></div>
                 <div class="detail-item"><strong>Título original:</strong> <span>${seriesData.originalTitle}</span></div>
                 <div class="detail-item"><strong>Primera emisión:</strong> <span>${seriesData.firstAirDate}</span></div>
                 <div class="detail-item"><strong>Última emisión:</strong> <span>${seriesData.lastAirDate}</span></div>
-                <div class="detail-item"><strong>Países:</strong> <span>${seriesData.countries}</span></div>
-                <div class="detail-item"><strong>Cadenas:</strong> <span>${seriesData.networks}</span></div>
-                <div class="detail-item"><strong>Idioma original:</strong> <span>${seriesData.originalLanguage}</span></div>
+                <div class="detail-item"><strong>Plataforma:</strong> <span>${seriesData.networks}</span></div>
                 <div class="detail-item"><strong>Creadores:</strong> <span>${seriesData.creators}</span></div>
                 <div class="detail-item"><strong>Reparto:</strong> <span>${seriesData.cast}</span></div>
                 <div class="detail-item"><strong>Número de episodios:</strong> <span>${seriesData.numberOfEpisodes}</span></div>
-                <div class="detail-item"><strong>Duración por episodio:</strong> <span>${seriesData.episodeRuntime}</span></div>
-                ${totalSize ? `<div class="detail-item"><strong>Tamaño total:</strong> <span>${totalSize}</span></div>` : ''}
               </div>
               <div class="synopsis-container">
                 <div class="modal-synopsis" id="synopsis-text">
