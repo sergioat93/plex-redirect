@@ -884,6 +884,34 @@ app.get('/list', (req, res) => {
           background: rgba(229, 160, 13, 0.3);
         }
         
+        .filename-meta {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .expand-btn-meta {
+          background: rgba(229, 160, 13, 0.2);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          color: #e5a00d;
+          padding: 2px 6px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.7rem;
+          transition: all 0.2s;
+          min-width: 20px;
+          height: 20px;
+          text-align: center;
+          line-height: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .expand-btn-meta:hover {
+          background: rgba(229, 160, 13, 0.3);
+        }
+        
         .pagination-controls {
           background: rgba(30, 30, 30, 0.95);
           backdrop-filter: blur(10px);
@@ -1290,6 +1318,20 @@ app.get('/list', (req, res) => {
           text.classList.toggle('expanded');
           button.textContent = text.classList.contains('expanded') ? 'Contraer' : 'Expandir';
         }
+        
+        function toggleFilenameMeta(index) {
+          const text = document.getElementById('filename-meta-' + index);
+          const button = document.getElementById('expand-btn-meta-' + index);
+          const currentFileName = allEpisodes[startIndex + index].fileName;
+          
+          if (button.textContent === '+') {
+            text.textContent = currentFileName;
+            button.textContent = '-';
+          } else {
+            text.textContent = currentFileName.length > 40 ? currentFileName.substring(0, 40) + '...' : currentFileName;
+            button.textContent = '+';
+          }
+        }
       </script>
     </head>
     <body>
@@ -1357,7 +1399,10 @@ app.get('/list', (req, res) => {
                 <div class="episode-title">${download.episodeTitle || download.fileName}</div>
                 <div class="episode-meta">
                   ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
-                  <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
+                  <div class="filename-meta">
+                    <span>📄 <span class="filename-text" id="filename-meta-${index}">${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span></span>
+                    ${download.fileName.length > 40 ? `<button class="expand-btn-meta" id="expand-btn-meta-${index}" onclick="toggleFilenameMeta(${index})">+</button>` : ''}
+                  </div>
                 </div>
                 
                 <button class="technical-toggle" id="technical-toggle-${index}" onclick="toggleTechnical(${index})">
@@ -1379,12 +1424,7 @@ app.get('/list', (req, res) => {
                     </tr>
                     <tr>
                       <td class="label">Nombre del archivo</td>
-                      <td class="value">
-                        <div class="filename-container">
-                          <span class="filename-text" id="filename-${index}">${download.fileName}</span>
-                          <button class="expand-btn" id="expand-btn-${index}" onclick="toggleFilename(${index})">Expandir</button>
-                        </div>
-                      </td>
+                      <td class="value">${download.fileName}</td>
                     </tr>
                     <tr>
                       <td class="label">Tamaño</td>
