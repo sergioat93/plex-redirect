@@ -700,105 +700,6 @@ app.get('/list', (req, res) => {
           height: 24px;
         }
         
-        .pagination-controls {
-          background: rgba(30, 30, 30, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 16px;
-          padding: 24px;
-          margin-bottom: 32px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .breadcrumbs {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 20px;
-          font-size: 0.9rem;
-          color: #888;
-        }
-        
-        .breadcrumbs .current {
-          color: #e5a00d;
-          font-weight: 600;
-        }
-        
-        .pagination-nav {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-        
-        .page-btn {
-          padding: 10px 16px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          color: #ccc;
-          cursor: pointer;
-          transition: all 0.2s;
-          font-size: 0.9rem;
-          text-decoration: none;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .page-btn:hover {
-          background: rgba(229, 160, 13, 0.15);
-          border-color: rgba(229, 160, 13, 0.3);
-          color: #e5a00d;
-        }
-        
-        .page-btn.current {
-          background: rgba(229, 160, 13, 0.2);
-          border-color: rgba(229, 160, 13, 0.4);
-          color: #e5a00d;
-          font-weight: 600;
-        }
-        
-        .page-btn:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-        }
-        
-        .episode-jump {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          justify-content: center;
-          margin-top: 16px;
-        }
-        
-        .episode-jump input {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          padding: 8px 12px;
-          color: #fff;
-          font-size: 0.9rem;
-          width: 80px;
-          text-align: center;
-        }
-        
-        .episode-jump button {
-          padding: 8px 16px;
-          background: rgba(229, 160, 13, 0.2);
-          border: 1px solid rgba(229, 160, 13, 0.3);
-          border-radius: 6px;
-          color: #e5a00d;
-          cursor: pointer;
-          transition: all 0.2s;
-          font-size: 0.9rem;
-        }
-        
-        .episode-jump button:hover {
-          background: rgba(229, 160, 13, 0.3);
-        }
-        
         .episodes-grid {
           display: grid;
           gap: 20px;
@@ -815,7 +716,7 @@ app.get('/list', (req, res) => {
           display: grid;
           grid-template-columns: 200px 1fr auto;
           gap: 24px;
-          align-items: center;
+          align-items: flex-start;
           padding: 16px;
           position: relative;
         }
@@ -831,6 +732,8 @@ app.get('/list', (req, res) => {
           border-radius: 8px;
           aspect-ratio: 16/9;
           object-fit: cover;
+          position: sticky;
+          top: 0;
         }
         
         .episode-info {
@@ -945,6 +848,145 @@ app.get('/list', (req, res) => {
           word-break: break-all;
         }
         
+        .filename-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .filename-text {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          transition: all 0.3s ease;
+        }
+        
+        .filename-text.expanded {
+          white-space: normal;
+          word-break: break-word;
+        }
+        
+        .expand-btn {
+          background: rgba(229, 160, 13, 0.2);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          color: #e5a00d;
+          padding: 2px 6px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.7rem;
+          transition: all 0.2s;
+          min-width: 60px;
+          text-align: center;
+        }
+        
+        .expand-btn:hover {
+          background: rgba(229, 160, 13, 0.3);
+        }
+        
+        .pagination-controls {
+          background: rgba(30, 30, 30, 0.95);
+          backdrop-filter: blur(10px);
+          border-radius: 16px;
+          padding: 24px;
+          margin-bottom: 32px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .breadcrumbs {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 20px;
+          font-size: 0.9rem;
+          color: #888;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+        
+        .breadcrumbs .current {
+          color: #e5a00d;
+          font-weight: 600;
+        }
+        
+        .pagination-nav {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        
+        .page-btn {
+          padding: 10px 16px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: #ccc;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 0.9rem;
+          text-decoration: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .page-btn:hover {
+          background: rgba(229, 160, 13, 0.15);
+          border-color: rgba(229, 160, 13, 0.3);
+          color: #e5a00d;
+        }
+        
+        .page-btn.current {
+          background: rgba(229, 160, 13, 0.2);
+          border-color: rgba(229, 160, 13, 0.4);
+          color: #e5a00d;
+          font-weight: 600;
+        }
+        
+        .page-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        
+        .episode-jump {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          justify-content: center;
+          margin-top: 16px;
+          flex-wrap: wrap;
+        }
+        
+        .episode-jump input {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          padding: 8px 12px;
+          color: #fff;
+          font-size: 0.9rem;
+          width: 80px;
+          text-align: center;
+        }
+        
+        .episode-jump button {
+          padding: 8px 16px;
+          background: rgba(229, 160, 13, 0.2);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          border-radius: 6px;
+          color: #e5a00d;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 0.9rem;
+        }
+        
+        .episode-jump button:hover {
+          background: rgba(229, 160, 13, 0.3);
+        }
+        
         .progress-indicator {
           margin-top: 16px;
           padding: 12px;
@@ -983,6 +1025,7 @@ app.get('/list', (req, res) => {
           .series-header {
             grid-template-columns: 1fr;
             text-align: center;
+            padding: 24px;
           }
           
           .series-poster {
@@ -990,24 +1033,107 @@ app.get('/list', (req, res) => {
             margin: 0 auto;
           }
           
-          .series-meta {
+          .series-meta, .action-buttons {
             justify-content: center;
             flex-wrap: wrap;
+          }
+          
+          .action-buttons {
+            flex-direction: column;
+            align-items: center;
+          }
+          
+          .download-season-btn, .download-page-btn {
+            width: 100%;
+            max-width: 300px;
+            justify-content: center;
+          }
+          
+          .pagination-controls {
+            padding: 16px;
+          }
+          
+          .pagination-nav {
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          
+          .page-btn {
+            font-size: 0.8rem;
+            padding: 8px 12px;
+          }
+          
+          .breadcrumbs {
+            font-size: 0.8rem;
+            text-align: center;
+          }
+          
+          .episode-jump {
+            flex-direction: column;
+            gap: 8px;
+            text-align: center;
+          }
+          
+          .episode-jump input, .episode-jump button {
+            width: 120px;
           }
           
           .episode-card {
             grid-template-columns: 1fr;
             text-align: center;
+            padding: 12px;
           }
           
           .episode-poster {
-            max-width: 300px;
+            max-width: 250px;
             margin: 0 auto;
           }
           
-          .download-btn, .download-season-btn {
-            width: 100%;
+          .episode-meta {
             justify-content: center;
+          }
+          
+          .download-btn {
+            width: 100%;
+            max-width: 200px;
+            justify-content: center;
+            margin: 0 auto;
+          }
+        }
+        
+        @media (max-width: 640px) {
+          .container {
+            padding: 10px;
+          }
+          
+          .series-header {
+            padding: 16px;
+          }
+          
+          .series-info h1 {
+            font-size: 1.8rem;
+          }
+          
+          .pagination-nav {
+            justify-content: center;
+          }
+          
+          .page-btn {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+          }
+          
+          .episode-card {
+            padding: 8px;
+          }
+          
+          .episode-title {
+            font-size: 1.1rem;
+          }
+          
+          .meta-badge {
+            font-size: 0.8rem;
+            padding: 6px 12px;
           }
         }
       </style>
@@ -1068,17 +1194,20 @@ app.get('/list', (req, res) => {
           let pageDownloadIndex = 0;
           
           const btn = document.getElementById('download-page-btn');
-          const progress = document.getElementById('progress-indicator');
           
-          btn.disabled = true;
-          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg> Descargando...';
+          if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg> Descargando...';
+          }
           
           function downloadNextPageEpisode() {
             if (pageDownloadIndex >= currentPageEpisodes.length) {
               // Terminar descarga de página
               isDownloading = false;
-              btn.disabled = false;
-              btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/></svg> Descargar Esta Página (' + currentPageEpisodes.length + ' episodios)';
+              if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/></svg> Descargar Esta Página (' + currentPageEpisodes.length + ' episodios)';
+              }
               return;
             }
             
@@ -1154,6 +1283,13 @@ app.get('/list', (req, res) => {
             ? '▼ Ocultar detalles técnicos' 
             : '▶ Mostrar detalles técnicos';
         }
+        
+        function toggleFilename(index) {
+          const text = document.getElementById('filename-' + index);
+          const button = document.getElementById('expand-btn-' + index);
+          text.classList.toggle('expanded');
+          button.textContent = text.classList.contains('expanded') ? 'Contraer' : 'Expandir';
+        }
       </script>
     </head>
     <body>
@@ -1196,6 +1332,7 @@ app.get('/list', (req, res) => {
                 </button>
               ` : ''}
             </div>
+            
             <div class="progress-indicator" id="progress-indicator">
               <div class="progress-text" id="progress-text"></div>
               <div class="progress-bar">
@@ -1203,6 +1340,72 @@ app.get('/list', (req, res) => {
               </div>
             </div>
           </div>
+        </div>
+        
+        <div class="episodes-grid">
+          ${currentPageEpisodes.map((download, index) => {
+            const globalIndex = startIndex + index;
+            return `
+            <div class="episode-card">
+              ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
+              
+              <div class="episode-info">
+                <div class="episode-number">
+                  ${download.seasonNumber ? `Temporada ${download.seasonNumber}` : ''} 
+                  ${download.episodeNumber ? `• Episodio ${download.episodeNumber}` : ''}
+                </div>
+                <div class="episode-title">${download.episodeTitle || download.fileName}</div>
+                <div class="episode-meta">
+                  ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
+                  <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
+                </div>
+                
+                <button class="technical-toggle" id="technical-toggle-${index}" onclick="toggleTechnical(${index})">
+                  ▶ Mostrar detalles técnicos
+                </button>
+                <div class="technical-content" id="technical-content-${index}">
+                  <table class="info-table">
+                    <tr>
+                      <td class="label">Access Token</td>
+                      <td class="value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Part Key</td>
+                      <td class="value">${decodeURIComponent(download.partKey)}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Base URL</td>
+                      <td class="value">${download.baseURI}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Nombre del archivo</td>
+                      <td class="value">
+                        <div class="filename-container">
+                          <span class="filename-text" id="filename-${index}">${download.fileName}</span>
+                          <button class="expand-btn" id="expand-btn-${index}" onclick="toggleFilename(${index})">Expandir</button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="label">Tamaño</td>
+                      <td class="value">${download.fileSize || 'Desconocido'}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">URL de descarga</td>
+                      <td class="value">${download.downloadURL}</td>
+                    </tr>
+                  </table>
+                </div>
+              </div>
+              
+              <button class="download-btn" onclick="downloadEpisode(${globalIndex})">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                </svg>
+                Descargar
+              </button>
+            </div>
+          `}).join('')}
         </div>
         
         ${totalPages > 1 ? `
@@ -1271,67 +1474,6 @@ app.get('/list', (req, res) => {
           </div>
         </div>
         ` : ''}
-        
-        <div class="episodes-grid">
-          ${currentPageEpisodes.map((download, index) => {
-            const globalIndex = startIndex + index;
-            return `
-            <div class="episode-card">
-              ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
-              
-              <div class="episode-info">
-                <div class="episode-number">
-                  ${download.seasonNumber ? `Temporada ${download.seasonNumber}` : ''} 
-                  ${download.episodeNumber ? `• Episodio ${download.episodeNumber}` : ''}
-                </div>
-                <div class="episode-title">${download.episodeTitle || download.fileName}</div>
-                <div class="episode-meta">
-                  ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
-                  <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
-                </div>
-                
-                <button class="technical-toggle" id="technical-toggle-${index}" onclick="toggleTechnical(${index})">
-                  ▶ Mostrar detalles técnicos
-                </button>
-                <div class="technical-content" id="technical-content-${index}">
-                  <table class="info-table">
-                    <tr>
-                      <td class="label">Access Token</td>
-                      <td class="value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</td>
-                    </tr>
-                    <tr>
-                      <td class="label">Part Key</td>
-                      <td class="value">${decodeURIComponent(download.partKey)}</td>
-                    </tr>
-                    <tr>
-                      <td class="label">Base URL</td>
-                      <td class="value">${download.baseURI}</td>
-                    </tr>
-                    <tr>
-                      <td class="label">Nombre del archivo</td>
-                      <td class="value">${download.fileName}</td>
-                    </tr>
-                    <tr>
-                      <td class="label">Tamaño</td>
-                      <td class="value">${download.fileSize || 'Desconocido'}</td>
-                    </tr>
-                    <tr>
-                      <td class="label">URL de descarga</td>
-                      <td class="value">${download.downloadURL}</td>
-                    </tr>
-                  </table>
-                </div>
-              </div>
-              
-              <button class="download-btn" onclick="downloadEpisode(${globalIndex})">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-                </svg>
-                Descargar
-              </button>
-            </div>
-          `}).join('')}
-        </div>
       </div>
     </body>
     </html>
