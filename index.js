@@ -60,6 +60,75 @@ async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
     }
 }
 
+// Función para obtener datos completos de película desde TMDB
+async function fetchTMDBMovieData(tmdbId) {
+    try {
+        // Obtener datos básicos de la película
+        const movieUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,videos`;
+        const movieData = await httpsGet(movieUrl);
+        
+        // Extraer géneros
+        const genres = movieData.genres ? movieData.genres.map(g => g.name) : [];
+        
+        // Extraer director del crew
+        const director = movieData.credits && movieData.credits.crew 
+            ? movieData.credits.crew.find(person => person.job === 'Director')?.name || 'N/A'
+            : 'N/A';
+        
+        // Extraer primeros 5 actores del cast
+        const cast = movieData.credits && movieData.credits.cast
+            ? movieData.credits.cast.slice(0, 5).map(actor => actor.name).join(', ')
+            : 'N/A';
+        
+        // Extraer trailer de YouTube
+        const trailer = movieData.videos && movieData.videos.results
+            ? movieData.videos.results.find(video => video.type === 'Trailer' && video.site === 'YouTube')
+            : null;
+        
+        // Formatear presupuesto y recaudación
+        const formatCurrency = (amount) => {
+            if (!amount || amount === 0) return 'N/A';
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount);
+        };
+        
+        // Formatear duración
+        const formatRuntime = (minutes) => {
+            if (!minutes) return 'N/A';
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return `${hours}h ${mins}min`;
+        };
+        
+        return {
+            title: movieData.title || 'Sin título',
+            originalTitle: movieData.original_title || 'N/A',
+            tagline: movieData.tagline || '',
+            overview: movieData.overview || 'Sin descripción disponible',
+            posterPath: movieData.poster_path ? `https://image.tmdb.org/t/p/w500${movieData.poster_path}` : null,
+            backdropPath: movieData.backdrop_path ? `https://image.tmdb.org/t/p/original${movieData.backdrop_path}` : null,
+            releaseDate: movieData.release_date || 'N/A',
+            year: movieData.release_date ? new Date(movieData.release_date).getFullYear() : 'N/A',
+            runtime: formatRuntime(movieData.runtime),
+            runtimeMinutes: movieData.runtime || 0,
+            genres: genres,
+            genresString: genres.join(', ') || 'N/A',
+            rating: movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A',
+            voteCount: movieData.vote_count ? movieData.vote_count.toLocaleString('es-ES') : 'N/A',
+            budget: formatCurrency(movieData.budget),
+            revenue: formatCurrency(movieData.revenue),
+            director: director,
+            cast: cast,
+            originalLanguage: movieData.original_language ? movieData.original_language.toUpperCase() : 'N/A',
+            countries: movieData.production_countries ? movieData.production_countries.map(c => c.name).join(', ') : 'N/A',
+            imdbId: movieData.imdb_id || null,
+            trailerKey: trailer ? trailer.key : null
+        };
+    } catch (error) {
+        console.error('Error fetching TMDB movie data:', error);
+        return null;
+    }
+}
+
 app.get('/', (req, res) => {
   const {
     accessToken = '',
@@ -1664,6 +1733,468 @@ app.get('/list', async (req, res) => {
         </div>
         ` : ''}
       </div>
+    </body>
+    </html>
+  `);
+});
+
+// Ruta para películas individuales
+app.get('/movie', async (req, res) => {
+  const {
+    accessToken = '',
+    partKey: encodedPartKey = '',
+    baseURI = '',
+    fileSize = '',
+    fileName = '',
+    downloadURL = '',
+    title = '',
+    posterUrl = '',
+    tmdbId = ''
+  } = req.query;
+
+  const partKey = decodeURIComponent(encodedPartKey);
+  
+  // Obtener datos completos de TMDB si tenemos el ID
+  let movieData = null;
+  if (tmdbId) {
+    movieData = await fetchTMDBMovieData(tmdbId);
+  }
+  
+  // Usar datos de TMDB o fallback a los datos de Plex
+  const movieTitle = movieData ? movieData.title : title;
+  const moviePoster = movieData && movieData.posterPath ? movieData.posterPath : posterUrl;
+  const movieBackdrop = movieData && movieData.backdropPath ? movieData.backdropPath : posterUrl;
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>${movieTitle} - Descarga</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+          background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+          color: #e5e5e5;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+        }
+        
+        .modal-content {
+          background: #282828;
+          border-radius: 16px;
+          width: 100%;
+          max-width: 1200px;
+          max-height: 90vh;
+          overflow-y: auto;
+          position: relative;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        
+        .modal-content::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .modal-content::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .modal-content::-webkit-scrollbar-thumb {
+          background-color: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        
+        .modal-backdrop-header {
+          position: relative;
+          background-size: cover;
+          background-position: center top;
+          background-repeat: no-repeat;
+          background-image: url('${movieBackdrop}');
+          min-height: 300px;
+          display: flex;
+          align-items: flex-end;
+          padding: 3.5rem 3.5rem 1.5rem 3.5rem;
+          border-radius: 12px 12px 0 0;
+        }
+        
+        .modal-backdrop-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.3) 0%,
+            rgba(0, 0, 0, 0.6) 50%,
+            rgba(40, 40, 40, 0.95) 100%
+          );
+          border-radius: 12px 12px 0 0;
+          z-index: 1;
+        }
+        
+        .modal-header-content {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+        }
+        
+        .modal-title {
+          font-size: 2.8rem;
+          font-weight: 700;
+          margin: 0 0 0.5rem 0;
+          text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8);
+          line-height: 1.1;
+          color: white;
+        }
+        
+        .modal-tagline {
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 1.1rem;
+          font-style: italic;
+          text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+          margin-bottom: 1rem;
+        }
+        
+        .modal-badges-row {
+          display: flex;
+          gap: 1rem;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        
+        .year-badge,
+        .runtime-badge {
+          background: #e5a00d;
+          color: #000;
+          padding: 0.4rem 0.8rem;
+          border-radius: 20px;
+          font-weight: 600;
+          font-size: 0.9rem;
+        }
+        
+        .rating-badge {
+          background: rgba(249, 168, 37, 0.2);
+          border: 2px solid #f9a825;
+          padding: 0.3rem 0.8rem;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: #f9a825;
+          font-weight: 600;
+        }
+        
+        .genres-list {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+        
+        .genre-tag {
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          padding: 0.3rem 0.8rem;
+          border-radius: 15px;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.9);
+          transition: all 0.3s ease;
+        }
+        
+        .modal-hero {
+          padding: 2rem 3.5rem;
+          display: flex;
+          gap: 2rem;
+        }
+        
+        .modal-poster-container {
+          flex-shrink: 0;
+        }
+        
+        .modal-poster-hero {
+          width: 300px;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+        
+        .modal-poster-hero img {
+          width: 100%;
+          height: auto;
+          display: block;
+          object-fit: cover;
+        }
+        
+        .download-button {
+          width: 100%;
+          margin-top: 1rem;
+          background: #e5a00d;
+          color: #1e1e27;
+          border: none;
+          border-radius: 8px;
+          padding: 1rem;
+          font-weight: bold;
+          font-size: 1.1rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+        
+        .download-button:hover {
+          background: #e0b316;
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(229, 160, 13, 0.4);
+        }
+        
+        .modal-main-info {
+          flex: 1;
+        }
+        
+        .modal-details-table {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.8rem;
+          margin-bottom: 1.5rem;
+          background: rgba(0, 0, 0, 0.3);
+          padding: 1.5rem;
+          border-radius: 8px;
+        }
+        
+        .detail-item {
+          display: flex;
+          padding: 0.5rem 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .detail-item:last-child {
+          border-bottom: none;
+        }
+        
+        .detail-item strong {
+          min-width: 180px;
+          color: #e5a00d;
+          font-weight: 600;
+        }
+        
+        .detail-item span {
+          color: #e5e5e5;
+          flex: 1;
+        }
+        
+        .modal-synopsis {
+          background: rgba(0, 0, 0, 0.2);
+          padding: 1.5rem;
+          border-radius: 8px;
+          line-height: 1.6;
+          color: #cccccc;
+        }
+        
+        .modal-links-row {
+          padding: 1.5rem 3.5rem 2rem;
+          display: flex;
+          justify-content: center;
+          gap: 1.5rem;
+        }
+        
+        .external-links {
+          display: flex;
+          gap: 1.5rem;
+        }
+        
+        .external-links a {
+          transition: transform 0.3s ease, opacity 0.3s ease;
+          display: block;
+        }
+        
+        .external-links a:hover {
+          transform: scale(1.1);
+          opacity: 0.8;
+        }
+        
+        .site-logo {
+          height: 40px;
+          width: auto;
+          object-fit: contain;
+        }
+        
+        .file-info {
+          background: rgba(0, 0, 0, 0.3);
+          padding: 1rem 3.5rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+        
+        .file-name {
+          font-family: 'Courier New', monospace;
+          color: #999;
+          font-size: 0.9rem;
+          word-break: break-all;
+        }
+        
+        .file-size {
+          color: #e5a00d;
+          font-weight: 600;
+          font-size: 1rem;
+        }
+        
+        @media (max-width: 768px) {
+          .modal-hero {
+            flex-direction: column;
+            padding: 1.5rem;
+          }
+          
+          .modal-poster-hero {
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+          }
+          
+          .modal-backdrop-header {
+            padding: 2rem 1.5rem 1rem;
+          }
+          
+          .modal-title {
+            font-size: 2rem;
+          }
+          
+          .modal-links-row {
+            padding: 1.5rem;
+          }
+          
+          .file-info {
+            padding: 1rem 1.5rem;
+          }
+          
+          .detail-item {
+            flex-direction: column;
+            gap: 0.3rem;
+          }
+          
+          .detail-item strong {
+            min-width: auto;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="modal-content">
+        <!-- Header con backdrop -->
+        <div class="modal-backdrop-header">
+          <div class="modal-backdrop-overlay"></div>
+          <div class="modal-header-content">
+            <h1 class="modal-title">${movieTitle}</h1>
+            ${movieData && movieData.tagline ? `<div class="modal-tagline">${movieData.tagline}</div>` : ''}
+            <div class="modal-badges-row">
+              ${movieData && movieData.year ? `<span class="year-badge">${movieData.year}</span>` : ''}
+              ${movieData && movieData.runtime ? `<span class="runtime-badge">${movieData.runtime}</span>` : ''}
+              ${movieData && movieData.rating !== 'N/A' ? `
+                <span class="rating-badge">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                  </svg>
+                  ${movieData.rating}
+                </span>
+              ` : ''}
+              ${movieData && movieData.genres && movieData.genres.length > 0 ? `
+                <div class="genres-list">
+                  ${movieData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Hero con poster e info -->
+        <div class="modal-hero">
+          <div class="modal-poster-container">
+            <div class="modal-poster-hero">
+              <img src="${moviePoster}" alt="${movieTitle}">
+            </div>
+            <button class="download-button" onclick="window.location.href='${downloadURL}'">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+              </svg>
+              Descargar Película
+            </button>
+          </div>
+          
+          <div class="modal-main-info">
+            ${movieData ? `
+              <div class="modal-details-table">
+                <div class="detail-item"><strong>Votos:</strong> <span>${movieData.voteCount}</span></div>
+                <div class="detail-item"><strong>Título original:</strong> <span>${movieData.originalTitle}</span></div>
+                <div class="detail-item"><strong>Fecha de estreno:</strong> <span>${movieData.releaseDate}</span></div>
+                <div class="detail-item"><strong>Países:</strong> <span>${movieData.countries}</span></div>
+                <div class="detail-item"><strong>Idioma original:</strong> <span>${movieData.originalLanguage}</span></div>
+                <div class="detail-item"><strong>Director:</strong> <span>${movieData.director}</span></div>
+                <div class="detail-item"><strong>Reparto:</strong> <span>${movieData.cast}</span></div>
+                <div class="detail-item"><strong>Presupuesto:</strong> <span>${movieData.budget}</span></div>
+                <div class="detail-item"><strong>Recaudación:</strong> <span>${movieData.revenue}</span></div>
+              </div>
+              <div class="modal-synopsis">
+                <p>${movieData.overview}</p>
+              </div>
+            ` : `
+              <div class="modal-synopsis">
+                <p>Película lista para descargar. Haz clic en el botón de descarga para comenzar.</p>
+              </div>
+            `}
+          </div>
+        </div>
+        
+        <!-- Enlaces externos -->
+        <div class="modal-links-row">
+          <div class="external-links">
+            ${tmdbId ? `
+              <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 273.42 35.52'%3E%3Cdefs%3E%3Cstyle%3E.cls-1%7Bfill:%2301d277;%7D%3C/style%3E%3C/defs%3E%3Cg id='Layer_2' data-name='Layer 2'%3E%3Cg id='Layer_1-2' data-name='Layer 1'%3E%3Cpath class='cls-1' d='M124.98,8.31h-10V34.85h5.31V26h4.69c5,0,8-2.87,8-8.12v-.42C133,12.21,130.21,8.31,124.98,8.31ZM127.71,18c0,2.18-1.24,3.5-3.5,3.5h-4V13h4c2.26,0,3.5,1.32,3.5,3.5Z'/%3E%3Cpath class='cls-1' d='M139.61,8.31V34.85h5.31V8.31Z'/%3E%3Cpath class='cls-1' d='M157.7,8.31h-10V34.85h5.31V26h4.69c5,0,8-2.87,8-8.12v-.42C165.69,12.21,162.93,8.31,157.7,8.31Zm2.73,9.7c0,2.18-1.24,3.5-3.5,3.5h-4V13h4c2.26,0,3.5,1.32,3.5,3.5Z'/%3E%3Cpolygon class='cls-1' points='182.7 8.31 182.7 13.01 189.7 13.01 189.7 34.85 195.01 34.85 195.01 13.01 202.01 13.01 202.01 8.31 182.7 8.31'/%3E%3Cpath class='cls-1' d='M244.77,8.31h-5.31V34.85h14.67V30.15H244.77Z'/%3E%3Cpath class='cls-1' d='M215.42,8.31h-10V34.85h5.31V26h4.69c5,0,8-2.87,8-8.12v-.42C223.4,12.21,220.65,8.31,215.42,8.31Zm2.73,9.7c0,2.18-1.24,3.5-3.5,3.5h-4V13h4c2.26,0,3.5,1.32,3.5,3.5Z'/%3E%3Cpath class='cls-1' d='M273.42,26.37v-.43c0-5.41-3.12-8.74-8.35-8.74H261c-5.23,0-8.35,3.33-8.35,8.74v.43c0,5.41,3.12,8.74,8.35,8.74h4.07C270.3,35.11,273.42,31.78,273.42,26.37Zm-5.36.2c0,2.44-1.28,4-3.5,4H261c-2.22,0-3.5-1.56-3.5-4v-.63c0-2.44,1.28-4,3.5-4h3.56c2.22,0,3.5,1.56,3.5,4Z'/%3E%3Cpath class='cls-1' d='M90.69,8.31H84.55l-7,26.54h5.58L84.5,30h7.71l1.37,4.84h5.58Zm-5.08,17L88.13,14l2.51,11.26Z'/%3E%3Cpath class='cls-1' d='M17.76,0A17.76,17.76,0,1,0,35.52,17.76,17.76,17.76,0,0,0,17.76,0Zm0,30.81A13.05,13.05,0,1,1,30.81,17.76,13.05,13.05,0,0,1,17.76,30.81Z'/%3E%3Cpath class='cls-1' d='M17.76,9.41A8.35,8.35,0,1,0,26.11,17.76,8.35,8.35,0,0,0,17.76,9.41Z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E" alt="TMDB" class="site-logo">
+              </a>
+            ` : ''}
+            ${movieData && movieData.imdbId ? `
+              <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23ffc107' d='M42,6H6C3.8,6,2,7.8,2,10v28c0,2.2,1.8,4,4,4h36c2.2,0,4-1.8,4-4V10C46,7.8,44.2,6,42,6z'/%3E%3Cpath d='M 11 15 L 14 15 L 14 33 L 11 33 Z M 17 15 L 22 15 L 22 20.5 L 22 25 L 22 33 L 19 33 L 19 26 L 19 21.5 L 17 33 L 17 15 Z M 25 15 L 31 15 L 32 25 L 33 15 L 35 15 L 35 33 L 32 33 L 32 20 L 31 33 L 29 33 L 28 20 L 28 33 L 25 33 Z M 36 15 L 41 15 C 42.7 15 44 16.3 44 18 L 44 30 C 44 31.7 42.7 33 41 33 L 36 33 Z M 39 18 L 39 30 L 40 30 C 40.6 30 41 29.6 41 29 L 41 19 C 41 18.4 40.6 18 40 18 Z' fill='%23263238'/%3E%3C/svg%3E" alt="IMDb" class="site-logo">
+              </a>
+            ` : ''}
+            ${movieData && movieData.trailerKey ? `
+              <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
+                <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23FF0000' d='M43.2,12.1c-0.5-1.8-1.9-3.2-3.7-3.7C36.2,7.5,24,7.5,24,7.5s-12.2,0-15.5,0.9c-1.8,0.5-3.2,1.9-3.7,3.7C3.9,15.4,3.9,24,3.9,24s0,8.6,0.9,11.9c0.5,1.8,1.9,3.2,3.7,3.7c3.3,0.9,15.5,0.9,15.5,0.9s12.2,0,15.5-0.9c1.8-0.5,3.2-1.9,3.7-3.7C44.1,32.6,44.1,24,44.1,24S44.1,15.4,43.2,12.1z'/%3E%3Cpolygon fill='%23FFF' points='19,31 31,24 19,17'/%3E%3C/svg%3E" alt="YouTube" class="site-logo">
+              </a>
+            ` : ''}
+          </div>
+        </div>
+        
+        <!-- Info del archivo -->
+        <div class="file-info">
+          <div class="file-name">${fileName}</div>
+          ${fileSize ? `<div class="file-size">${fileSize}</div>` : ''}
+        </div>
+      </div>
+      
+      <script>
+        // Auto-descargar al cargar la página
+        window.onload = function() {
+          setTimeout(function() {
+            window.location.href = '${downloadURL}';
+          }, 1000);
+        };
+      </script>
     </body>
     </html>
   `);
