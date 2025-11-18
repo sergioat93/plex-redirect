@@ -762,7 +762,7 @@ app.get('/list', async (req, res) => {
   const seriesTitleParam = req.query.seriesTitle;
   const tmdbId = req.query.tmdbId;
   const page = parseInt(req.query.page) || 1;
-  const pageSize = parseInt(req.query.pageSize) || 999;
+  const pageSize = parseInt(req.query.pageSize) || 10;
   
   let downloads = [];
   
@@ -788,7 +788,7 @@ app.get('/list', async (req, res) => {
             fileName = part.file ? part.file.split('/').pop() : '';
             fileSize = parseInt(part.size) || 0;
             partKey = part.key || '';
-            // Construir URL con el nombre del archivo codificado
+            // Codificar el nombre del archivo para la URL
             const encodedFileName = encodeURIComponent(fileName);
             fileUrl = `${baseURI}${part.key}/${encodedFileName}?download=0&X-Plex-Token=${accessToken}`;
           }
@@ -1656,14 +1656,7 @@ app.get('/list', async (req, res) => {
           
           // Descargar directamente usando la URL de Plex
           if (download.url) {
-            // Crear un elemento <a> temporal para forzar la descarga
-            const link = document.createElement('a');
-            link.href = download.url;
-            link.download = download.fileName || 'episode.mkv';
-            link.target = '_blank';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            window.location.href = download.url;
           }
           
           // Continuar con la siguiente descarga si es secuencial
@@ -1853,11 +1846,11 @@ app.get('/list', async (req, res) => {
             </div>
             
             ${seasonSummary ? `
-              <div style="margin-bottom: 1.5rem;">
-                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease;">
+              <div style="position: relative; margin-bottom: 1.5rem;">
+                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0.5rem; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease;">
                   ${seasonSummary}
                 </div>
-                <div id="synopsis-ellipsis" style="margin-top: 0.5rem; display: block;">
+                <div style="text-align: left;" id="synopsis-ellipsis">
                   <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
                 </div>
               </div>
