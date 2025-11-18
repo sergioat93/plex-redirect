@@ -487,7 +487,11 @@ app.get('/list', (req, res) => {
   const firstDownload = downloads[0];
   const seriesTitle = firstDownload.title || 'Contenido';
   const seasonNumber = firstDownload.seasonNumber || '';
-  const seriesPoster = firstDownload.posterUrl || '';
+  const seriesPoster = firstDownload.seasonPoster || firstDownload.posterUrl || '';
+  
+  // Datos adicionales para simular el modal de Plex
+  const seasonOverview = 'El viaje de Ash a lo más alto de la Liga Añil continúa, pero ¿peligrará su suerte por su amistad con Ritchie, su competidor en la Liga Pokémon? Una vez terminado su viaje por Kanto, Ash descubre que aún quedan bastantes cosas por ver y hacer cuando el Profesor Oak los envía a él y a sus...';
+  const seasonYear = '2000';
   
   res.send(`
     <!DOCTYPE html>
@@ -596,10 +600,18 @@ app.get('/list', (req, res) => {
           line-height: 1.2;
         }
         
+        .season-overview {
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 1rem;
+          line-height: 1.5;
+          margin: 16px 0 20px 0;
+          max-width: 90%;
+        }
+        
         .series-meta {
           display: flex;
           gap: 12px;
-          margin-top: 20px;
+          margin-bottom: 20px;
           flex-wrap: wrap;
         }
         
@@ -614,19 +626,19 @@ app.get('/list', (req, res) => {
         }
         
         .download-season-btn {
-          margin-top: 24px;
-          padding: 14px 28px;
+          margin-top: 4px;
+          padding: 16px 32px;
           background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
           color: #000;
           border: none;
           border-radius: 10px;
           font-weight: 700;
-          font-size: 1rem;
+          font-size: 1.1rem;
           cursor: pointer;
           transition: all 0.3s ease;
           display: inline-flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
           box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
         }
         
@@ -663,10 +675,10 @@ app.get('/list', (req, res) => {
         
         .episode-main {
           display: grid;
-          grid-template-columns: 200px 1fr auto;
+          grid-template-columns: 280px 1fr auto;
           gap: 24px;
-          align-items: center;
-          padding: 16px;
+          align-items: flex-start;
+          padding: 20px;
         }
         
         .episode-poster {
@@ -678,6 +690,7 @@ app.get('/list', (req, res) => {
         
         .episode-info {
           flex: 1;
+          padding-top: 4px;
         }
         
         .episode-number {
@@ -699,12 +712,45 @@ app.get('/list', (req, res) => {
           gap: 16px;
           font-size: 0.85rem;
           color: #888;
+          margin-bottom: 12px;
         }
         
         .episode-meta span {
           display: flex;
           align-items: center;
           gap: 6px;
+        }
+        
+        .filename-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .filename-text {
+          font-family: 'Courier New', monospace;
+        }
+        
+        .expand-btn {
+          background: rgba(229, 160, 13, 0.2);
+          border: 1px solid rgba(229, 160, 13, 0.4);
+          color: #e5a00d;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .expand-btn:hover {
+          background: rgba(229, 160, 13, 0.3);
+        }
+        
+        .episode-description {
+          color: rgba(255, 255, 255, 0.75);
+          font-size: 0.9rem;
+          line-height: 1.4;
+          margin-top: 8px;
         }
         
         .download-btn {
@@ -746,10 +792,11 @@ app.get('/list', (req, res) => {
           align-items: center;
           transition: background 0.2s;
           user-select: none;
+          background: rgba(255, 255, 255, 0.02);
         }
         
         .technical-header:hover {
-          background: rgba(255, 255, 255, 0.02);
+          background: rgba(255, 255, 255, 0.05);
         }
         
         .technical-header h4 {
@@ -763,6 +810,7 @@ app.get('/list', (req, res) => {
           width: 20px;
           height: 20px;
           transition: transform 0.3s;
+          color: rgba(255, 255, 255, 0.7);
         }
         
         .technical-toggle.open {
@@ -776,34 +824,42 @@ app.get('/list', (req, res) => {
         }
         
         .technical-content.open {
-          max-height: 600px;
+          max-height: 800px;
         }
         
-        .technical-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 12px;
-          padding: 0 20px 20px 20px;
+        .technical-list {
+          padding: 20px;
         }
         
-        .technical-item {
+        .technical-row {
           display: flex;
-          flex-direction: column;
-          gap: 4px;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 12px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .technical-row:last-child {
+          border-bottom: none;
         }
         
         .technical-label {
-          font-size: 0.75rem;
-          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.6);
           font-weight: 500;
           text-transform: uppercase;
           letter-spacing: 0.5px;
+          min-width: 120px;
         }
         
         .technical-value {
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           color: rgba(255, 255, 255, 0.9);
           font-family: 'Courier New', monospace;
+          word-break: break-all;
+          text-align: right;
+          flex: 1;
+          margin-left: 20px;
         }
         
         .technical-section {
@@ -966,6 +1022,19 @@ app.get('/list', (req, res) => {
           content.classList.toggle('open');
           toggle.classList.toggle('open');
         }
+        
+        function toggleFilename(index, fullName) {
+          const filenameElement = document.getElementById('filename-' + index);
+          const button = filenameElement.nextElementSibling;
+          
+          if (filenameElement.textContent.includes('...')) {
+            filenameElement.textContent = fullName;
+            button.textContent = '-';
+          } else {
+            filenameElement.textContent = fullName.length > 40 ? fullName.substring(0, 40) + '...' : fullName;
+            button.textContent = '+';
+          }
+        }
       </script>
     </head>
     <body>
@@ -983,15 +1052,17 @@ app.get('/list', (req, res) => {
           ${seriesPoster ? `<img class="series-poster" src="${seriesPoster}" alt="${seriesTitle}">` : ''}
           <div class="series-info">
             <h1>${seriesTitle}</h1>
+            <div class="season-overview">${seasonOverview}</div>
             <div class="series-meta">
               ${seasonNumber ? `<div class="meta-badge">Temporada ${seasonNumber}</div>` : ''}
+              ${seasonYear ? `<div class="meta-badge">${seasonYear}</div>` : ''}
               <div class="meta-badge">${downloads.length} ${downloads.length === 1 ? 'Episodio' : 'Episodios'}</div>
             </div>
             <button class="download-season-btn" onclick="downloadAllEpisodes()">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width: 24px; height: 24px;">
                 <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
               </svg>
-              Descargar Temporada Completa
+              Descargar Temporada
             </button>
           </div>
         </div>
@@ -1010,7 +1081,15 @@ app.get('/list', (req, res) => {
                   <div class="episode-title">${download.episodeTitle || download.fileName}</div>
                   <div class="episode-meta">
                     ${download.fileSize ? `<span>📦 ${download.fileSize}</span>` : ''}
-                    <span>📄 ${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
+                    <div class="filename-container">
+                      <span>📄 
+                        <span class="filename-text" id="filename-${index}">${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span>
+                        ${download.fileName.length > 40 ? `<button class="expand-btn" onclick="toggleFilename(${index}, '${download.fileName.replace(/'/g, "\\'")}')">+</button>` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="episode-description">
+                    ${download.episodeDescription || 'Ash y sus amigos continúan su aventura en esta emocionante entrega donde enfrentarán nuevos desafíos y conocerán Pokémon increíbles.'}
                   </div>
                 </div>
                 
@@ -1030,28 +1109,28 @@ app.get('/list', (req, res) => {
                   </svg>
                 </div>
                 <div class="technical-content" id="technical-content-${index}">
-                  <div class="technical-grid">
-                    <div class="technical-item">
+                  <div class="technical-list">
+                    <div class="technical-row">
                       <div class="technical-label">Access Token</div>
                       <div class="technical-value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</div>
                     </div>
-                    <div class="technical-item">
+                    <div class="technical-row">
                       <div class="technical-label">Part Key</div>
                       <div class="technical-value">${decodeURIComponent(download.partKey)}</div>
                     </div>
-                    <div class="technical-item">
+                    <div class="technical-row">
                       <div class="technical-label">Base URL</div>
                       <div class="technical-value">${download.baseURI}</div>
                     </div>
-                    <div class="technical-item">
+                    <div class="technical-row">
                       <div class="technical-label">Nombre del archivo</div>
                       <div class="technical-value">${download.fileName}</div>
                     </div>
-                    <div class="technical-item">
+                    <div class="technical-row">
                       <div class="technical-label">Tamaño</div>
                       <div class="technical-value">${download.fileSize || 'Desconocido'}</div>
                     </div>
-                    <div class="technical-item">
+                    <div class="technical-row">
                       <div class="technical-label">URL de descarga</div>
                       <div class="technical-value">${download.downloadURL}</div>
                     </div>
