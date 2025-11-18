@@ -1654,7 +1654,14 @@ app.get('/list', async (req, res) => {
           
           // Descargar directamente usando la URL de Plex
           if (download.url) {
-            window.location.href = download.url;
+            // Crear un elemento <a> temporal para forzar la descarga
+            const link = document.createElement('a');
+            link.href = download.url;
+            link.download = download.fileName || 'episode.mkv';
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
           }
           
           // Continuar con la siguiente descarga si es secuencial
@@ -1845,11 +1852,11 @@ app.get('/list', async (req, res) => {
             
             ${seasonSummary ? `
               <div style="position: relative; margin-bottom: 1.5rem;">
-                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative; padding-right: 0;">
+                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0.5rem; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease; position: relative;">
                   ${seasonSummary}
                 </div>
-                <div style="position: absolute; bottom: 0; right: 0; background: linear-gradient(to right, transparent 0%, rgba(26,26,26,0.9) 20%, rgba(26,26,26,1) 100%); padding-left: 3rem; display: block;" id="synopsis-ellipsis">
-                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0 0.25rem; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
+                <div id="synopsis-ellipsis" style="text-align: left; display: block;">
+                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
                 </div>
               </div>
             ` : ''}
