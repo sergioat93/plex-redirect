@@ -17,7 +17,8 @@ app.get('/', (req, res) => {
     year = '',
     description = '',
     episodeDescription = '',
-    contentType = ''
+    contentType = '',
+    episodeCount = ''
   } = req.query;
   
   // Decodificar el partKey para mostrar espacios en lugar de %20
@@ -488,6 +489,7 @@ app.get('/', (req, res) => {
               <div class="episode-info">
                 ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
                 ${episodeNumber ? `<span class="badge">Episodio ${episodeNumber}</span>` : ''}
+                ${episodeCount && contentType === 'season' ? `<span class="badge">${episodeCount} Episodios</span>` : ''}
                 ${year ? `<span class="badge">${year}</span>` : ''}
                 ${fileSize ? `<span class="badge">${fileSize}</span>` : ''}
               </div>
@@ -521,10 +523,16 @@ app.get('/', (req, res) => {
                     </div>
                   </div>
                 ` : ''}
-                ${baseURI ? `
+                ${baseURI && contentType !== 'season' ? `
                   <div class="metadata-item">
                     <span class="metadata-label">Servidor</span>
                     <span class="metadata-value">${new URL(baseURI).hostname}</span>
+                  </div>
+                ` : ''}
+                ${contentType === 'season' ? `
+                  <div class="metadata-item">
+                    <span class="metadata-label">Tipo</span>
+                    <span class="metadata-value">Temporada Completa</span>
                   </div>
                 ` : ''}
               </div>
