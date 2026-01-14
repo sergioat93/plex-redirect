@@ -3684,37 +3684,7 @@ app.get('/movie', async (req, res) => {
     libraryTitle
   });
   
-  // Si no tenemos libraryKey, intentar extraerlo haciendo petición a Plex (igual que /series)
-  if ((!libraryKey || !libraryTitle) && baseURI && accessToken && downloadURL) {
-    try {
-      // Extraer el partId del downloadURL (/library/parts/XXXXX/)
-      const partIdMatch = downloadURL.match(/\/library\/parts\/(\d+)/);
-      if (partIdMatch) {
-        const partId = partIdMatch[1];
-        // Hacer petición al endpoint de la parte para obtener metadata
-        const partUrl = `${baseURI}/library/parts/${partId}?X-Plex-Token=${accessToken}`;
-        console.log('[/movie] Obteniendo metadata de la parte:', partUrl);
-        
-        const partXml = await httpsGetXML(partUrl);
-        const parsedData = parseXML(partXml);
-        
-        // Extraer librarySectionID del MediaContainer
-        if (!libraryKey && parsedData.MediaContainer.librarySectionID) {
-          libraryKey = parsedData.MediaContainer.librarySectionID;
-          console.log('[/movie] ✅ libraryKey extraído del XML:', libraryKey);
-        }
-        if (!libraryTitle && parsedData.MediaContainer.librarySectionTitle) {
-          libraryTitle = parsedData.MediaContainer.librarySectionTitle;
-          console.log('[/movie] ✅ libraryTitle extraído del XML:', libraryTitle);
-        }
-      } else {
-        console.log('[/movie] ⚠️ No se pudo extraer partId del downloadURL');
-      }
-    } catch (error) {
-      console.error('[/movie] ❌ Error extrayendo libraryKey:', error);
-    }
-  }
-  
+  // Log final de libraryKey
   console.log('[/movie] libraryKey final:', libraryKey, 'libraryTitle:', libraryTitle);
   
   // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
