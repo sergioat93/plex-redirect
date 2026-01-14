@@ -5366,15 +5366,15 @@ app.get('/browse', async (req, res) => {
           /* Navbar styles */
           .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }
           .navbar .container { padding: 0 1rem; }
-          .nav-content { display: flex; justify-content: center; align-items: center; gap: 1.5rem; position: relative; }
-          .navbar-brand { position: absolute; left: 0; text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
+          .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+          .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
           .logo-title { color: var(--primary-color); font-size: 1.5rem; font-weight: 700; white-space: nowrap; }
-          .navbar-links { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; }
+          .navbar-links { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: center; }
           .navbar-links #library-links { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; }
           .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.875rem; }
           .navbar-links a:hover { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); }
           .navbar-links a.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.15); font-weight: 600; }
-          .navbar-controls { position: absolute; right: 0; display: flex; gap: 1rem; align-items: center; }
+          .navbar-controls { display: flex; gap: 1rem; align-items: center; }
           
           /* Dropdown moderno */
           .dropdown-container { position: relative; display: inline-flex; }
@@ -5488,9 +5488,7 @@ app.get('/browse', async (req, res) => {
           /* Responsive */
           @media (max-width: 768px) {
             .navbar .container { padding: 0 0.5rem; }
-            .nav-content { justify-content: space-between; }
-            .navbar-brand { position: static; }
-            .navbar-controls { position: static; }
+            .nav-content { gap: 0.5rem; }
             .navbar-links a { display: none; } /* Ocultar enlaces inline */
             .dropdown-container { display: block !important; } /* Mostrar dropdown siempre */
             .more-btn { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
@@ -5772,8 +5770,8 @@ app.get('/browse', async (req, res) => {
                 }
               });
               
-              // Mostrar primeras 3 bibliotecas inline, resto en dropdown
-              const maxVisible = 3;
+              // Mostrar primeras 5 bibliotecas inline, resto en dropdown
+              const maxVisible = 5;
               allLibraries.forEach((lib, index) => {
                 const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
                 const a = document.createElement('a');
