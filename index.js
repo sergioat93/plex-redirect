@@ -5597,11 +5597,12 @@ app.get('/browse', async (req, res) => {
           .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
           .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
           .more-btn.active i { transform: rotate(180deg); }
-          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
           .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
           .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
           .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
           .dropdown-menu a.active { color: var(--primary-color); font-weight: 600; background: rgba(229, 160, 13, 0.05); }
+          .dropdown-menu a i { font-size: 0.875rem; min-width: 1em; }
           
           .search-container { position: relative; display: flex; align-items: center; }
           .search-container input { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 2.5rem 0.5rem 1rem; color: var(--text-primary); width: 250px; height: 38px; }
@@ -5700,64 +5701,227 @@ app.get('/browse', async (req, res) => {
           .movie-grid.list-view .movie-overlay { display: none; }
           
           /* Responsive */
-          @media (max-width: 1200px) {
-            .navbar-links a { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
-            .filter-select { min-width: 85px; max-width: 110px; font-size: 0.7rem; }
-          }
           
-          @media (max-width: 992px) {
-            .navbar .container { padding: 0 0.75rem; }
-            .nav-content { gap: 0.75rem; }
+          /* Tablet and below - iPad Pro included */
+          @media (max-width: 1024px) {
+            .navbar { padding: 0; }
+            .navbar .container { padding: 0.75rem 1rem; }
+            .nav-content { gap: 0.75rem; flex-wrap: nowrap; }
             .logo-title { font-size: 1.3rem; }
-            .search-container input { width: 200px; }
-            .navbar-links a { font-size: 0.75rem; padding: 0.4rem 0.5rem; gap: 0.35rem; }
-            .navbar-links a i { font-size: 0.8rem; }
+            
+            /* Mostrar dropdown "Más" cuando hay muchas bibliotecas */
+            .navbar-links { 
+              display: flex; 
+              gap: 0.5rem;
+              flex-wrap: nowrap;
+              overflow-x: auto;
+              scrollbar-width: none;
+              -ms-overflow-style: none;
+            }
+            .navbar-links::-webkit-scrollbar { display: none; }
+            .navbar-links a { 
+              padding: 0.5rem 0.75rem; 
+              font-size: 0.875rem; 
+              white-space: nowrap;
+            }
+            .navbar-links a i { font-size: 0.875rem; }
+            
+            .dropdown-container { 
+              display: inline-flex !important;
+              margin-left: 0.5rem;
+            }
+            .more-btn { 
+              padding: 0.5rem 0.75rem;
+              font-size: 0.875rem;
+            }
+            
+            .search-container input { width: 200px; font-size: 0.875rem; }
+            
+            .library-controls { padding: 0.75rem 0; }
             .controls-row { gap: 0.75rem; }
             .library-title { font-size: 1.1rem; }
             .library-count { font-size: 0.85rem; }
-            .filter-select { min-width: 80px; max-width: 100px; padding: 0.35rem 0.5rem; font-size: 0.7rem; }
-            .btn-clear-filters { padding: 0.35rem 0.65rem; font-size: 0.7rem; }
+            .filter-select { 
+              min-width: 90px; 
+              max-width: 120px; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.6rem; 
+            }
+            .btn-clear-filters { 
+              padding: 0.4rem 0.75rem; 
+              font-size: 0.75rem; 
+            }
+            
+            .container { padding: 0 1.5rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+              gap: 1.25rem; 
+            }
           }
           
+          /* Tablet portrait and below */
           @media (max-width: 768px) {
-            .navbar .container { padding: 0 0.5rem; }
+            .navbar .container { padding: 0.5rem 1rem; }
             .nav-content { gap: 0.5rem; }
             .logo-title { font-size: 1.2rem; }
-            .search-container input { width: 150px; font-size: 0.875rem; padding: 0.4rem 2rem 0.4rem 0.75rem; height: 34px; }
-            .navbar-links { gap: 0.35rem; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
-            .navbar-links::-webkit-scrollbar { display: none; }
-            .navbar-links a { font-size: 0.75rem; padding: 0.4rem 0.5rem; gap: 0.3rem; }
+            
+            .navbar-links { gap: 0.35rem; }
+            .navbar-links a { 
+              font-size: 0.8rem; 
+              padding: 0.4rem 0.6rem; 
+            }
             .navbar-links a i { font-size: 0.75rem; }
+            
             .dropdown-container { margin-left: 0.25rem; }
-            .more-btn { font-size: 0.75rem; padding: 0.4rem 0.5rem; }
+            .more-btn { 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.6rem; 
+            }
+            
+            .search-container input { 
+              width: 150px; 
+              font-size: 0.8rem; 
+              padding: 0.4rem 2rem 0.4rem 0.75rem; 
+              height: 34px; 
+            }
+            .search-container i { font-size: 0.8rem; }
+            
             .library-controls { padding: 0.75rem 0; }
-            .controls-row { flex-direction: column; gap: 0.75rem; align-items: stretch; }
-            .library-info { justify-content: space-between; width: 100%; }
+            .controls-row { 
+              flex-direction: column; 
+              gap: 0.75rem; 
+              align-items: stretch; 
+            }
+            .library-info { 
+              justify-content: space-between; 
+              width: 100%; 
+            }
             .library-title { font-size: 1.1rem; }
             .library-count { font-size: 0.85rem; }
-            .filters-group { gap: 0.35rem; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 0 0.25rem; }
+            
+            .filters-group { 
+              gap: 0.35rem; 
+              flex-wrap: nowrap; 
+              overflow-x: auto; 
+              scrollbar-width: none; 
+              -ms-overflow-style: none; 
+              padding: 0 0.25rem; 
+            }
             .filters-group::-webkit-scrollbar { display: none; }
-            .filter-select { min-width: 110px; flex-shrink: 0; font-size: 0.75rem; padding: 0.4rem 0.6rem; }
-            .btn-clear-filters { min-width: 90px; flex-shrink: 0; font-size: 0.75rem; padding: 0.4rem 0.7rem; }
+            .filter-select { 
+              min-width: 110px; 
+              flex-shrink: 0; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.6rem; 
+            }
+            .btn-clear-filters { 
+              min-width: 90px; 
+              flex-shrink: 0; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.7rem; 
+            }
+            
             .view-controls { display: none; }
-            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+            
+            .container { padding: 0 1rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+              gap: 1rem; 
+            }
           }
           
-          @media (max-width: 480px) {
-            .navbar .container { padding: 0 0.5rem; }
+          /* Mobile devices */
+          @media (max-width: 540px) {
+            .navbar { padding: 0; }
+            .navbar .container { padding: 0.5rem 0.75rem; }
+            .nav-content { 
+              flex-wrap: nowrap;
+              gap: 0.5rem;
+            }
             .logo-title { font-size: 1.1rem; }
-            .search-container input { width: 120px; font-size: 0.8rem; padding: 0.35rem 1.75rem 0.35rem 0.65rem; height: 32px; }
-            .search-container i { right: 0.5rem; font-size: 0.8rem; }
-            .navbar-links a { font-size: 0.7rem; padding: 0.35rem 0.45rem; }
-            .navbar-links a i { font-size: 0.7rem; }
-            .more-btn { font-size: 0.7rem; padding: 0.35rem 0.45rem; }
+            
+            /* Bibliotecas compactas */
+            .navbar-links { 
+              gap: 0.25rem;
+              max-width: calc(100vw - 200px);
+            }
+            .navbar-links a { 
+              font-size: 0.75rem; 
+              padding: 0.35rem 0.5rem; 
+            }
+            .navbar-links a i { display: none; }
+            
+            .dropdown-container { margin-left: 0.25rem; }
+            .more-btn { 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.5rem; 
+            }
+            
+            .search-container input { 
+              width: 120px; 
+              font-size: 0.75rem; 
+              padding: 0.35rem 1.75rem 0.35rem 0.65rem; 
+              height: 32px; 
+            }
+            .search-container i { 
+              right: 0.5rem; 
+              font-size: 0.75rem; 
+            }
+            
             .library-title { font-size: 1rem; }
             .library-title i { font-size: 0.9rem; }
             .library-count { font-size: 0.8rem; }
-            .filter-select { min-width: 100px; font-size: 0.7rem; padding: 0.35rem 0.5rem; }
-            .btn-clear-filters { min-width: 85px; font-size: 0.7rem; padding: 0.35rem 0.6rem; }
-            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
+            
+            .filter-select { 
+              min-width: 100px; 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.5rem; 
+            }
+            .btn-clear-filters { 
+              min-width: 85px; 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.6rem; 
+            }
+            
             .container { padding: 0 0.75rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+              gap: 0.75rem; 
+            }
+            
+            .movie-card { border-radius: 6px; }
+            .movie-poster { border-radius: 6px; }
+            .movie-info { padding: 0.5rem; }
+            .movie-title { font-size: 0.8rem; }
+            .movie-year { font-size: 0.675rem; }
+            .movie-meta { font-size: 0.675rem; }
+          }
+          
+          /* Extra small devices */
+          @media (max-width: 480px) {
+            .logo-title { font-size: 1rem; }
+            
+            .navbar-links a { 
+              font-size: 0.7rem; 
+              padding: 0.3rem 0.45rem; 
+            }
+            .more-btn { 
+              font-size: 0.65rem; 
+              padding: 0.3rem 0.45rem; 
+            }
+            
+            .search-container input { 
+              width: 100px;
+              font-size: 0.7rem;
+            }
+            
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); 
+              gap: 0.625rem; 
+            }
+            .movie-info { padding: 0.4rem; }
+            .movie-title { font-size: 0.75rem; }
+            .movie-year, .movie-meta { font-size: 0.625rem; }
           }
         </style>
       </head>
@@ -6003,27 +6167,49 @@ app.get('/browse', async (req, res) => {
                 }
               });
               
-              // Mostrar primeras 5 bibliotecas inline, resto en dropdown
-              const maxVisible = 5;
-              allLibraries.forEach((lib, index) => {
-                const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
-                const a = document.createElement('a');
-                a.href = browseUrl;
-                a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
-                if (lib.isActive) a.classList.add('active');
+              // Calcular cuántas bibliotecas mostrar según ancho de pantalla
+              function getMaxVisible() {
+                const width = window.innerWidth;
+                if (width <= 540) return 1; // Solo 1 en móvil pequeño
+                if (width <= 768) return 2; // 2 en móvil
+                if (width <= 1024) return 3; // 3 en tablet
+                return 5; // 5 en desktop
+              }
+              
+              function renderLibraries() {
+                const maxVisible = getMaxVisible();
+                libraryLinksContainer.innerHTML = '';
+                dropdownMenu.innerHTML = '';
                 
-                if (index < maxVisible) {
-                  libraryLinksContainer.appendChild(a);
-                } else {
-                  dropdownMenu.appendChild(a.cloneNode(true));
-                }
+                allLibraries.forEach((lib, index) => {
+                  const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                  const a = document.createElement('a');
+                  a.href = browseUrl;
+                  a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                  if (lib.isActive) a.classList.add('active');
+                  
+                  if (index < maxVisible) {
+                    libraryLinksContainer.appendChild(a);
+                  } else {
+                    dropdownMenu.appendChild(a.cloneNode(true));
+                  }
+                });
+                
+                // Mostrar dropdown solo si hay bibliotecas adicionales
+                moreLibrariesContainer.style.display = allLibraries.length > maxVisible ? 'block' : 'none';
+              }
+              
+              renderLibraries();
+              
+              // Reajustar al cambiar tamaño de ventana
+              let resizeTimeout;
+              window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(renderLibraries, 200);
               });
               
-              // Mostrar dropdown solo si hay bibliotecas adicionales
-              if (allLibraries.length > maxVisible) {
-                moreLibrariesContainer.style.display = 'block';
-                
-                // Toggle dropdown
+              // Toggle dropdown
+              if (moreBtn) {
                 moreBtn.addEventListener('click', (e) => {
                   e.stopPropagation();
                   moreBtn.classList.toggle('active');
