@@ -4304,11 +4304,11 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
-      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'"></div>
+      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
-          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'" title="Cerrar">&times;</button>
+          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
@@ -6121,18 +6121,36 @@ app.get('/browse', async (req, res) => {
               // Búsqueda: normalizar y buscar en título y sinopsis
               if (searchValue && searchValue.trim() !== '') {
                 const normalizeText = (text) => {
+                  if (!text) return '';
                   return text
+                    .toString()
                     .toLowerCase()
                     .normalize('NFD')
                     .replace(/[\u0300-\u036f]/g, '') // Elimina tildes y diacríticos
-                    .replace(/[^a-z0-9\s]/g, '') // Elimina caracteres especiales pero mantiene espacios
+                    .replace(/[^a-z0-9\s]/g, ' ') // Convierte caracteres especiales en espacios
                     .replace(/\s+/g, ' ') // Normaliza espacios múltiples a uno solo
                     .trim(); // Elimina espacios al inicio y final
                 };
                 
                 const searchNormalized = normalizeText(searchValue);
-                const titleMatch = item.title && normalizeText(item.title).includes(searchNormalized);
-                const overviewMatch = item.overview && normalizeText(item.overview).includes(searchNormalized);
+                const titleNormalized = normalizeText(item.title);
+                const overviewNormalized = normalizeText(item.overview);
+                
+                const titleMatch = titleNormalized.includes(searchNormalized);
+                const overviewMatch = overviewNormalized.includes(searchNormalized);
+                
+                // Debug temporal - eliminar después
+                if (item.title && item.title.toLowerCase().includes('pok')) {
+                  console.log('🔍 DEBUG Búsqueda:', {
+                    'Título original': item.title,
+                    'Título normalizado': titleNormalized,
+                    'Búsqueda': searchValue,
+                    'Búsqueda normalizada': searchNormalized,
+                    'Match en título': titleMatch,
+                    'Match en sinopsis': overviewMatch
+                  });
+                }
+                
                 if (!titleMatch && !overviewMatch) return false;
               }
               
