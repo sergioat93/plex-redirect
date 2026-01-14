@@ -2851,7 +2851,7 @@ app.get('/list', async (req, res) => {
           params.set('accessToken', '${accessToken}');
           params.set('baseURI', '${baseURI}');
           params.set('ratingKey', '${parentRatingKey}');
-          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
+          params.set('title', \`${seriesTitleParam.replace(/'/g, "\\'")}\`);
           params.set('posterUrl', '');
           ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
           if (libraryKey) params.set('libraryKey', libraryKey);
