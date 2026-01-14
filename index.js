@@ -5874,7 +5874,7 @@ app.get('/browse', async (req, res) => {
           const libraryType = '${libraryType}';
           const libraryKey = '${libraryKey}';
           const libraryTitle = '${libraryTitle}';
-          const totalItems = ${items.length};
+          const totalItems = \${items.length};
           
           // Guardar índice en localStorage con TTL de 1 hora
           const indexKey = 'plexdl_index_' + libraryKey;
