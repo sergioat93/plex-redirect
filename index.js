@@ -3680,6 +3680,30 @@ app.get('/movie', async (req, res) => {
   // console.log('[/movie] partKey recibido:', partKey);
   // console.log('[/movie] fileName recibido:', fileName);
   
+  // Si no tenemos libraryKey, intentar extraerlo del XML de Plex
+  if ((!libraryKey || !libraryTitle) && downloadURL && baseURI && accessToken) {
+    try {
+      const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+      if (ratingKeyMatch) {
+        const ratingKey = ratingKeyMatch[1];
+        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        const xmlText = await httpsGetXML(metadataUrl);
+        const parsedXML = parseXML(xmlText);
+        
+        if (!libraryKey && parsedXML.MediaContainer.librarySectionID) {
+          libraryKey = parsedXML.MediaContainer.librarySectionID;
+          console.log('[/movie] libraryKey extraído del XML:', libraryKey);
+        }
+        if (!libraryTitle && parsedXML.MediaContainer.librarySectionTitle) {
+          libraryTitle = parsedXML.MediaContainer.librarySectionTitle;
+          console.log('[/movie] libraryTitle extraído del XML:', libraryTitle);
+        }
+      }
+    } catch (error) {
+      console.error('[/movie] Error extrayendo libraryKey del XML:', error);
+    }
+  }
+  
   // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
   let calculatedFileSize = fileSize;
   let videoCodec = '';
@@ -3699,17 +3723,6 @@ app.get('/movie', async (req, res) => {
         const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
         // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
         const xmlText = await httpsGetXML(metadataUrl);
-        
-        // Parse XML para extraer libraryKey y libraryTitle si no se proporcionaron
-        const parsedXML = parseXML(xmlText);
-        if (!libraryKey && parsedXML.MediaContainer.librarySectionID) {
-          libraryKey = parsedXML.MediaContainer.librarySectionID;
-          console.log('[/movie] libraryKey extraído del XML:', libraryKey);
-        }
-        if (!libraryTitle && parsedXML.MediaContainer.librarySectionTitle) {
-          libraryTitle = parsedXML.MediaContainer.librarySectionTitle;
-          console.log('[/movie] libraryTitle extraído del XML:', libraryTitle);
-        }
         
         // Extraer partKey si no viene en parámetros
         if (!partKey) {
@@ -6111,11 +6124,13 @@ app.get('/browse', async (req, res) => {
                   return text
                     .toLowerCase()
                     .normalize('NFD')
-                    .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
-                    .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
+                    .replace(/[\u0300-\u036f]/g, '') // Elimina tildes y diacríticos
+                    .replace(/[^a-z0-9\s]/g, '') // Elimina caracteres especiales pero mantiene espacios
+                    .replace(/\s+/g, ' ') // Normaliza espacios múltiples a uno solo
+                    .trim(); // Elimina espacios al inicio y final
                 };
                 
-                const searchNormalized = normalizeText(searchValue.trim());
+                const searchNormalized = normalizeText(searchValue);
                 const titleMatch = item.title && normalizeText(item.title).includes(searchNormalized);
                 const overviewMatch = item.overview && normalizeText(item.overview).includes(searchNormalized);
                 if (!titleMatch && !overviewMatch) return false;
