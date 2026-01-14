@@ -5904,30 +5904,26 @@ app.get('/browse', async (req, res) => {
           
           // Filtrar y ordenar sobre los datos JSON
           function applyFilters() {
-            const searchValue = document.getElementById('search-input').value; // Valor original sin toLowerCase
+            const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
             const collectionValue = document.getElementById('collection-filter').value;
             const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
-            // Función para normalizar texto (eliminar tildes)
+            // Función para normalizar texto (eliminar tildes y caracteres especiales) - SOLO PARA BÚSQUEDA
             const normalizeText = (text) => {
               if (!text) return '';
               return text
                 .toLowerCase()
                 .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, ''); // Elimina tildes
+                .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
+                .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
             };
             
             // Filtrar sobre los datos JSON completos
             let filteredData = itemsData.filter(item => {
-              const genres = item.genres ? item.genres : [];
-              const year = item.year;
-              const collections = item.collections ? item.collections : [];
-              const countries = item.countries ? item.countries : [];
-              
-              // Búsqueda mejorada: normalizar y buscar en título y sinopsis
+              // Búsqueda: normalizar y buscar en título y sinopsis
               if (searchValue && searchValue.trim() !== '') {
                 const searchNormalized = normalizeText(searchValue.trim());
                 const titleMatch = normalizeText(item.title || '').includes(searchNormalized);
@@ -5935,25 +5931,29 @@ app.get('/browse', async (req, res) => {
                 if (!titleMatch && !overviewMatch) return false;
               }
               
-              // Filtro de género
+              // Filtro de género - comparación directa con array
               if (genreValue) {
-                const hasGenre = genres.some(g => normalizeText(g) === normalizeText(genreValue));
-                if (!hasGenre) return false;
+                const itemGenres = Array.isArray(item.genres) ? item.genres : [];
+                if (!itemGenres.includes(genreValue)) return false;
               }
               
-              // Filtro de año
-              if (yearValue && year !== yearValue) return false;
+              // Filtro de año - comparación directa
+              if (yearValue) {
+                if (item.year !== yearValue && item.year !== parseInt(yearValue)) return false;
+              }
               
-              // Filtro de colección
+              // Filtro de colección - buscar en el array de colecciones de Plex
               if (collectionValue) {
-                const hasCollection = collections.some(c => normalizeText(c) === normalizeText(collectionValue));
-                if (!hasCollection) return false;
+                const itemCollections = Array.isArray(item.collections) ? item.collections : [];
+                if (!itemCollections.includes(collectionValue)) return false;
               }
               
-              // Filtro de país
+              // Filtro de país - comparación directa con array
               if (countryValue) {
-                const hasCountry = countries.some(co => normalizeText(co) === normalizeText(countryValue));
-                if (!hasCountry) return false;
+                const countries = Array.isArray(item.countries) 
+                  ? item.countries 
+                  : (item.countries ? item.countries.split(',').map(c => c.trim()) : []);
+                if (!countries.includes(countryValue)) return false;
               }
               
               return true;
