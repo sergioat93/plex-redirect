@@ -5382,17 +5382,17 @@ app.get('/browse', async (req, res) => {
           .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 0 0.5rem; }
           
           /* Left: Library Info */
-          .library-info { display: flex; align-items: center; gap: 0.75rem; min-width: fit-content; }
-          .library-title { font-size: 1.5rem; font-weight: 700; margin: 0; color: var(--primary-color); white-space: nowrap; }
-          .library-title i { margin-right: 0.5rem; }
-          .library-count { font-size: 1rem; font-weight: 600; color: var(--primary-color); white-space: nowrap; }
+          .library-info { display: flex; align-items: center; gap: 0.5rem; min-width: fit-content; }
+          .library-title { font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--primary-color); white-space: nowrap; }
+          .library-title i { margin-right: 0.35rem; font-size: 1.1rem; }
+          .library-count { font-size: 0.95rem; font-weight: 600; color: var(--primary-color); white-space: nowrap; }
           
           /* Center: Filters Group */
-          .filters-group { display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1; justify-content: center; align-items: center; }
-          .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 1rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem; min-width: 140px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .filters-group { display: flex; gap: 0.5rem; flex-wrap: nowrap; flex: 1; justify-content: center; align-items: center; }
+          .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.45rem 0.75rem; color: var(--text-primary); cursor: pointer; font-size: 0.8rem; min-width: 100px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .filter-select option { white-space: normal; }
           .filter-select:focus { outline: none; border-color: var(--primary-color); }
-          .btn-clear-filters { background: var(--primary-color); color: #000; border: none; border-radius: 6px; padding: 0.5rem 1.2rem; cursor: pointer; font-weight: 600; transition: background 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; white-space: nowrap; }
+          .btn-clear-filters { background: var(--primary-color); color: #000; border: none; border-radius: 6px; padding: 0.45rem 0.9rem; cursor: pointer; font-weight: 600; transition: background 0.2s; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; white-space: nowrap; }
           .btn-clear-filters:hover { background: var(--primary-dark); }
           
           /* Right: View Controls */
@@ -5470,12 +5470,12 @@ app.get('/browse', async (req, res) => {
           
           /* Responsive */
           @media (max-width: 768px) {
-            .navbar-links { display: none; }
+            .library-selector { display: none; }
             .search-container input { width: 180px; }
             .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
             .view-controls { display: none; }
             .controls-row { flex-direction: column; gap: 1rem; }
-            .filters-group { flex-direction: column; width: 100%; }
+            .filters-group { flex-direction: column; width: 100%; flex-wrap: wrap; }
             .filter-select { width: 100%; max-width: 100%; }
             .library-controls { padding: 1rem; }
             .library-info { flex-direction: column; align-items: flex-start; }
@@ -5502,10 +5502,9 @@ app.get('/browse', async (req, res) => {
                   <span class="logo-title">Infinity Scrap</span>
                 </div>
               </a>
-              <div class="navbar-links" id="navbar-links">
+              <select id="library-selector" class="library-selector">
                 <!-- Las bibliotecas se cargarán dinámicamente -->
-                <span id="library-links"></span>
-              </div>
+              </select>
               <div class="navbar-controls">
                 <div class="search-container">
                   <input type="text" id="search-input" placeholder="Buscar ${libraryTitle.toLowerCase()}...">
@@ -5718,14 +5717,14 @@ app.get('/browse', async (req, res) => {
           // Iniciar observer
           setupScrollObserver();
           
-          // Load all libraries and show them in navbar
+          // Load all libraries and show them in dropdown selector
           fetch('${baseURI}/library/sections?X-Plex-Token=${accessToken}')
             .then(r => r.text())
             .then(xmlText => {
               const parser = new DOMParser();
               const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
               const directories = xmlDoc.querySelectorAll('Directory');
-              const libraryLinksContainer = document.getElementById('library-links');
+              const librarySelector = document.getElementById('library-selector');
               
               directories.forEach(dir => {
                 const key = dir.getAttribute('key');
@@ -5733,13 +5732,19 @@ app.get('/browse', async (req, res) => {
                 const type = dir.getAttribute('type');
                 
                 if (key && title && (type === 'movie' || type === 'show')) {
-                  const a = document.createElement('a');
+                  const option = document.createElement('option');
                   const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + key + '&libraryTitle=' + encodeURIComponent(title) + '&libraryType=' + type;
-                  a.href = browseUrl;
-                  a.innerHTML = '<i class="fas fa-' + (type === 'movie' ? 'film' : 'tv') + '"></i> ' + title;
-                  if (title === '${libraryTitle}') a.classList.add('active');
-                  libraryLinksContainer.appendChild(a);
+                  option.value = browseUrl;
+                  const icon = type === 'movie' ? '🎬' : '📺';
+                  option.textContent = icon + ' ' + title;
+                  if (title === '${libraryTitle}') option.selected = true;
+                  librarySelector.appendChild(option);
                 }
+              });
+              
+              // Cambiar de biblioteca al seleccionar
+              librarySelector.addEventListener('change', (e) => {
+                if (e.target.value) window.location.href = e.target.value;
               });
             })
             .catch(e => console.error('Error loading libraries:', e));
@@ -5816,8 +5821,7 @@ app.get('/browse', async (req, res) => {
               return text
                 .toLowerCase()
                 .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
-                .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
+                .replace(/[\u0300-\u036f]/g, ''); // Elimina tildes
             };
             
             // Filtrar sobre los datos JSON completos
