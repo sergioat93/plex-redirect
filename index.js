@@ -5377,10 +5377,16 @@ app.get('/browse', async (req, res) => {
           .search-container input:focus { outline: none; border-color: var(--primary-color); }
           .search-container i { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); }
           
-          /* Library controls */
-          .library-controls { background: var(--bg-secondary); padding: 1rem 1rem; border-bottom: 1px solid var(--border-color); }
-          .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 0 0.5rem; }
-          .filters-group { display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1; justify-content: center; align-items: center; }
+          /* Library Header */
+          .library-header { background: var(--bg-dark); padding: 1.5rem 0; border-bottom: 1px solid var(--border-color); }
+          .header-row { display: flex; justify-content: space-between; align-items: center; gap: 2rem; }
+          .library-title-section { display: flex; align-items: center; gap: 1rem; }
+          .library-title { font-size: 2rem; font-weight: 700; margin: 0; color: var(--primary-color); }
+          .library-count { font-size: 1.125rem; font-weight: 600; color: var(--primary-color); }
+          
+          /* Library Filters */
+          .library-filters { background: var(--bg-secondary); padding: 1rem 0; border-bottom: 1px solid var(--border-color); }
+          .filters-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
           .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 1rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem; min-width: 140px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .filter-select option { white-space: normal; }
           .filter-select:focus { outline: none; border-color: var(--primary-color); }
@@ -5389,10 +5395,12 @@ app.get('/browse', async (req, res) => {
           
           /* View controls */
           .view-controls { display: flex; gap: 1rem; align-items: center; min-width: fit-content; }
+          .size-indicator { width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; }
+          .size-indicator i { color: var(--primary-color); font-size: 12px; }
           .grid-size-control { display: flex; align-items: center; gap: 0.75rem; transition: opacity 0.3s, visibility 0.3s; }
           .grid-size-control.hidden { opacity: 0; visibility: hidden; width: 0; overflow: hidden; }
           .grid-size-control i { color: var(--text-secondary); }
-          .grid-size-control input[type="range"] { width: 120px; height: 4px; background: var(--bg-dark); border-radius: 2px; outline: none; -webkit-appearance: none; }
+          .grid-size-control input[type="range"] { width: 120px; height: 4px; background: var(--bg-secondary); border-radius: 2px; outline: none; -webkit-appearance: none; }
           .grid-size-control input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: var(--primary-color); cursor: pointer; border-radius: 50%; }
           .grid-size-control input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--primary-color); cursor: pointer; border-radius: 50%; border: none; }
           .view-buttons { display: flex; gap: 0.5rem; }
@@ -5466,10 +5474,10 @@ app.get('/browse', async (req, res) => {
             .search-container input { width: 180px; }
             .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
             .view-controls { display: none; }
-            .filters-group { flex-direction: column; width: 100%; }
+            .filters-row { flex-direction: column; width: 100%; }
             .filter-select { width: 100%; max-width: 100%; }
-            .library-controls { padding: 1rem; }
-            .controls-row { flex-direction: column; gap: 1rem; }
+            .library-filters { padding: 1rem; }
+            .header-row { flex-direction: column; gap: 1rem; }
           }
           
           @media (max-width: 480px) {
@@ -5508,14 +5516,20 @@ app.get('/browse', async (req, res) => {
         </nav>
         
         <!-- Library Header -->
-        <header style="padding:1.5rem 0; background:var(--bg-secondary); border-bottom:1px solid var(--border-color);">
+        <div class="library-header">
           <div class="container">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <h1 style="font-size:2rem; font-weight:700; margin: 0; color: var(--primary-color);"><i class="fas fa-${libraryType === 'movie' ? 'film' : 'tv'}"></i> ${libraryTitle}</h1>
-                <span id="footer-count" style="font-size: 1.125rem; font-weight: 600; color: var(--primary-color);">(${items.length} ${libraryType === 'movie' ? 'películas' : 'series'})</span>
+            <div class="header-row">
+              <!-- Left: Title and count -->
+              <div class="library-title-section">
+                <h1 class="library-title"><i class="fas fa-${libraryType === 'movie' ? 'film' : 'tv'}"></i> ${libraryTitle}</h1>
+                <span id="footer-count" class="library-count">(${items.length} ${libraryType === 'movie' ? 'películas' : 'series'})</span>
               </div>
+              
+              <!-- Right: View controls -->
               <div class="view-controls">
+                <div class="size-indicator">
+                  <i class="fas fa-circle"></i>
+                </div>
                 <div class="grid-size-control" id="grid-size-control">
                   <input type="range" id="grid-size-slider" min="120" max="250" value="180" step="10">
                   <i class="fas fa-expand-alt"></i>
@@ -5531,43 +5545,41 @@ app.get('/browse', async (req, res) => {
               </div>
             </div>
           </div>
-        </header>
+        </div>
         
-        <!-- Library Controls -->
-        <div class="library-controls">
+        <!-- Library Filters -->
+        <div class="library-filters">
           <div class="container">
-            <div class="controls-row">
-              <div class="filters-group" style="width: 100%;">
-                <select id="genre-filter" class="filter-select">
-                  <option value="">Géneros</option>
-                  ${uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('')}
-                </select>
-                <select id="year-filter" class="filter-select">
-                  <option value="">Años</option>
-                  ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
-                </select>
-                <select id="collection-filter" class="filter-select" style="display: ${libraryType === 'movie' && uniqueCollections.length > 0 ? 'inline-block' : 'none'};">
-                  <option value="">Colecciones</option>
-                  ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
-                </select>
-                <select id="country-filter" class="filter-select">
-                  <option value="">Países</option>
-                  ${uniqueCountries.map(co => `<option value="${co}">${co}</option>`).join('')}
-                </select>
-                <select id="sort-filter" class="filter-select">
-                  <option value="added-desc">Recientes</option>
-                  <option value="added-asc">Antiguos</option>
-                  <option value="title">Título A-Z</option>
-                  <option value="title-desc">Título Z-A</option>
-                  <option value="year-desc">Año ↓</option>
-                  <option value="year-asc">Año ↑</option>
-                  <option value="rating-desc">Puntuación ↓</option>
-                  <option value="rating-asc">Puntuación ↑</option>
-                </select>
-                <button id="clear-filters" class="btn-clear-filters">
-                  <i class="fas fa-broom"></i> Limpiar
-                </button>
-              </div>
+            <div class="filters-row">
+              <select id="genre-filter" class="filter-select">
+                <option value="">Géneros</option>
+                ${uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('')}
+              </select>
+              <select id="year-filter" class="filter-select">
+                <option value="">Años</option>
+                ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
+              </select>
+              <select id="collection-filter" class="filter-select" style="display: ${libraryType === 'movie' && uniqueCollections.length > 0 ? 'inline-block' : 'none'};">
+                <option value="">Colecciones</option>
+                ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
+              </select>
+              <select id="country-filter" class="filter-select">
+                <option value="">Países</option>
+              ${uniqueCountries.map(co => `<option value="${co}">${co}</option>`).join('')}
+              </select>
+              <select id="sort-filter" class="filter-select">
+                <option value="added-desc">Recientes</option>
+                <option value="added-asc">Antiguos</option>
+                <option value="title">Título A-Z</option>
+                <option value="title-desc">Título Z-A</option>
+                <option value="year-desc">Año ↓</option>
+                <option value="year-asc">Año ↑</option>
+                <option value="rating-desc">Puntuación ↓</option>
+                <option value="rating-asc">Puntuación ↑</option>
+              </select>
+              <button id="clear-filters" class="btn-clear-filters">
+                <i class="fas fa-broom"></i> Limpiar
+              </button>
             </div>
           </div>
         </div>
@@ -5804,6 +5816,15 @@ app.get('/browse', async (req, res) => {
             const countryValue = document.getElementById('country-filter').value.toLowerCase();
             const sortValue = document.getElementById('sort-filter').value;
             
+            // Función para normalizar texto (eliminar tildes y caracteres especiales)
+            const normalizeText = (text) => {
+              return text
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
+                .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
+            };
+            
             // Filtrar sobre los datos JSON completos
             let filteredData = itemsData.filter(item => {
               const title = item.title.toLowerCase();
@@ -5812,7 +5833,14 @@ app.get('/browse', async (req, res) => {
               const collections = item.collections ? item.collections.map(c => c.toLowerCase()).join(',') : '';
               const countries = item.countries ? item.countries.map(c => c.toLowerCase()).join(',') : '';
               
-              if (searchTerm && !title.includes(searchTerm)) return false;
+              // Búsqueda mejorada: normalizar y buscar en título y sinopsis
+              if (searchTerm) {
+                const searchNormalized = normalizeText(searchTerm);
+                const titleMatch = item.title && normalizeText(item.title).includes(searchNormalized);
+                const overviewMatch = item.overview && normalizeText(item.overview).includes(searchNormalized);
+                if (!titleMatch && !overviewMatch) return false;
+              }
+              
               if (genreValue && !genres.includes(genreValue)) return false;
               if (yearValue && year !== yearValue) return false;
               if (collectionValue && !collections.includes(collectionValue)) return false;
