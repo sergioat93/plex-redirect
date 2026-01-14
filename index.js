@@ -3684,63 +3684,38 @@ app.get('/movie', async (req, res) => {
     libraryTitle
   });
   
-  // Si no tenemos libraryKey, intentar extraerlo del XML de Plex
-  // Necesitamos el ratingKey que puede venir en downloadURL o necesitamos construir la URL
-  if ((!libraryKey || !libraryTitle) && baseURI && accessToken) {
+  // Si no tenemos libraryKey, intentar extraerlo haciendo petición a Plex (igual que /series)
+  if ((!libraryKey || !libraryTitle) && baseURI && accessToken && downloadURL) {
     try {
-      let ratingKey = null;
-      
-      // Intentar extraer ratingKey de downloadURL
-      if (downloadURL) {
-        const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
-        if (ratingKeyMatch) {
-          ratingKey = ratingKeyMatch[1];
-        }
-      }
-      
-      // Si no hay downloadURL pero hay partKey, extraer ratingKey de partKey
-      if (!ratingKey && partKey) {
-        const ratingKeyMatch = partKey.match(/\/library\/metadata\/(\d+)/);
-        if (ratingKeyMatch) {
-          ratingKey = ratingKeyMatch[1];
-        }
-      }
-      
-      if (ratingKey) {
-        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
-        console.log('[/movie] Obteniendo metadata de:', metadataUrl);
-        const xmlText = await httpsGetXML(metadataUrl);
-        const parsedXML = parseXML(xmlText);
+      // Extraer el partId del downloadURL (/library/parts/XXXXX/)
+      const partIdMatch = downloadURL.match(/\/library\/parts\/(\d+)/);
+      if (partIdMatch) {
+        const partId = partIdMatch[1];
+        // Hacer petición al endpoint de la parte para obtener metadata
+        const partUrl = `${baseURI}/library/parts/${partId}?X-Plex-Token=${accessToken}`;
+        console.log('[/movie] Obteniendo metadata de la parte:', partUrl);
         
-        console.log('[/movie] MediaContainer parseado:', parsedXML.MediaContainer);
+        const partXml = await httpsGetXML(partUrl);
+        const parsedData = parseXML(partXml);
         
-        if (!libraryKey && parsedXML.MediaContainer.librarySectionID) {
-          libraryKey = parsedXML.MediaContainer.librarySectionID;
+        // Extraer librarySectionID del MediaContainer
+        if (!libraryKey && parsedData.MediaContainer.librarySectionID) {
+          libraryKey = parsedData.MediaContainer.librarySectionID;
           console.log('[/movie] ✅ libraryKey extraído del XML:', libraryKey);
         }
-        if (!libraryTitle && parsedXML.MediaContainer.librarySectionTitle) {
-          libraryTitle = parsedXML.MediaContainer.librarySectionTitle;
+        if (!libraryTitle && parsedData.MediaContainer.librarySectionTitle) {
+          libraryTitle = parsedData.MediaContainer.librarySectionTitle;
           console.log('[/movie] ✅ libraryTitle extraído del XML:', libraryTitle);
         }
       } else {
-        console.log('[/movie] ⚠️ No se pudo extraer ratingKey, buscando primera biblioteca de películas...');
-        
-        // Si no pudimos extraer del XML, obtener la primera biblioteca de películas
-        const librariesUrl = `${baseURI}/library/sections?X-Plex-Token=${accessToken}`;
-        const librariesXml = await httpsGetXML(librariesUrl);
-        
-        // Buscar la primera biblioteca de tipo "movie"
-        const movieLibraryMatch = librariesXml.match(/<Directory[^>]*type="movie"[^>]*key="([^"]*)"[^>]*title="([^"]*)"/);
-        if (movieLibraryMatch) {
-          libraryKey = movieLibraryMatch[1];
-          libraryTitle = movieLibraryMatch[2];
-          console.log('[/movie] ✅ Usando primera biblioteca de películas:', libraryKey, libraryTitle);
-        }
+        console.log('[/movie] ⚠️ No se pudo extraer partId del downloadURL');
       }
     } catch (error) {
-      console.error('[/movie] ❌ Error extrayendo libraryKey del XML:', error);
+      console.error('[/movie] ❌ Error extrayendo libraryKey:', error);
     }
   }
+  
+  console.log('[/movie] libraryKey final:', libraryKey, 'libraryTitle:', libraryTitle);
   
   // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
   let calculatedFileSize = fileSize;
