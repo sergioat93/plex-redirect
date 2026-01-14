@@ -5507,33 +5507,43 @@ app.get('/browse', async (req, res) => {
           
           @media (max-width: 768px) {
             .navbar .container { padding: 0 0.5rem; }
-            .nav-content { gap: 0.5rem; flex-wrap: wrap; }
-            .navbar-brand { order: 1; }
-            .navbar-controls { order: 2; }
-            .navbar-links { order: 3; width: 100%; justify-content: center; padding-top: 0.5rem; border-top: 1px solid rgba(229, 160, 13, 0.1); }
+            .nav-content { gap: 0.5rem; }
             .logo-title { font-size: 1.2rem; }
-            .search-container input { width: 180px; font-size: 0.875rem; }
-            .navbar-links a { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
+            .search-container input { width: 150px; font-size: 0.875rem; padding: 0.4rem 2rem 0.4rem 0.75rem; height: 34px; }
+            .navbar-links { gap: 0.35rem; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+            .navbar-links::-webkit-scrollbar { display: none; }
+            .navbar-links a { font-size: 0.75rem; padding: 0.4rem 0.5rem; gap: 0.3rem; }
+            .navbar-links a i { font-size: 0.75rem; }
+            .dropdown-container { margin-left: 0.25rem; }
+            .more-btn { font-size: 0.75rem; padding: 0.4rem 0.5rem; }
             .library-controls { padding: 0.75rem 0; }
             .controls-row { flex-direction: column; gap: 0.75rem; align-items: stretch; }
-            .library-info { flex-direction: row; justify-content: center; align-items: center; }
-            .filters-group { flex-wrap: wrap; gap: 0.5rem; }
-            .filter-select { min-width: calc(50% - 0.25rem); max-width: calc(50% - 0.25rem); font-size: 0.75rem; }
-            .btn-clear-filters { width: 100%; }
+            .library-info { justify-content: space-between; width: 100%; }
+            .library-title { font-size: 1.1rem; }
+            .library-count { font-size: 0.85rem; }
+            .filters-group { gap: 0.35rem; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 0 0.25rem; }
+            .filters-group::-webkit-scrollbar { display: none; }
+            .filter-select { min-width: 110px; flex-shrink: 0; font-size: 0.75rem; padding: 0.4rem 0.6rem; }
+            .btn-clear-filters { min-width: 90px; flex-shrink: 0; font-size: 0.75rem; padding: 0.4rem 0.7rem; }
             .view-controls { display: none; }
             .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
           }
           
           @media (max-width: 480px) {
             .navbar .container { padding: 0 0.5rem; }
-            .logo-title { font-size: 1rem; }
-            .search-container input { width: 150px; font-size: 0.8rem; height: 34px; }
-            .navbar-links a { font-size: 0.75rem; padding: 0.35rem 0.5rem; }
+            .logo-title { font-size: 1.1rem; }
+            .search-container input { width: 120px; font-size: 0.8rem; padding: 0.35rem 1.75rem 0.35rem 0.65rem; height: 32px; }
+            .search-container i { right: 0.5rem; font-size: 0.8rem; }
+            .navbar-links a { font-size: 0.7rem; padding: 0.35rem 0.45rem; }
+            .navbar-links a i { font-size: 0.7rem; }
+            .more-btn { font-size: 0.7rem; padding: 0.35rem 0.45rem; }
             .library-title { font-size: 1rem; }
+            .library-title i { font-size: 0.9rem; }
             .library-count { font-size: 0.8rem; }
-            .filter-select { min-width: 100%; max-width: 100%; }
+            .filter-select { min-width: 100px; font-size: 0.7rem; padding: 0.35rem 0.5rem; }
+            .btn-clear-filters { min-width: 85px; font-size: 0.7rem; padding: 0.35rem 0.6rem; }
             .movie-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
-            .container { padding: 0 1rem; }
+            .container { padding: 0 0.75rem; }
           }
         </style>
       </head>
