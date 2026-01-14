@@ -1824,17 +1824,8 @@ app.get('/list', async (req, res) => {
       <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
-        :root {
-          --primary-color: #e5a00d;
-          --bg-dark: #0f0f0f;
-          --bg-secondary: #1a1a1a;
-          --text-primary: #ffffff;
-          --text-secondary: #b3b3b3;
-        }
-        
         * {
           margin: 0;
           padding: 0;
@@ -1843,21 +1834,67 @@ app.get('/list', async (req, res) => {
         
         body {
           font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-          background: var(--bg-dark);
-          color: var(--text-primary);
+          background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+          color: #e5e5e5;
           min-height: 100vh;
-          overflow-x: hidden;
+          padding: 20px;
         }
         
-        .season-page-container {
+        .hero-background {
+          position: fixed;
+          top: 0;
+          left: 0;
           width: 100%;
-          max-width: 1400px;
-          margin: 0 auto;
-          background: var(--bg-secondary);
+          height: 400px;
+          background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.95) 100%),
+                      ${seasonPoster ? `url('${seasonPoster}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)'};
+          background-size: cover;
+          background-position: center top;
+          filter: blur(20px);
+          opacity: 0.4;
+          z-index: 0;
         }
         
-        /* Season Modal Banner Styles */
-        .season-modal-banner {
+        .container {
+          position: relative;
+          max-width: 1200px;
+          margin: 0 auto;
+          z-index: 1;
+        }
+        
+        .header {
+          text-align: center;
+          padding: 20px 0 40px 0;
+        }
+        
+        .logo {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+        
+        .logo-icon {
+          width: 40px;
+          height: 40px;
+          background: #e5a00d;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          font-size: 24px;
+          color: #000;
+        }
+        
+        .logo-text {
+          font-size: 1.8rem;
+          font-weight: 700;
+          color: #e5a00d;
+        }
+        
+        .series-header {
           position: relative;
           width: 100%;
           min-height: 480px;
@@ -1868,9 +1905,11 @@ app.get('/list', async (req, res) => {
           display: flex;
           flex-direction: column;
           flex-shrink: 0;
+          margin-bottom: 32px;
+          border-radius: 0;
         }
         
-        .season-modal-banner::before {
+        .series-header::before {
           content: '';
           position: absolute;
           top: 0;
@@ -1881,33 +1920,7 @@ app.get('/list', async (req, res) => {
           z-index: 1;
         }
         
-        .modal-close-banner {
-          position: absolute;
-          top: 1rem;
-          right: 1rem;
-          background: rgba(0, 0, 0, 0.7);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          color: var(--text-primary);
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          font-size: 1.25rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          z-index: 10;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-decoration: none;
-        }
-        
-        .modal-close-banner:hover {
-          background: rgba(229, 160, 13, 0.9);
-          color: #000;
-          transform: scale(1.1);
-        }
-        
-        .season-modal-banner-overlay {
+        .series-header-overlay {
           position: relative;
           z-index: 5;
           display: flex;
@@ -1917,35 +1930,11 @@ app.get('/list', async (req, res) => {
           padding-bottom: 0;
         }
         
-        .season-modal-banner-titles {
+        .series-titles {
           margin-bottom: 2rem;
         }
         
-        .season-modal-banner-titles h1 {
-          font-size: 2.5rem;
-          font-weight: 800;
-          margin: 0;
-          color: var(--text-primary);
-          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
-        }
-        
-        .season-modal-banner-titles h2 {
-          font-size: 1.5rem;
-          font-weight: 400;
-          font-style: italic;
-          margin: 0.5rem 0 0 0;
-          color: rgba(255, 255, 255, 0.9);
-          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
-        }
-        
-        .season-modal-content {
-          display: grid;
-          grid-template-columns: 200px 1fr;
-          gap: 2rem;
-          flex: 1;
-        }
-        
-        .season-modal-poster {
+        .series-poster {
           width: 100%;
           aspect-ratio: 2/3;
           border-radius: 12px;
@@ -1954,23 +1943,51 @@ app.get('/list', async (req, res) => {
           align-self: start;
         }
         
-        .season-modal-info {
+        .series-titles h1 {
+          font-size: 2.5rem;
+          font-weight: 800;
+          margin: 0;
+          color: #fff;
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+        
+        .series-titles h2 {
+          font-size: 1.5rem;
+          font-weight: 400;
+          font-style: italic;
+          margin: 0.5rem 0 0 0;
+          color: rgba(255, 255, 255, 0.9);
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+        
+        .series-content {
+          display: grid;
+          grid-template-columns: 200px 1fr;
+          gap: 2rem;
+          flex: 1;
+        }
+        
+        .series-info {
           display: flex;
           flex-direction: column;
           gap: 1rem;
         }
         
-        .season-modal-badges-container {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-        
-        .season-modal-badges-row {
+        .series-meta {
           display: flex;
           gap: 0.75rem;
           align-items: center;
           flex-wrap: wrap;
+        }
+        
+        .meta-badge {
+          background: rgba(229, 160, 13, 0.15);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          padding: 0.5rem 1rem;
+          border-radius: 20px;
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #e5a00d;
         }
         
         .episodes-count-badge {
@@ -1983,81 +2000,72 @@ app.get('/list', async (req, res) => {
           box-shadow: 0 2px 8px rgba(229, 160, 13, 0.3);
         }
         
-        .season-modal-badges-row span:not(.episodes-count-badge):not(.genre-tag) {
-          background: rgba(229, 160, 13, 0.15);
-          border: 1px solid rgba(229, 160, 13, 0.3);
-          padding: 0.5rem 1rem;
-          border-radius: 20px;
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: var(--primary-color);
+        .series-genres {
+          display: flex;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+          margin-bottom: 1rem;
         }
         
-        .season-modal-row-2 .genre-tag {
+        .genre-tag {
           background: rgba(229, 160, 13, 0.15);
           border: 1px solid rgba(229, 160, 13, 0.3);
           padding: 0.4rem 1rem;
           border-radius: 20px;
           font-size: 0.85rem;
           font-weight: 600;
-          color: var(--primary-color);
+          color: #e5a00d;
           transition: all 0.2s ease;
         }
         
-        .season-modal-row-3 {
-          gap: 0.5rem;
+        .genre-tag:hover {
+          background: rgba(229, 160, 13, 0.25);
+          border-color: rgba(229, 160, 13, 0.5);
         }
         
-        .season-modal-row-3 img {
-          width: 32px;
-          height: 32px;
-          transition: transform 0.2s ease, filter 0.2s ease;
-          filter: brightness(0.9);
-          cursor: pointer;
-        }
-        
-        .season-modal-row-3 img:hover {
-          transform: scale(1.1);
-          filter: brightness(1.1);
-        }
-        
-        .season-modal-overview-container {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-        
-        .season-modal-overview {
-          color: var(--text-secondary);
+        .series-description {
+          color: #bbb;
           font-size: 1rem;
           line-height: 1.6;
           transition: max-height 0.3s ease;
         }
         
-        .season-modal-overview.collapsed {
+        .series-description.collapsed {
           display: -webkit-box;
           -webkit-line-clamp: 3;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
         
-        .overview-toggle-btn {
+        .description-text {
+          transition: all 0.3s ease;
+        }
+        
+        .expand-description-btn {
           background: transparent;
           border: none;
-          color: var(--primary-color);
+          color: #e5a00d;
           font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
           padding: 0;
           align-self: flex-start;
           transition: opacity 0.2s;
+          margin-top: 0.5rem;
         }
         
-        .overview-toggle-btn:hover {
+        .expand-description-btn:hover {
           opacity: 0.8;
         }
         
-        .btn-download-season {
+        .action-buttons {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: auto;
+        }
+        
+        .download-season-btn, .download-page-btn {
           background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
           color: #000;
           border: none;
@@ -2072,205 +2080,7 @@ app.get('/list', async (req, res) => {
           justify-content: center;
           gap: 0.75rem;
           box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
-          margin-top: auto;
           width: 100%;
-        }
-        
-        .btn-download-season:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 24px rgba(229, 160, 13, 0.5);
-        }
-        
-        .btn-download-season i {
-          font-size: 1.25rem;
-        }
-        
-        /* Episodes List */
-        .episodes-list {
-          padding: 2rem;
-          max-width: 1400px;
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          gap: 1.25rem;
-        }
-        
-        .episode-item {
-          display: grid;
-          grid-template-columns: 240px 1fr auto;
-          gap: 1.5rem;
-          padding: 1.5rem;
-          background: rgba(0, 0, 0, 0.3);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          transition: all 0.2s;
-          align-items: start;
-        }
-        
-        .episode-item:hover {
-          background: rgba(229, 160, 13, 0.1);
-          border-color: var(--primary-color);
-        }
-        
-        .episode-thumbnail {
-          width: 100%;
-          aspect-ratio: 16/9;
-          object-fit: cover;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-        }
-        
-        .episode-header {
-          margin-bottom: 0.5rem;
-        }
-        
-        .episode-label {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: var(--primary-color);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        
-        .episode-info {
-          flex: 1;
-        }
-        
-        .episode-title {
-          font-weight: 600;
-          font-size: 1rem;
-          margin-bottom: 0.5rem;
-          color: var(--text-primary);
-        }
-        
-        .episode-meta {
-          color: var(--text-secondary);
-          font-size: 0.875rem;
-          margin-bottom: 0.5rem;
-        }
-        
-        .episode-overview {
-          color: var(--text-secondary);
-          font-size: 0.875rem;
-          line-height: 1.5;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        
-        .episode-download {
-          display: flex;
-          align-items: center;
-        }
-        
-        .btn-download-episode {
-          background: var(--primary-color);
-          color: #000;
-          border: none;
-          border-radius: 6px;
-          padding: 0.5rem 1rem;
-          cursor: pointer;
-          font-weight: 600;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-        
-        .btn-download-episode:hover {
-          background: #f0b825;
-        }
-        
-        @media (max-width: 768px) {
-          .season-modal-content {
-            grid-template-columns: 1fr;
-          }
-          
-          .episode-item {
-            grid-template-columns: 1fr;
-            gap: 1rem;
-          }
-        }
-        
-        .series-meta {
-          display: flex;
-          gap: 16px;
-          margin-bottom: 20px;
-          flex-wrap: wrap;
-        }
-        
-        .meta-badge {
-          background: rgba(229, 160, 13, 0.15);
-          border: 1px solid rgba(229, 160, 13, 0.3);
-          padding: 8px 16px;
-          border-radius: 20px;
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: #e5a00d;
-        }
-        
-        .series-description {
-          color: #bbb;
-          font-size: 1rem;
-          line-height: 1.6;
-          margin-bottom: 24px;
-          position: relative;
-        }
-        
-        .description-text {
-          transition: all 0.3s ease;
-        }
-        
-        .expand-description-btn {
-          background: transparent;
-          border: 1px solid rgba(229, 160, 13, 0.3);
-          color: #e5a00d;
-          padding: 6px 12px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 0.85rem;
-          transition: all 0.2s;
-          margin-top: 8px;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        
-        .expand-description-btn:hover {
-          background: rgba(229, 160, 13, 0.1);
-          border-color: rgba(229, 160, 13, 0.5);
-        }
-        
-        .expand-description-btn svg {
-          transition: transform 0.3s ease;
-        }
-        
-        .expand-description-btn.expanded svg {
-          transform: rotate(180deg);
-        }
-        
-        .action-buttons {
-          display: flex;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-        
-        .download-season-btn, .download-page-btn {
-          padding: 14px 28px;
-          background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
-          color: #000;
-          border: none;
-          border-radius: 12px;
-          font-weight: 700;
-          font-size: 1.1rem;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          white-space: nowrap;
-          box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
         }
         
         .download-page-btn {
@@ -2289,6 +2099,10 @@ app.get('/list', async (req, res) => {
         
         .download-page-btn:hover {
           box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
+        }
+        
+        .download-season-btn i, .download-page-btn i {
+          font-size: 1.25rem;
         }
         
         .download-season-btn:disabled, .download-page-btn:disabled {
@@ -2653,9 +2467,24 @@ app.get('/list', async (req, res) => {
         
         @media (max-width: 968px) {
           .series-header {
+            min-height: 400px;
+          }
+          
+          .series-header-overlay {
+            padding: 1.5rem;
+          }
+          
+          .series-titles h1 {
+            font-size: 2rem;
+          }
+          
+          .series-titles h2 {
+            font-size: 1.2rem;
+          }
+          
+          .series-content {
             grid-template-columns: 1fr;
             text-align: center;
-            padding: 24px;
           }
           
           .series-poster {
@@ -2663,20 +2492,9 @@ app.get('/list', async (req, res) => {
             margin: 0 auto;
           }
           
-          .series-meta, .action-buttons {
+          .series-meta, .action-buttons, .series-genres {
             justify-content: center;
             flex-wrap: wrap;
-          }
-          
-          .action-buttons {
-            flex-direction: column;
-            align-items: center;
-          }
-          
-          .download-season-btn, .download-page-btn {
-            width: 100%;
-            max-width: 300px;
-            justify-content: center;
           }
           
           .pagination-controls {
@@ -2737,11 +2555,19 @@ app.get('/list', async (req, res) => {
           }
           
           .series-header {
-            padding: 16px;
+            min-height: 350px;
           }
           
-          .series-info h1 {
-            font-size: 1.8rem;
+          .series-header-overlay {
+            padding: 1rem;
+          }
+          
+          .series-titles h1 {
+            font-size: 1.5rem;
+          }
+          
+          .series-titles h2 {
+            font-size: 1rem;
           }
           
           .pagination-nav {
@@ -2761,9 +2587,14 @@ app.get('/list', async (req, res) => {
             font-size: 1.1rem;
           }
           
-          .meta-badge {
+          .meta-badge, .episodes-count-badge {
             font-size: 0.8rem;
-            padding: 6px 12px;
+            padding: 0.4rem 0.8rem;
+          }
+          
+          .download-season-btn, .download-page-btn {
+            font-size: 0.9rem;
+            padding: 0.65rem 1.25rem;
           }
         }
       </style>
@@ -2776,82 +2607,14 @@ app.get('/list', async (req, res) => {
         const libraryKey = '${libraryKey}';
         const libraryTitle = '${libraryTitle}';
         
-        // Función para expandir/contraer sinopsis
-        function toggleOverview() {
-          const overview = document.getElementById('season-overview');
-          const btn = document.getElementById('overview-toggle-btn');
-          if (overview && btn) {
-            if (overview.classList.contains('collapsed')) {
-              overview.classList.remove('collapsed');
-              btn.textContent = 'Ver menos';
-            } else {
-              overview.classList.add('collapsed');
-              btn.textContent = 'Ver más';
-            }
-          }
-        }
-        
-        // Función para renderizar episodios
-        function loadMoreEpisodes() {
-          const container = document.getElementById('episodes-list');
-          if (!container) return;
-          
-          container.innerHTML = allEpisodes.map((ep, index) => {
-            const episodeTitle = ep.episodeTitle || 'Sin título';
-            const episodeNumber = ep.episodeNumber || 0;
-            const summary = ep.summary || '';
-            const posterUrl = ep.posterUrl || '';
-            const fileSize = ep.fileSizeFormatted || 'N/A';
-            
-            return \`
-              <div class="episode-item">
-                \${posterUrl ? \`<img src="\${posterUrl}" alt="\${episodeTitle}" class="episode-thumbnail">\` : ''}
-                
-                <div class="episode-info">
-                  <div class="episode-header">
-                    <div class="episode-label">Episodio \${episodeNumber}</div>
-                  </div>
-                  <div class="episode-title">\${episodeTitle}</div>
-                  <div class="episode-meta">\${fileSize}</div>
-                  \${summary ? \`<div class="episode-overview">\${summary}</div>\` : ''}
-                </div>
-                
-                <div class="episode-download">
-                  <button class="btn-download-episode" onclick="downloadEpisode(\${index})">
-                    <i class="fas fa-download"></i> Descargar
-                  </button>
-                </div>
-              </div>
-            \`;
-          }).join('');
-        }
-        
-        // Función para descargar un episodio
-        function downloadEpisode(index) {
-          const ep = allEpisodes[index];
-          if (!ep || !ep.url) return;
-          window.open(ep.url, '_blank');
-        }
-        
-        // Función para abrir modal de descargas
-        function openDownloadModal() {
-          alert('Descarga masiva de temporada completa próximamente');
-        }
-        
-        // Cargar episodios iniciales
-        loadMoreEpisodes();
-      </script>
-    </body>
-    </html>
-  `);
-});  // Función para volver a la página de serie
+        // Función para volver a la página de serie
         function goBackToSeries() {
           // Redirigir a /series-redirect para obtener todos los datos de la serie
           const params = new URLSearchParams();
           params.set('accessToken', '${accessToken}');
           params.set('baseURI', '${baseURI}');
           params.set('ratingKey', '${parentRatingKey}');
-          params.set('title', \`${seriesTitleParam.replace(/'/g, "\\'")}\`);
+          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
           params.set('posterUrl', '');
           ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
           if (libraryKey) params.set('libraryKey', libraryKey);
@@ -3200,12 +2963,12 @@ app.get('/list', async (req, res) => {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
           if (synopsis && button) {
-            if (synopsis.style.maxHeight === 'none' || synopsis.style.maxHeight === '') {
-              synopsis.style.maxHeight = '10.2em';
-              button.textContent = 'Ver más';
-            } else {
-              synopsis.style.maxHeight = 'none';
+            if (synopsis.classList.contains('collapsed')) {
+              synopsis.classList.remove('collapsed');
               button.textContent = 'Ver menos';
+            } else {
+              synopsis.classList.add('collapsed');
+              button.textContent = 'Ver más';
             }
           }
         }
@@ -3224,75 +2987,157 @@ app.get('/list', async (req, res) => {
       </script>
     </head>
     <body>
-      <div class="season-page-container">
-        <!-- Season Modal Banner -->
-        <div class="season-modal-banner" style="background-image: url('${backdropPath || (seasonPoster ? seasonPoster : '')}');">
-          <a href="#" onclick="goBackToSeries(); return false;" class="modal-close-banner" title="Volver">
-            <i class="fas fa-times"></i>
-          </a>
-          
-          <div class="season-modal-banner-overlay">
-            <div class="season-modal-banner-titles">
+      <!-- Hero Background (invisible, solo para efecto blur) -->
+      <div class="hero-background"></div>
+      
+      <div class="container">
+        <!-- Header -->
+        <div class="header">
+          <div class="logo">
+            <div class="logo-icon">∞</div>
+            <div class="logo-text">Infinity Scrap</div>
+          </div>
+        </div>
+        
+        <!-- Series Header (Banner estilo modal de Nueva carpeta) -->
+        <div class="series-header" style="${backdropPath ? `background-image: url('${backdropPath}');` : 'background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);'}">
+          <div class="series-header-overlay">
+            <!-- Títulos -->
+            <div class="series-titles">
               <h1>${seriesTitle}</h1>
               <h2>Temporada ${seasonNumberFromEpisode}</h2>
             </div>
             
-            <div class="season-modal-content">
-              ${seasonPoster ? `<img src="${seasonPoster}" alt="Temporada ${seasonNumberFromEpisode}" class="season-modal-poster">` : ''}
+            <!-- Content: Poster + Info -->
+            <div class="series-content">
+              <!-- Poster -->
+              ${seasonPoster ? `<img loading="lazy" src="${seasonPoster}" alt="${seriesTitle}" class="series-poster">` : '<div class="series-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
               
-              <div class="season-modal-info">
-                <div class="season-modal-badges-container">
-                  <div class="season-modal-badges-row season-modal-row-1">
-                    <span class="episodes-count-badge">${totalEpisodes} episodios</span>
-                    <span>${totalSizeFormatted}</span>
-                    ${seasonYear ? `<span>${seasonYear}</span>` : ''}
-                  </div>
+              <!-- Info -->
+              <div class="series-info">
+                <!-- Meta badges -->
+                <div class="series-meta">
+                  <span class="episodes-count-badge">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
+                  ${totalSizeFormatted ? `<span class="meta-badge">${totalSizeFormatted}</span>` : ''}
+                  ${seasonYear ? `<span class="meta-badge">${seasonYear}</span>` : ''}
                 </div>
                 
-                ${seasonSummary ? `
-                <div class="season-modal-overview-container">
-                  <div id="season-overview" class="season-modal-overview collapsed">${seasonSummary}</div>
-                  <button id="overview-toggle-btn" class="overview-toggle-btn" onclick="toggleOverview()">Ver más</button>
+                <!-- External links (TMDB, IMDB, YouTube) -->
+                ${(seasonInfo && seasonInfo.tmdbId) || imdbId || trailerKey ? `
+                <div class="series-meta">
+                  ${seasonInfo && seasonInfo.tmdbId ? `
+                    <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
+                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    </a>
+                  ` : ''}
+                  ${imdbId ? `
+                    <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
+                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    </a>
+                  ` : ''}
+                  ${trailerKey ? `
+                    <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
+                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    </a>
+                  ` : ''}
                 </div>
                 ` : ''}
                 
-                <button class="btn-download-season" onclick="openDownloadModal()">
-                  <i class="fas fa-download"></i> Descargar Temporada Completa
-                </button>
+                <!-- Synopsis -->
+                ${seasonSummary ? `
+                <div style="margin-bottom: 1rem;">
+                  <div id="synopsis-text" class="series-description collapsed">
+                    ${seasonSummary}
+                  </div>
+                  <button id="synopsis-toggle" onclick="toggleSynopsis()" class="expand-description-btn" style="display: none;">Ver más</button>
+                </div>
+                ` : ''}
+                
+                <!-- Action buttons -->
+                <div class="action-buttons">
+                  <button class="download-season-btn" id="download-season-btn" onclick="openDownloadModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                    </svg>
+                    Descargar Temporada Completa
+                  </button>
+                  
+                  ${parentRatingKey ? `
+                  <button onclick="goBackToSeries()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 1.5rem; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.3s ease; width: 100%;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                    </svg>
+                    Volver a Serie
+                  </button>
+                  ` : `
+                  <button onclick="window.history.back()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 1.5rem; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.3s ease; width: 100%;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                    </svg>
+                    Volver
+                  </button>
+                  `}
+                </div>
+                
+                <!-- Progress indicator -->
+                <div class="progress-indicator" id="progress-indicator">
+                  <div class="progress-text" id="progress-text"></div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+          </div>
+        
+        <!-- Lista de episodios -->
+        <div class="episodes-grid" id="episodes-container">
+          <!-- Los episodios se cargarán dinámicamente -->
         </div>
         
-        <!-- Episodes List -->
-        <div class="episodes-list" id="episodes-list">
-          <!-- Los episodios se cargarán dinámicamente aquí -->
+        <div id="loading-indicator" style="display: none; text-align: center; padding: 2rem; color: #e5a00d;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="animation: spin 1s linear infinite;">
+            <circle cx="12" cy="12" r="10" stroke-width="2" stroke-dasharray="31.4 31.4" />
+          </svg>
+          <p>Cargando más episodios...</p>
         </div>
+        
+        <style>
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        </style>
       </div>
       
-      <script>
-        // Cargar episodios iniciales
-        loadMoreEpisodes();
-      </script>
-    </body>
-    </html>
-  `);
-});
-
-// Ruta redirectora para películas desde /browse
-app.get('/movie-redirect', async (req, res) => {
-  const {
-    accessToken = '',
-    baseURI = '',
-    ratingKey = '',
-    title = '',
-    posterUrl = '',
-    tmdbId = '',
-    libraryKey = '',
-    libraryTitle = ''
-  } = req.query;
-  
-  // console.log('[/movie-redirect] Obteniendo datos de película desde ratingKey:', ratingKey);
+      <!-- Modal de descargas -->
+      <div id="download-modal" style="display: none; position: fixed; bottom: 20px; right: 20px; width: 450px; max-height: 600px; background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8); z-index: 9999; flex-direction: column; transition: all 0.3s ease; pointer-events: auto;">
+          
+        <!-- Header -->
+        <div id="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; border-bottom: 1px solid rgba(229, 160, 13, 0.2);">
+          <div style="flex: 1; min-width: 0;">
+            <h3 style="margin: 0; color: #e5a00d; font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gestor de Descargas</h3>
+            <p id="modal-status" style="margin: 0.25rem 0 0 0; color: #999; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">0 / 0 episodios</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-shrink: 0; margin-left: 0.75rem;">
+            <button id="minimize-btn" onclick="toggleMinimize()" style="background: transparent; border: none; color: #e5a00d; font-size: 1.5rem; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">−</button>
+            <button onclick="cancelDownloads()" style="background: transparent; border: none; color: #e5a00d; font-size: 1.3rem; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">✕</button>
+          </div>
+        </div>
+        
+        <!-- Barra de progreso -->
+        <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(229, 160, 13, 0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="color: #e5e5e5; font-size: 0.9rem; font-weight: 600;">Progreso total</span>
+            <span id="modal-progress-text" style="color: #e5a00d; font-size: 0.9rem; font-weight: 600;">0%</span>
+          </div>
+          <div style="background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden;">
+            <div id="modal-progress-fill" style="background: linear-gradient(90deg, #e5a00d 0%, #f0b825 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+        
+        <!-- Lista de episodios -->
         <div id="modal-episode-list" style="flex: 1; overflow-y: auto; padding: 1rem 1.5rem; max-height: 350px;">
           <!-- Los episodios se agregarán dinámicamente -->
         </div>
