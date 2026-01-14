@@ -3672,35 +3672,61 @@ app.get('/movie', async (req, res) => {
   let partKey = decodeURIComponent(encodedPartKey);
   
   // Log para debug
-  // console.log('[/movie] tmdbId recibido:', tmdbId);
-  // console.log('[/movie] year recibido:', year);
-  // console.log('[/movie] fileSize recibido:', fileSize);
-  // console.log('[/movie] title recibido:', title);
-  // console.log('[/movie] downloadURL:', downloadURL);
-  // console.log('[/movie] partKey recibido:', partKey);
-  // console.log('[/movie] fileName recibido:', fileName);
+  console.log('[/movie] Parámetros recibidos:', {
+    tmdbId,
+    year,
+    fileSize,
+    title,
+    downloadURL,
+    partKey: encodedPartKey,
+    fileName,
+    libraryKey,
+    libraryTitle
+  });
   
   // Si no tenemos libraryKey, intentar extraerlo del XML de Plex
-  if ((!libraryKey || !libraryTitle) && downloadURL && baseURI && accessToken) {
+  // Necesitamos el ratingKey que puede venir en downloadURL o necesitamos construir la URL
+  if ((!libraryKey || !libraryTitle) && baseURI && accessToken) {
     try {
-      const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
-      if (ratingKeyMatch) {
-        const ratingKey = ratingKeyMatch[1];
+      let ratingKey = null;
+      
+      // Intentar extraer ratingKey de downloadURL
+      if (downloadURL) {
+        const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+        if (ratingKeyMatch) {
+          ratingKey = ratingKeyMatch[1];
+        }
+      }
+      
+      // Si no hay downloadURL pero hay partKey, extraer ratingKey de partKey
+      if (!ratingKey && partKey) {
+        const ratingKeyMatch = partKey.match(/\/library\/metadata\/(\d+)/);
+        if (ratingKeyMatch) {
+          ratingKey = ratingKeyMatch[1];
+        }
+      }
+      
+      if (ratingKey) {
         const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        console.log('[/movie] Obteniendo metadata de:', metadataUrl);
         const xmlText = await httpsGetXML(metadataUrl);
         const parsedXML = parseXML(xmlText);
         
+        console.log('[/movie] MediaContainer parseado:', parsedXML.MediaContainer);
+        
         if (!libraryKey && parsedXML.MediaContainer.librarySectionID) {
           libraryKey = parsedXML.MediaContainer.librarySectionID;
-          console.log('[/movie] libraryKey extraído del XML:', libraryKey);
+          console.log('[/movie] ✅ libraryKey extraído del XML:', libraryKey);
         }
         if (!libraryTitle && parsedXML.MediaContainer.librarySectionTitle) {
           libraryTitle = parsedXML.MediaContainer.librarySectionTitle;
-          console.log('[/movie] libraryTitle extraído del XML:', libraryTitle);
+          console.log('[/movie] ✅ libraryTitle extraído del XML:', libraryTitle);
         }
+      } else {
+        console.log('[/movie] ⚠️ No se pudo extraer ratingKey de downloadURL ni partKey');
       }
     } catch (error) {
-      console.error('[/movie] Error extrayendo libraryKey del XML:', error);
+      console.error('[/movie] ❌ Error extrayendo libraryKey del XML:', error);
     }
   }
   
@@ -4304,11 +4330,11 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
-      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'"></div>
+      <div class="modal-overlay" onclick="${libraryKey ? `window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'` : 'window.history.back()'}"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
-          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'" title="Cerrar">&times;</button>
+          <button class="close-button" onclick="${libraryKey ? `window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'` : 'window.history.back()'}" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
@@ -6120,9 +6146,19 @@ app.get('/browse', async (req, res) => {
             let filteredData = itemsData.filter(item => {
               // Búsqueda: normalizar y buscar en título y sinopsis
               if (searchValue && searchValue.trim() !== '') {
+                // Función para decodificar entidades HTML
+                const decodeHTML = (text) => {
+                  if (!text) return '';
+                  const txt = document.createElement('textarea');
+                  txt.innerHTML = text;
+                  return txt.value;
+                };
+                
                 const normalizeText = (text) => {
                   if (!text) return '';
-                  return text
+                  // Primero decodificar entidades HTML
+                  const decoded = decodeHTML(text);
+                  return decoded
                     .toString()
                     .toLowerCase()
                     .normalize('NFD')
@@ -6138,18 +6174,6 @@ app.get('/browse', async (req, res) => {
                 
                 const titleMatch = titleNormalized.includes(searchNormalized);
                 const overviewMatch = overviewNormalized.includes(searchNormalized);
-                
-                // Debug temporal - eliminar después
-                if (item.title && item.title.toLowerCase().includes('pok')) {
-                  console.log('🔍 DEBUG Búsqueda:', {
-                    'Título original': item.title,
-                    'Título normalizado': titleNormalized,
-                    'Búsqueda': searchValue,
-                    'Búsqueda normalizada': searchNormalized,
-                    'Match en título': titleMatch,
-                    'Match en sinopsis': overviewMatch
-                  });
-                }
                 
                 if (!titleMatch && !overviewMatch) return false;
               }
