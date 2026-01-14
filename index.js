@@ -6109,9 +6109,19 @@ app.get('/browse', async (req, res) => {
             let filteredData = itemsIndex.filter(item => {
               // Búsqueda: solo sobre título y año (datos del índice ligero)
               if (searchValue && searchValue.trim() !== '') {
+                // Función para decodificar entidades HTML
+                const decodeHTML = (text) => {
+                  if (!text) return '';
+                  const txt = document.createElement('textarea');
+                  txt.innerHTML = text;
+                  return txt.value;
+                };
+                
                 const normalizeText = (text) => {
                   if (!text) return '';
-                  return text
+                  // Primero decodificar entidades HTML
+                  const decoded = decodeHTML(text);
+                  return decoded
                     .toString()
                     .toLowerCase()
                     .normalize('NFD')
