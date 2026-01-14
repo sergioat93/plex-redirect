@@ -2607,7 +2607,23 @@ app.get('/list', async (req, res) => {
         const libraryKey = '${libraryKey}';
         const libraryTitle = '${libraryTitle}';
         
-        // Función para volver a la página de serie
+        // Función para cerrar el modal y volver a la serie
+        function closeModal() {
+          // Redirigir a /series-redirect para obtener todos los datos de la serie
+          const params = new URLSearchParams();
+          params.set('accessToken', '${accessToken}');
+          params.set('baseURI', '${baseURI}');
+          params.set('ratingKey', '${parentRatingKey}');
+          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
+          params.set('posterUrl', '');
+          ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
+          
+          window.location.href = \`/series-redirect?\${params.toString()}\`;
+        }
+        
+        // Función para volver a la página de serie (mantener por compatibilidad)
         function goBackToSeries() {
           // Redirigir a /series-redirect para obtener todos los datos de la serie
           const params = new URLSearchParams();
@@ -2986,22 +3002,19 @@ app.get('/list', async (req, res) => {
         });
       </script>
     </head>
-    <body>
-      <!-- Hero Background (invisible, solo para efecto blur) -->
-      <div class="hero-background"></div>
+    <body style="margin: 0; padding: 0; overflow: hidden; background: #0f0f0f;">
+      <!-- Modal Overlay -->
+      <div id="modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 999; cursor: pointer;" onclick="closeModal()"></div>
       
-      <div class="container">
-        <!-- Header -->
-        <div class="header">
-          <div class="logo">
-            <div class="logo-icon">∞</div>
-            <div class="logo-text">Infinity Scrap</div>
-          </div>
-        </div>
-        
-        <!-- Series Header (Banner estilo modal de Nueva carpeta) -->
-        <div class="series-header" style="${backdropPath ? `background-image: url('${backdropPath}');` : 'background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);'}">
-          <div class="series-header-overlay">
+      <!-- Modal Content -->
+      <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow-y: auto; z-index: 1000; pointer-events: none;">
+        <div class="container" style="pointer-events: auto; max-width: 1400px; margin: 2rem auto; background: transparent;">
+          <!-- Series Header (Banner estilo modal de Nueva carpeta) -->
+          <div class="series-header" style="${backdropPath ? `background-image: url('${backdropPath}');` : 'background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);'} border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);">
+            <!-- Botón cerrar -->
+            <button onclick="closeModal()" style="position: absolute; top: 1rem; right: 1rem; background: rgba(0, 0, 0, 0.7); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; width: 40px; height: 40px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; transition: all 0.2s; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1;" onmouseover="this.style.background='rgba(229, 160, 13, 0.9)'; this.style.color='#000'; this.style.transform='scale(1.1)';" onmouseout="this.style.background='rgba(0, 0, 0, 0.7)'; this.style.color='#fff'; this.style.transform='scale(1)';">&times;</button>
+            
+            <div class="series-header-overlay">
             <!-- Títulos -->
             <div class="series-titles">
               <h1>${seriesTitle}</h1>
@@ -3015,33 +3028,28 @@ app.get('/list', async (req, res) => {
               
               <!-- Info -->
               <div class="series-info">
-                <!-- Meta badges -->
-                <div class="series-meta">
+                <!-- Meta badges e iconos en la misma fila -->
+                <div class="series-meta" style="align-items: center;">
                   <span class="episodes-count-badge">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
                   ${totalSizeFormatted ? `<span class="meta-badge">${totalSizeFormatted}</span>` : ''}
                   ${seasonYear ? `<span class="meta-badge">${seasonYear}</span>` : ''}
-                </div>
-                
-                <!-- External links (TMDB, IMDB, YouTube) -->
-                ${(seasonInfo && seasonInfo.tmdbId) || imdbId || trailerKey ? `
-                <div class="series-meta">
+                  
                   ${seasonInfo && seasonInfo.tmdbId ? `
-                    <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB">
+                    <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-flex; align-items: center;">
                       <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                     </a>
                   ` : ''}
                   ${imdbId ? `
-                    <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb">
+                    <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-flex; align-items: center;">
                       <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                     </a>
                   ` : ''}
                   ${trailerKey ? `
-                    <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer">
+                    <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-flex; align-items: center;">
                       <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                     </a>
                   ` : ''}
                 </div>
-                ` : ''}
                 
                 <!-- Synopsis -->
                 ${seasonSummary ? `
@@ -3061,22 +3069,6 @@ app.get('/list', async (req, res) => {
                     </svg>
                     Descargar Temporada Completa
                   </button>
-                  
-                  ${parentRatingKey ? `
-                  <button onclick="goBackToSeries()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 1.5rem; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.3s ease; width: 100%;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-                    </svg>
-                    Volver a Serie
-                  </button>
-                  ` : `
-                  <button onclick="window.history.back()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.75rem 1.5rem; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.3s ease; width: 100%;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-                    </svg>
-                    Volver
-                  </button>
-                  `}
                 </div>
                 
                 <!-- Progress indicator -->
