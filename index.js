@@ -3723,7 +3723,19 @@ app.get('/movie', async (req, res) => {
           console.log('[/movie] ✅ libraryTitle extraído del XML:', libraryTitle);
         }
       } else {
-        console.log('[/movie] ⚠️ No se pudo extraer ratingKey de downloadURL ni partKey');
+        console.log('[/movie] ⚠️ No se pudo extraer ratingKey, buscando primera biblioteca de películas...');
+        
+        // Si no pudimos extraer del XML, obtener la primera biblioteca de películas
+        const librariesUrl = `${baseURI}/library/sections?X-Plex-Token=${accessToken}`;
+        const librariesXml = await httpsGetXML(librariesUrl);
+        
+        // Buscar la primera biblioteca de tipo "movie"
+        const movieLibraryMatch = librariesXml.match(/<Directory[^>]*type="movie"[^>]*key="([^"]*)"[^>]*title="([^"]*)"/);
+        if (movieLibraryMatch) {
+          libraryKey = movieLibraryMatch[1];
+          libraryTitle = movieLibraryMatch[2];
+          console.log('[/movie] ✅ Usando primera biblioteca de películas:', libraryKey, libraryTitle);
+        }
       }
     } catch (error) {
       console.error('[/movie] ❌ Error extrayendo libraryKey del XML:', error);
@@ -4330,11 +4342,11 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
-      <div class="modal-overlay" onclick="${libraryKey ? `window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'` : 'window.history.back()'}"></div>
+      <div class="modal-overlay" onclick="closeMovieModal()"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
-          <button class="close-button" onclick="${libraryKey ? `window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'` : 'window.history.back()'}" title="Cerrar">&times;</button>
+          <button class="close-button" onclick="closeMovieModal()" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
@@ -4462,6 +4474,28 @@ app.get('/movie', async (req, res) => {
       </div>
       
       <script>
+        function closeMovieModal() {
+          const libraryKey = '${libraryKey}';
+          const libraryTitle = '${libraryTitle.replace(/'/g, "\\'")}';
+          const accessToken = '${accessToken}';
+          const baseURI = '${baseURI}';
+          
+          if (libraryKey && accessToken && baseURI) {
+            const libraryTitleParam = libraryTitle || 'Movies';
+            window.location.href = '/browse?accessToken=' + encodeURIComponent(accessToken) + 
+                                   '&baseURI=' + encodeURIComponent(baseURI) + 
+                                   '&libraryKey=' + encodeURIComponent(libraryKey) + 
+                                   '&libraryTitle=' + encodeURIComponent(libraryTitleParam) + 
+                                   '&libraryType=movie';
+          } else if (accessToken && baseURI) {
+            // Si no hay libraryKey, ir a la página de selección de bibliotecas
+            window.location.href = '/library?accessToken=' + encodeURIComponent(accessToken) + 
+                                   '&baseURI=' + encodeURIComponent(baseURI);
+          } else {
+            window.history.back();
+          }
+        }
+        
         function toggleTechnical() {
           const content = document.getElementById('technical-content');
           const button = document.getElementById('technical-toggle');
