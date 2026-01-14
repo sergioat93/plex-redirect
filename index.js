@@ -5985,7 +5985,7 @@ app.get('/browse', async (req, res) => {
             
             try {
               currentPage++;
-              const response = await fetch(`/api/browse/page?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&page=${currentPage}`);
+              const response = await fetch('/api/browse/page?accessToken=' + encodeURIComponent(accessToken) + '&baseURI=' + encodeURIComponent(baseURI) + '&libraryKey=' + libraryKey + '&page=' + currentPage);
               const data = await response.json();
               
               if (data.items && data.items.length > 0) {
