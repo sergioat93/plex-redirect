@@ -5590,6 +5590,211 @@ app.get('/browse', async (req, res) => {
           .navbar-links a.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.15); font-weight: 600; }
           .navbar-controls { display: flex; gap: 1rem; align-items: center; }
           
+          /* Mobile Search Bar */
+          .mobile-search-bar {
+            display: none;
+            background: var(--bg-secondary);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 60px;
+            z-index: 999;
+          }
+
+          .mobile-search-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+
+          .mobile-search-wrapper input {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.875rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.9375rem;
+            text-align: center;
+            font-weight: 500;
+            transition: text-align 0.2s ease;
+            cursor: pointer;
+          }
+
+          .mobile-search-wrapper input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            text-align: left;
+            cursor: text;
+          }
+
+          .mobile-search-wrapper input::placeholder {
+            color: var(--primary-color);
+            opacity: 1;
+            font-weight: 600;
+            text-align: center;
+          }
+
+          .mobile-search-wrapper input:focus::placeholder {
+            opacity: 0;
+          }
+
+          .mobile-search-btn,
+          .mobile-filter-btn {
+            background: var(--primary-color);
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            color: #000;
+            font-size: 1.125rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+          }
+
+          .mobile-search-btn:hover,
+          .mobile-filter-btn:hover {
+            background: var(--primary-dark);
+          }
+
+          /* Filters Overlay */
+          .filters-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+          }
+
+          .filters-overlay.active {
+            display: block;
+            opacity: 1;
+          }
+
+          /* Mobile Filters Sidebar */
+          .filters-sidebar {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 85%;
+            max-width: 350px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            z-index: 2000;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+            box-shadow: -4px 0 12px rgba(0, 0, 0, 0.5);
+          }
+
+          .filters-sidebar.active {
+            right: 0;
+          }
+
+          .filters-sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 10;
+          }
+
+          .filters-sidebar-header h3 {
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          }
+
+          .filters-sidebar-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            transition: color 0.2s;
+          }
+
+          .filters-sidebar-close:hover {
+            color: var(--primary-color);
+          }
+
+          .filters-sidebar-content {
+            padding: 1.5rem;
+          }
+
+          .filter-section {
+            margin-bottom: 1.5rem;
+          }
+
+          .filter-section-title {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+          }
+
+          .filter-section select {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+          }
+
+          .filter-section select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+          }
+
+          .sidebar-search-box {
+            position: relative;
+            width: 100%;
+          }
+
+          .sidebar-search-box input {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+          }
+
+          .sidebar-search-box input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+          }
+
+          .sidebar-search-box i {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            pointer-events: none;
+          }
+
           /* Dropdown moderno */
           .dropdown-container { position: relative; display: inline-flex; }
           .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; }
@@ -5761,6 +5966,9 @@ app.get('/browse', async (req, res) => {
           
           /* Tablet portrait and below */
           @media (max-width: 768px) {
+            .mobile-search-bar { display: block; }
+            .library-controls { display: none; }
+            
             .navbar .container { padding: 0.5rem 1rem; }
             .nav-content { gap: 0.5rem; }
             .logo-title { font-size: 1.2rem; }
@@ -5960,6 +6168,67 @@ app.get('/browse', async (req, res) => {
             </div>
           </div>
         </nav>
+        
+        <!-- Mobile Search Bar -->
+        <div class="mobile-search-bar">
+          <div class="mobile-search-wrapper">
+            <input type="text" id="search-input-mobile" placeholder="0 películas" readonly>
+            <button class="mobile-search-btn" id="mobile-search-btn" aria-label="Buscar">
+              <i class="fas fa-search"></i>
+            </button>
+            <button class="mobile-filter-btn" id="mobile-filter-btn" aria-label="Abrir filtros">
+              <i class="fas fa-filter"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile Filters Sidebar -->
+        <div class="filters-overlay" id="filters-overlay"></div>
+        <aside class="filters-sidebar" id="filters-sidebar">
+          <div class="filters-sidebar-header">
+            <h3><i class="fas fa-filter"></i> Filtros</h3>
+            <button class="filters-sidebar-close" id="filters-sidebar-close" aria-label="Cerrar filtros">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="filters-sidebar-content">
+            <div class="filter-section">
+              <div class="filter-section-title">BÚSQUEDA</div>
+              <div class="sidebar-search-box">
+                <input type="text" id="search-input-sidebar" placeholder="Buscar películas...">
+                <i class="fas fa-search"></i>
+              </div>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">GÉNERO</div>
+              <select id="genre-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los géneros</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">AÑO</div>
+              <select id="year-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los años</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">PAÍS</div>
+              <select id="country-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los países</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">VALORACIÓN</div>
+              <select id="rating-filter-mobile" class="filter-select-mobile">
+                <option value="">Todas las valoraciones</option>
+                <option value="9">⭐ 9.0+</option>
+                <option value="8">⭐ 8.0+</option>
+                <option value="7">⭐ 7.0+</option>
+                <option value="6">⭐ 6.0+</option>
+              </select>
+            </div>
+          </div>
+        </aside>
         
         <!-- Library Controls -->
         <div class="library-controls">
@@ -6225,6 +6494,133 @@ app.get('/browse', async (req, res) => {
             })
             .catch(e => console.error('Error loading libraries:', e));
           
+          // **MOBILE SEARCH & FILTERS**
+          const mobileSearchInput = document.getElementById('search-input-mobile');
+          const mobileSearchBtn = document.getElementById('mobile-search-btn');
+          const mobileFilterBtn = document.getElementById('mobile-filter-btn');
+          const filtersSidebar = document.getElementById('filters-sidebar');
+          const filtersOverlay = document.getElementById('filters-overlay');
+          const filtersSidebarClose = document.getElementById('filters-sidebar-close');
+          const searchInputSidebar = document.getElementById('search-input-sidebar');
+          
+          // Mobile search input - click para abrir sidebar de búsqueda
+          if (mobileSearchInput) {
+            mobileSearchInput.addEventListener('click', () => {
+              openFiltersSidebar();
+              setTimeout(() => {
+                if (searchInputSidebar) {
+                  searchInputSidebar.focus();
+                  searchInputSidebar.removeAttribute('readonly');
+                }
+              }, 300);
+            });
+          }
+          
+          // Mobile search button - ejecuta búsqueda o limpia
+          if (mobileSearchBtn) {
+            mobileSearchBtn.addEventListener('click', () => {
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch && desktopSearch.value.trim()) {
+                // Si hay búsqueda activa, limpiarla
+                desktopSearch.value = '';
+                desktopSearch.dispatchEvent(new Event('input'));
+                if (searchInputSidebar) searchInputSidebar.value = '';
+              }
+            });
+          }
+          
+          // Mobile filter button - abre sidebar
+          if (mobileFilterBtn) {
+            mobileFilterBtn.addEventListener('click', openFiltersSidebar);
+          }
+          
+          // Cerrar sidebar
+          if (filtersSidebarClose) {
+            filtersSidebarClose.addEventListener('click', closeFiltersSidebar);
+          }
+          
+          if (filtersOverlay) {
+            filtersOverlay.addEventListener('click', closeFiltersSidebar);
+          }
+          
+          function openFiltersSidebar() {
+            if (filtersSidebar) filtersSidebar.classList.add('active');
+            if (filtersOverlay) filtersOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+          }
+          
+          function closeFiltersSidebar() {
+            if (filtersSidebar) filtersSidebar.classList.remove('active');
+            if (filtersOverlay) filtersOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+          }
+          
+          // Sincronizar búsqueda sidebar con desktop
+          if (searchInputSidebar) {
+            searchInputSidebar.addEventListener('input', (e) => {
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch) {
+                desktopSearch.value = e.target.value;
+                desktopSearch.dispatchEvent(new Event('input'));
+              }
+            });
+          }
+          
+          // Sincronizar filtros móviles con desktop
+          const genreFilterMobile = document.getElementById('genre-filter-mobile');
+          const yearFilterMobile = document.getElementById('year-filter-mobile');
+          const countryFilterMobile = document.getElementById('country-filter-mobile');
+          const ratingFilterMobile = document.getElementById('rating-filter-mobile');
+          
+          if (genreFilterMobile) {
+            genreFilterMobile.addEventListener('change', (e) => {
+              const desktopGenre = document.getElementById('genre-filter');
+              if (desktopGenre) {
+                desktopGenre.value = e.target.value;
+                desktopGenre.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (yearFilterMobile) {
+            yearFilterMobile.addEventListener('change', (e) => {
+              const desktopYear = document.getElementById('year-filter');
+              if (desktopYear) {
+                desktopYear.value = e.target.value;
+                desktopYear.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (countryFilterMobile) {
+            countryFilterMobile.addEventListener('change', (e) => {
+              const desktopCountry = document.getElementById('country-filter');
+              if (desktopCountry) {
+                desktopCountry.value = e.target.value;
+                desktopCountry.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (ratingFilterMobile) {
+            ratingFilterMobile.addEventListener('change', (e) => {
+              const desktopRating = document.getElementById('rating-filter');
+              if (desktopRating) {
+                desktopRating.value = e.target.value;
+                desktopRating.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          // **CONTADOR DINÁMICO**: Actualizar contador en mobile search bar
+          function updateMobileSearchCounter(count) {
+            const mobileSearchInput = document.getElementById('search-input-mobile');
+            if (mobileSearchInput) {
+              const label = '${libraryType}' === 'movie' ? 'películas' : 'series';
+              mobileSearchInput.placeholder = count + ' ' + label;
+            }
+          }
+
           // **FILTROS DINÁMICOS**: Actualizar opciones de filtros basados en items filtrados
           function updateDynamicFilters(filteredItems) {
             // Obtener valores actuales seleccionados
@@ -6266,6 +6662,12 @@ app.get('/browse', async (req, res) => {
               ).join('');
             genreFilter.innerHTML = genreOptions;
             
+            // Sincronizar con móvil
+            const genreFilterMobile = document.getElementById('genre-filter-mobile');
+            if (genreFilterMobile) {
+              genreFilterMobile.innerHTML = genreOptions;
+            }
+            
             // Actualizar filtro de año
             const yearFilter = document.getElementById('year-filter');
             const yearOptions = '<option value="">Años</option>' + 
@@ -6274,6 +6676,12 @@ app.get('/browse', async (req, res) => {
               ).join('');
             yearFilter.innerHTML = yearOptions;
             
+            // Sincronizar con móvil
+            const yearFilterMobile = document.getElementById('year-filter-mobile');
+            if (yearFilterMobile) {
+              yearFilterMobile.innerHTML = yearOptions;
+            }
+            
             // Actualizar filtro de país
             const countryFilter = document.getElementById('country-filter');
             const countryOptions = '<option value="">Países</option>' + 
@@ -6281,6 +6689,12 @@ app.get('/browse', async (req, res) => {
                 \`<option value="\${country}" \${country === currentCountry ? 'selected' : ''}>\${country}</option>\`
               ).join('');
             countryFilter.innerHTML = countryOptions;
+            
+            // Sincronizar con móvil
+            const countryFilterMobile = document.getElementById('country-filter-mobile');
+            if (countryFilterMobile) {
+              countryFilterMobile.innerHTML = countryOptions;
+            }
           }
           
           // Filtrar y ordenar sobre el índice ligero
@@ -6395,6 +6809,9 @@ app.get('/browse', async (req, res) => {
             
             // Actualizar contador
             document.getElementById('footer-count').textContent = '(' + filteredData.length + ' ${libraryType === 'movie' ? 'películas' : 'series'}' + ')';
+            
+            // Actualizar contador móvil
+            updateMobileSearchCounter(filteredData.length);
           }
           
           // Cargar datos completos del servidor y renderizar
@@ -6585,6 +7002,9 @@ app.get('/browse', async (req, res) => {
           // Initialize with "Recientes" filter and apply
           document.getElementById('sort-filter').value = 'added-desc';
           applyFilters();
+          
+          // Inicializar contador móvil
+          updateMobileSearchCounter(itemsIndex.length);
           
           // Hide loading screen
           document.getElementById('loading-screen').style.display = 'none';
