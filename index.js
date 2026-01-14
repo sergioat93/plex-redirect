@@ -5865,8 +5865,20 @@ app.get('/browse', async (req, res) => {
         </main>
         
         <script>
-          // Datos en JSON para generación dinámica
-          const itemsData = ${JSON.stringify(items)};
+          // ENFOQUE HÍBRIDO: Primer lote de 50 items completos + índice ligero de todos
+          const itemsData = ${JSON.stringify(items.slice(0, 50))};
+          const itemsIndex = ${JSON.stringify(items.map(item => ({
+            id: item.ratingKey,
+            title: item.title,
+            year: item.year || '',
+            genres: item.genres || [],
+            rating: item.rating || 0,
+            thumb: item.thumb || '',
+            ratingKey: item.ratingKey,
+            tmdbId: item.tmdbId || '',
+            countries: item.countries || [],
+            addedAt: item.addedAt || 0
+          })))};
           const accessToken = '${accessToken}';
           const baseURI = '${baseURI}';
           const libraryType = '${libraryType}';
@@ -5951,49 +5963,21 @@ app.get('/browse', async (req, res) => {
             return Array.from(grid.querySelectorAll('.movie-card'));
           }
           
-          // Generar primer lote de tarjetas
-          allCards = renderBatch(0, BATCH_SIZE);
-          currentDisplayedIndex = BATCH_SIZE;
+          // Generar primer lote de tarjetas desde los datos cargados
+          window.filteredItemIds = itemsIndex.map(item => item.ratingKey);
+          loadAndRenderBatch(0, Math.min(BATCH_SIZE, itemsIndex.length));
           
-          // Cargar más tarjetas al hacer scroll
+          // Cargar más tarjetas al hacer scroll (sin uso ahora, usamos loadAndRenderBatch)
           function loadMoreCards() {
-            if (isLoading || currentDisplayedIndex >= itemsData.length) return;
-            isLoading = true;
-            
-            const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, itemsData.length);
-            const newCards = renderBatch(currentDisplayedIndex, endIndex);
-            allCards = allCards.concat(newCards);
-            currentDisplayedIndex = endIndex;
-            isLoading = false;
-            
-            // Configurar observer en la última tarjeta nueva
-            if (currentDisplayedIndex < itemsData.length) {
-              setupScrollObserver();
-            }
+            // Esta función ya no se usa, se maneja con loadAndRenderBatch
           }
           
-          // Observer para detectar scroll al final
+          // Observer para detectar scroll al final (sin uso ahora)
           function setupScrollObserver() {
-            if (observer) observer.disconnect();
-            
-            const lastCard = allCards[allCards.length - 1];
-            if (!lastCard) return;
-            
-            observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                  loadMoreCards();
-                }
-              });
-            }, {
-              rootMargin: '200px'
-            });
-            
-            observer.observe(lastCard);
+            // Esta función ya no se usa, se maneja con setupFilteredScrollObserver
           }
           
-          // Iniciar observer
-          setupScrollObserver();
+          // No iniciar observer al principio, se maneja con applyFilters
           
           // Load all libraries and show them in navbar with overflow dropdown
           fetch('${baseURI}/library/sections?X-Plex-Token=${accessToken}')
@@ -6113,7 +6097,7 @@ app.get('/browse', async (req, res) => {
             countryFilter.innerHTML = countryOptions;
           }
           
-          // Filtrar y ordenar sobre los datos JSON
+          // Filtrar y ordenar sobre el índice ligero
           function applyFilters() {
             const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
@@ -6121,40 +6105,30 @@ app.get('/browse', async (req, res) => {
             const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
-            // Filtrar sobre los datos JSON completos
-            let filteredData = itemsData.filter(item => {
-              // Búsqueda: normalizar y buscar en título y sinopsis
+            // Filtrar sobre el índice completo (22k items, búsqueda instantánea)
+            let filteredData = itemsIndex.filter(item => {
+              // Búsqueda: solo sobre título y año (datos del índice ligero)
               if (searchValue && searchValue.trim() !== '') {
-                // Función para decodificar entidades HTML
-                const decodeHTML = (text) => {
-                  if (!text) return '';
-                  const txt = document.createElement('textarea');
-                  txt.innerHTML = text;
-                  return txt.value;
-                };
-                
                 const normalizeText = (text) => {
                   if (!text) return '';
-                  // Primero decodificar entidades HTML
-                  const decoded = decodeHTML(text);
-                  return decoded
+                  return text
                     .toString()
                     .toLowerCase()
                     .normalize('NFD')
-                    .replace(/[\u0300-\u036f]/g, '') // Elimina tildes y diacríticos
-                    .replace(/[^a-z0-9\s]/g, ' ') // Convierte caracteres especiales en espacios
-                    .replace(/\s+/g, ' ') // Normaliza espacios múltiples a uno solo
-                    .trim(); // Elimina espacios al inicio y final
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9\s]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
                 };
                 
                 const searchNormalized = normalizeText(searchValue);
                 const titleNormalized = normalizeText(item.title);
-                const overviewNormalized = normalizeText(item.overview);
+                const yearNormalized = normalizeText(item.year);
                 
                 const titleMatch = titleNormalized.includes(searchNormalized);
-                const overviewMatch = overviewNormalized.includes(searchNormalized);
+                const yearMatch = yearNormalized.includes(searchNormalized);
                 
-                if (!titleMatch && !overviewMatch) return false;
+                if (!titleMatch && !yearMatch) return false;
               }
               
               // Filtro de género - comparación directa con array
@@ -6206,34 +6180,73 @@ app.get('/browse', async (req, res) => {
               }
             });
             
-            // Limpiar grid y regenerar con datos filtrados
+            // Limpiar grid y regenerar con IDs filtrados
             const grid = document.getElementById('movies-grid');
             grid.innerHTML = '';
             
-            // Actualizar itemsData temporal con filtrados
-            window.filteredItems = filteredData;
+            // Guardar IDs filtrados para cargar datos completos bajo demanda
+            window.filteredItemIds = filteredData.map(item => item.ratingKey);
             
             // Resetear lazy loading
             if (observer) observer.disconnect();
             currentDisplayedIndex = 0;
             allCards = [];
             
-            // Renderizar primer lote
+            // Renderizar primer lote (cargar datos completos si no los tenemos)
             if (filteredData.length > 0) {
-              const firstBatch = filteredData.slice(0, BATCH_SIZE);
-              const htmlArray = firstBatch.map(item => createCardHTML(item));
-              grid.innerHTML = htmlArray.join('');
-              allCards = Array.from(grid.querySelectorAll('.movie-card'));
-              currentDisplayedIndex = BATCH_SIZE;
-              
-              // Configurar observer si hay más
-              if (filteredData.length > BATCH_SIZE) {
-                setupFilteredScrollObserver();
-              }
+              loadAndRenderBatch(0, Math.min(BATCH_SIZE, filteredData.length));
             }
             
             // Actualizar contador
             document.getElementById('footer-count').textContent = '(' + filteredData.length + ' ${libraryType === 'movie' ? 'películas' : 'series'}' + ')';
+          }
+          
+          // Cargar datos completos del servidor y renderizar
+          async function loadAndRenderBatch(startIndex, endIndex) {
+            const idsToLoad = window.filteredItemIds.slice(startIndex, endIndex);
+            
+            // Buscar en itemsData los que ya tenemos
+            const itemsToRender = [];
+            const missingIds = [];
+            
+            idsToLoad.forEach(id => {
+              const existing = itemsData.find(item => item.ratingKey === id);
+              if (existing) {
+                itemsToRender.push(existing);
+              } else {
+                missingIds.push(id);
+              }
+            });
+            
+            // Si faltan datos, cargar del servidor (TODO: implementar endpoint)
+            // Por ahora, crear datos mínimos desde el índice
+            if (missingIds.length > 0) {
+              missingIds.forEach(id => {
+                const indexItem = itemsIndex.find(item => item.ratingKey === id);
+                if (indexItem) {
+                  itemsToRender.push({
+                    ...indexItem,
+                    summary: '',
+                    overview: '',
+                    collections: [],
+                    genres: indexItem.genres || [],
+                    countries: indexItem.countries || []
+                  });
+                }
+              });
+            }
+            
+            // Renderizar
+            const grid = document.getElementById('movies-grid');
+            const htmlArray = itemsToRender.map(item => createCardHTML(item));
+            grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
+            allCards = Array.from(grid.querySelectorAll('.movie-card'));
+            currentDisplayedIndex = endIndex;
+            
+            // Configurar observer si hay más
+            if (endIndex < window.filteredItemIds.length) {
+              setupFilteredScrollObserver();
+            }
           }
           
           // Observer para scroll con datos filtrados
@@ -6247,21 +6260,12 @@ app.get('/browse', async (req, res) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && !isLoading) {
                   isLoading = true;
-                  const filteredData = window.filteredItems || itemsData;
-                  const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, filteredData.length);
-                  const batch = filteredData.slice(currentDisplayedIndex, endIndex);
+                  const totalFiltered = window.filteredItemIds.length;
+                  const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, totalFiltered);
                   
-                  const grid = document.getElementById('movies-grid');
-                  const htmlArray = batch.map(item => createCardHTML(item));
-                  grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
-                  
-                  allCards = Array.from(grid.querySelectorAll('.movie-card'));
-                  currentDisplayedIndex = endIndex;
-                  isLoading = false;
-                  
-                  if (currentDisplayedIndex < filteredData.length) {
-                    setupFilteredScrollObserver();
-                  }
+                  loadAndRenderBatch(currentDisplayedIndex, endIndex).then(() => {
+                    isLoading = false;
+                  });
                 }
               });
             }, {
