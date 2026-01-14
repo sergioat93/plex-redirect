@@ -5603,10 +5603,6 @@ app.get('/browse', async (req, res) => {
                   <option value="">Años</option>
                   ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
                 </select>
-                <select id="collection-filter" class="filter-select" style="display: ${libraryType === 'movie' && uniqueCollections.length > 0 ? 'inline-block' : 'none'};">
-                  <option value="">Colecciones</option>
-                  ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
-                </select>
                 <select id="country-filter" class="filter-select">
                   <option value="">Países</option>
                   ${uniqueCountries.map(co => `<option value="${co}">${co}</option>`).join('')}
@@ -5850,20 +5846,32 @@ app.get('/browse', async (req, res) => {
             // Obtener valores actuales seleccionados
             const currentGenre = document.getElementById('genre-filter').value;
             const currentYear = document.getElementById('year-filter').value;
-            const currentCollection = document.getElementById('collection-filter').value;
             const currentCountry = document.getElementById('country-filter').value;
             
             // Extraer valores disponibles de items filtrados
             const availableGenres = new Set();
             const availableYears = new Set();
-            const availableCollections = new Set();
             const availableCountries = new Set();
             
             filteredItems.forEach(item => {
-              if (item.genres) item.genres.forEach(g => availableGenres.add(g));
-              if (item.year) availableYears.add(item.year);
-              if (item.collections) item.collections.forEach(c => availableCollections.add(c));
-              if (item.countries) item.countries.forEach(co => availableCountries.add(co));
+              // Géneros
+              if (Array.isArray(item.genres)) {
+                item.genres.forEach(g => availableGenres.add(g));
+              }
+              
+              // Años
+              if (item.year) availableYears.add(item.year.toString());
+              
+              // Países
+              if (item.countries) {
+                const countriesArray = Array.isArray(item.countries) 
+                  ? item.countries 
+                  : item.countries.split(',').map(c => c.trim());
+                countriesArray.forEach(country => {
+                  const trimmed = typeof country === 'string' ? country.trim() : country;
+                  if (trimmed) availableCountries.add(trimmed);
+                });
+              }
             });
             
             // Actualizar filtro de género
@@ -5882,17 +5890,6 @@ app.get('/browse', async (req, res) => {
               ).join('');
             yearFilter.innerHTML = yearOptions;
             
-            // Actualizar filtro de colección (solo para películas)
-            if ('${libraryType}' === 'movie' && availableCollections.size > 0) {
-              const collectionFilter = document.getElementById('collection-filter');
-              const collectionOptions = '<option value="">Colecciones</option>' + 
-                Array.from(availableCollections).sort().map(collection => 
-                  \`<option value="\${collection}" \${collection === currentCollection ? 'selected' : ''}>\${collection}</option>\`
-                ).join('');
-              collectionFilter.innerHTML = collectionOptions;
-              collectionFilter.style.display = 'inline-block';
-            }
-            
             // Actualizar filtro de país
             const countryFilter = document.getElementById('country-filter');
             const countryOptions = '<option value="">Países</option>' + 
@@ -5907,27 +5904,24 @@ app.get('/browse', async (req, res) => {
             const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
-            const collectionValue = document.getElementById('collection-filter').value;
             const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
-            
-            // Función para normalizar texto (eliminar tildes y caracteres especiales) - SOLO PARA BÚSQUEDA
-            const normalizeText = (text) => {
-              if (!text) return '';
-              return text
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
-                .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
-            };
             
             // Filtrar sobre los datos JSON completos
             let filteredData = itemsData.filter(item => {
               // Búsqueda: normalizar y buscar en título y sinopsis
               if (searchValue && searchValue.trim() !== '') {
+                const normalizeText = (text) => {
+                  return text
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '') // Elimina tildes
+                    .replace(/[^a-z0-9 ]/g, ''); // Elimina caracteres especiales
+                };
+                
                 const searchNormalized = normalizeText(searchValue.trim());
-                const titleMatch = normalizeText(item.title || '').includes(searchNormalized);
-                const overviewMatch = normalizeText(item.overview || '').includes(searchNormalized);
+                const titleMatch = item.title && normalizeText(item.title).includes(searchNormalized);
+                const overviewMatch = item.overview && normalizeText(item.overview).includes(searchNormalized);
                 if (!titleMatch && !overviewMatch) return false;
               }
               
@@ -5940,12 +5934,6 @@ app.get('/browse', async (req, res) => {
               // Filtro de año - comparación directa
               if (yearValue) {
                 if (item.year !== yearValue && item.year !== parseInt(yearValue)) return false;
-              }
-              
-              // Filtro de colección - buscar en el array de colecciones de Plex
-              if (collectionValue) {
-                const itemCollections = Array.isArray(item.collections) ? item.collections : [];
-                if (!itemCollections.includes(collectionValue)) return false;
               }
               
               // Filtro de país - comparación directa con array
