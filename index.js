@@ -1,7 +1,7 @@
 const express = require('express');
 const https = require('https');
-const compression = require('compression');
-const NodeCache = require('node-cache');
+// const compression = require('compression');
+// const NodeCache = require('node-cache');
 const app = express();
 
 // ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
@@ -13,12 +13,16 @@ const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
 // ========================================
 
 // 1. Compresión gzip/brotli para todas las respuestas
-app.use(compression());
+// app.use(compression());
 
 // 2. Cache en memoria (node-cache)
 // TTL: 24 horas para TMDB, 1 hora para XML de Plex
-const tmdbCache = new NodeCache({ stdTTL: 86400, checkperiod: 3600 }); // 24h
-const plexCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 }); // 1h
+// const tmdbCache = new NodeCache({ stdTTL: 86400, checkperiod: 3600 }); // 24h
+// const plexCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 }); // 1h
+
+// Cache simple en memoria sin dependencias
+const tmdbCache = new Map();
+const plexCache = new Map();
 
 // 3. Connection pooling - reutilizar conexiones HTTPS
 const httpsAgent = new https.Agent({
@@ -45,7 +49,11 @@ function httpsGet(url, useCache = true, cacheKey = null) {
             res.on('end', () => {
                 try {
                     const parsed = JSON.parse(data);
-                    if (useCache) tmdbCache.set(key, parsed);
+                    if (useCache) {
+                        tmdbCache.set(key, parsed);
+                        // Limpiar cache después de 24 horas
+                        setTimeout(() => tmdbCache.delete(key), 86400000);
+                    }
                     resolve(parsed);
                 } catch (e) {
                     reject(e);
@@ -68,7 +76,11 @@ function httpsGetXML(url, useCache = true) {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
-                if (useCache) plexCache.set(url, data);
+                if (useCache) {
+                    plexCache.set(url, data);
+                    // Limpiar cache después de 1 hora
+                    setTimeout(() => plexCache.delete(url), 3600000);
+                }
                 resolve(data);
             });
         }).on('error', reject);
@@ -6196,6 +6208,8 @@ app.get('/library', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  // console.log(`Servidor escuchando en el puerto ${port}`);
+const host = process.env.HOST || '0.0.0.0';
+
+app.listen(port, host, () => {
+  console.log(`✅ Servidor Infinity Scrap escuchando en http://${host}:${port}`);
 });
