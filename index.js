@@ -6106,7 +6106,6 @@ app.get('/browse', async (req, res) => {
           document.getElementById('search-input').addEventListener('input', applyFilters);
           document.getElementById('genre-filter').addEventListener('change', applyFilters);
           document.getElementById('year-filter').addEventListener('change', applyFilters);
-          document.getElementById('collection-filter').addEventListener('change', applyFilters);
           document.getElementById('country-filter').addEventListener('change', applyFilters);
           document.getElementById('sort-filter').addEventListener('change', applyFilters);
           
@@ -6114,7 +6113,6 @@ app.get('/browse', async (req, res) => {
             document.getElementById('search-input').value = '';
             document.getElementById('genre-filter').value = '';
             document.getElementById('year-filter').value = '';
-            document.getElementById('collection-filter').value = '';
             document.getElementById('country-filter').value = '';
             document.getElementById('sort-filter').value = 'added-desc';
             applyFilters();
