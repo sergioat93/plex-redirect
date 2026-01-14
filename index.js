@@ -5470,7 +5470,9 @@ app.get('/browse', async (req, res) => {
           
           /* Responsive */
           @media (max-width: 768px) {
-            .library-selector { display: none; }
+            .navbar-links a { display: none; } /* Ocultar enlaces inline */
+            .dropdown-container { display: block !important; } /* Mostrar dropdown siempre */
+            .more-btn { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
             .search-container input { width: 180px; }
             .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
             .view-controls { display: none; }
@@ -5502,9 +5504,17 @@ app.get('/browse', async (req, res) => {
                   <span class="logo-title">Infinity Scrap</span>
                 </div>
               </a>
-              <select id="library-selector" class="library-selector">
-                <!-- Las bibliotecas se cargarán dinámicamente -->
-              </select>
+              <div class="navbar-links" id="navbar-links">
+                <span id="library-links"></span>
+                <div class="dropdown-container" id="more-libraries" style="display: none;">
+                  <button class="more-btn" id="more-btn">
+                    Más <i class="fas fa-chevron-down"></i>
+                  </button>
+                  <div class="dropdown-menu" id="dropdown-menu">
+                    <!-- Bibliotecas adicionales -->
+                  </div>
+                </div>
+              </div>
               <div class="navbar-controls">
                 <div class="search-container">
                   <input type="text" id="search-input" placeholder="Buscar ${libraryTitle.toLowerCase()}...">
@@ -5717,14 +5727,19 @@ app.get('/browse', async (req, res) => {
           // Iniciar observer
           setupScrollObserver();
           
-          // Load all libraries and show them in dropdown selector
+          // Load all libraries and show them in navbar with overflow dropdown
           fetch('${baseURI}/library/sections?X-Plex-Token=${accessToken}')
             .then(r => r.text())
             .then(xmlText => {
               const parser = new DOMParser();
               const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
               const directories = xmlDoc.querySelectorAll('Directory');
-              const librarySelector = document.getElementById('library-selector');
+              const libraryLinksContainer = document.getElementById('library-links');
+              const moreLibrariesContainer = document.getElementById('more-libraries');
+              const dropdownMenu = document.getElementById('dropdown-menu');
+              const moreBtn = document.getElementById('more-btn');
+              
+              const allLibraries = [];
               
               directories.forEach(dir => {
                 const key = dir.getAttribute('key');
@@ -5732,20 +5747,43 @@ app.get('/browse', async (req, res) => {
                 const type = dir.getAttribute('type');
                 
                 if (key && title && (type === 'movie' || type === 'show')) {
-                  const option = document.createElement('option');
-                  const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + key + '&libraryTitle=' + encodeURIComponent(title) + '&libraryType=' + type;
-                  option.value = browseUrl;
-                  const icon = type === 'movie' ? '🎬' : '📺';
-                  option.textContent = icon + ' ' + title;
-                  if (title === '${libraryTitle}') option.selected = true;
-                  librarySelector.appendChild(option);
+                  allLibraries.push({ key, title, type, isActive: title === '${libraryTitle}' });
                 }
               });
               
-              // Cambiar de biblioteca al seleccionar
-              librarySelector.addEventListener('change', (e) => {
-                if (e.target.value) window.location.href = e.target.value;
+              // Mostrar primeras 3 bibliotecas inline, resto en dropdown
+              const maxVisible = 3;
+              allLibraries.forEach((lib, index) => {
+                const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                const a = document.createElement('a');
+                a.href = browseUrl;
+                a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                if (lib.isActive) a.classList.add('active');
+                
+                if (index < maxVisible) {
+                  libraryLinksContainer.appendChild(a);
+                } else {
+                  dropdownMenu.appendChild(a.cloneNode(true));
+                }
               });
+              
+              // Mostrar dropdown solo si hay bibliotecas adicionales
+              if (allLibraries.length > maxVisible) {
+                moreLibrariesContainer.style.display = 'block';
+                
+                // Toggle dropdown
+                moreBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  moreBtn.classList.toggle('active');
+                  dropdownMenu.classList.toggle('show');
+                });
+                
+                // Cerrar dropdown al hacer click fuera
+                document.addEventListener('click', () => {
+                  moreBtn.classList.remove('active');
+                  dropdownMenu.classList.remove('show');
+                });
+              }
             })
             .catch(e => console.error('Error loading libraries:', e));
           
@@ -5809,13 +5847,13 @@ app.get('/browse', async (req, res) => {
           // Filtrar y ordenar sobre los datos JSON
           function applyFilters() {
             const searchValue = document.getElementById('search-input').value; // Valor original sin toLowerCase
-            const genreValue = document.getElementById('genre-filter').value.toLowerCase();
+            const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
-            const collectionValue = document.getElementById('collection-filter').value.toLowerCase();
-            const countryValue = document.getElementById('country-filter').value.toLowerCase();
+            const collectionValue = document.getElementById('collection-filter').value;
+            const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
-            // Función para normalizar texto (eliminar tildes y caracteres especiales)
+            // Función para normalizar texto (eliminar tildes)
             const normalizeText = (text) => {
               if (!text) return '';
               return text
@@ -5826,23 +5864,39 @@ app.get('/browse', async (req, res) => {
             
             // Filtrar sobre los datos JSON completos
             let filteredData = itemsData.filter(item => {
-              const genres = item.genres ? item.genres.map(g => g.toLowerCase()).join(',') : '';
+              const genres = item.genres ? item.genres : [];
               const year = item.year;
-              const collections = item.collections ? item.collections.map(c => c.toLowerCase()).join(',') : '';
-              const countries = item.countries ? item.countries.map(c => c.toLowerCase()).join(',') : '';
+              const collections = item.collections ? item.collections : [];
+              const countries = item.countries ? item.countries : [];
               
               // Búsqueda mejorada: normalizar y buscar en título y sinopsis
               if (searchValue && searchValue.trim() !== '') {
-                const searchNormalized = normalizeText(searchValue);
+                const searchNormalized = normalizeText(searchValue.trim());
                 const titleMatch = normalizeText(item.title || '').includes(searchNormalized);
                 const overviewMatch = normalizeText(item.overview || '').includes(searchNormalized);
                 if (!titleMatch && !overviewMatch) return false;
               }
               
-              if (genreValue && !genres.includes(genreValue)) return false;
+              // Filtro de género
+              if (genreValue) {
+                const hasGenre = genres.some(g => normalizeText(g) === normalizeText(genreValue));
+                if (!hasGenre) return false;
+              }
+              
+              // Filtro de año
               if (yearValue && year !== yearValue) return false;
-              if (collectionValue && !collections.includes(collectionValue)) return false;
-              if (countryValue && !countries.includes(countryValue)) return false;
+              
+              // Filtro de colección
+              if (collectionValue) {
+                const hasCollection = collections.some(c => normalizeText(c) === normalizeText(collectionValue));
+                if (!hasCollection) return false;
+              }
+              
+              // Filtro de país
+              if (countryValue) {
+                const hasCountry = countries.some(co => normalizeText(co) === normalizeText(countryValue));
+                if (!hasCountry) return false;
+              }
               
               return true;
             });
