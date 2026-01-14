@@ -1,20 +1,52 @@
 const express = require('express');
 const https = require('https');
+const compression = require('compression');
+const NodeCache = require('node-cache');
 const app = express();
 
 // ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
 // Obtén una gratis en: https://www.themoviedb.org/settings/api
 const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
 
-// Función helper para hacer requests HTTPS que devuelve JSON
-function httpsGet(url) {
+// ========================================
+// OPTIMIZACIONES DE RENDIMIENTO
+// ========================================
+
+// 1. Compresión gzip/brotli para todas las respuestas
+app.use(compression());
+
+// 2. Cache en memoria (node-cache)
+// TTL: 24 horas para TMDB, 1 hora para XML de Plex
+const tmdbCache = new NodeCache({ stdTTL: 86400, checkperiod: 3600 }); // 24h
+const plexCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 }); // 1h
+
+// 3. Connection pooling - reutilizar conexiones HTTPS
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 60000,
+  keepAliveMsecs: 30000
+});
+
+// Función helper para hacer requests HTTPS que devuelve JSON (con cache)
+function httpsGet(url, useCache = true, cacheKey = null) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
+        // Intentar obtener del cache si está habilitado
+        const key = cacheKey || url;
+        if (useCache) {
+            const cached = tmdbCache.get(key);
+            if (cached) return resolve(cached);
+        }
+        
+        https.get(url, { agent: httpsAgent }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
-                    resolve(JSON.parse(data));
+                    const parsed = JSON.parse(data);
+                    if (useCache) tmdbCache.set(key, parsed);
+                    resolve(parsed);
                 } catch (e) {
                     reject(e);
                 }
@@ -23,15 +55,61 @@ function httpsGet(url) {
     });
 }
 
-// Función helper para hacer requests HTTPS que devuelve texto plano (XML)
-function httpsGetXML(url) {
+// Función helper para hacer requests HTTPS que devuelve texto plano (XML) (con cache)
+function httpsGetXML(url, useCache = true) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
+        // Intentar obtener del cache Plex si está habilitado
+        if (useCache) {
+            const cached = plexCache.get(url);
+            if (cached) return resolve(cached);
+        }
+        
+        https.get(url, { agent: httpsAgent }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
-            res.on('end', () => resolve(data));
+            res.on('end', () => {
+                if (useCache) plexCache.set(url, data);
+                resolve(data);
+            });
         }).on('error', reject);
     });
+}
+
+// Función para decodificar HTML entities
+function decodeHtmlEntities(text) {
+    if (!text) return text;
+    const entities = {
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#39;': "'",
+        '&#225;': 'á',
+        '&#233;': 'é',
+        '&#237;': 'í',
+        '&#243;': 'ó',
+        '&#250;': 'ú',
+        '&#193;': 'Á',
+        '&#201;': 'É',
+        '&#205;': 'Í',
+        '&#211;': 'Ó',
+        '&#218;': 'Ú',
+        '&#241;': 'ñ',
+        '&#209;': 'Ñ',
+        '&#191;': '¿',
+        '&#161;': '¡'
+    };
+    
+    // Reemplazar entidades nombradas
+    let decoded = text;
+    for (const [entity, char] of Object.entries(entities)) {
+        decoded = decoded.replace(new RegExp(entity, 'g'), char);
+    }
+    
+    // Reemplazar entidades numéricas generales &#XXXX;
+    decoded = decoded.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec));
+    
+    return decoded;
 }
 
 // Función simple para parsear XML de Plex (sin dependencias externas)
@@ -42,52 +120,59 @@ function parseXML(xmlString) {
         }
     };
     
-    // Extraer todos los elementos <Video> o <Directory>
-    const videoRegex = /<Video[^>]*>(.*?)<\/Video>|<Video([^>]*)\/>/gs;
-    const matches = xmlString.matchAll(videoRegex);
+    // Extraer tag Video principal (solo el primer nivel, no los anidados)
+    const videoTagRegex = /<Video\s+([^>]*?)(?:>[\s\S]*?<\/Video>|\/?>)/g;
+    const videoMatches = xmlString.matchAll(videoTagRegex);
     
-    for (const match of matches) {
-        const videoTag = match[0];
+    for (const videoMatch of videoMatches) {
+        const videoAttrs = videoMatch[1];
+        const fullVideoTag = videoMatch[0];
         const episode = {};
         
-        // Extraer atributos del tag Video
+        // Extraer atributos del tag Video (solo del tag principal, no de hijos)
         const attrRegex = /(\w+)="([^"]*)"/g;
         let attrMatch;
-        while ((attrMatch = attrRegex.exec(videoTag)) !== null) {
+        while ((attrMatch = attrRegex.exec(videoAttrs)) !== null) {
             const [, key, value] = attrMatch;
             episode[key] = value;
         }
         
-        // Buscar tags Media y Part dentro del Video
-        const mediaRegex = /<Media[^>]*>/g;
-        const mediaMatch = mediaRegex.exec(videoTag);
-        if (mediaMatch) {
-            episode.Media = [{}];
-            const mediaTag = mediaMatch[0];
+        // Buscar TODOS los tags Media (puede haber múltiples para diferentes calidades)
+        const mediaRegex = /<Media\s+([^>]*?)(?:>[\s\S]*?<\/Media>|\/?>)/g;
+        const mediaMatches = fullVideoTag.matchAll(mediaRegex);
+        episode.Media = [];
+        
+        for (const mediaMatch of mediaMatches) {
+            const mediaAttrs = mediaMatch[1];
+            const fullMediaTag = mediaMatch[0];
+            const media = {};
             
             // Extraer atributos de Media
             const mediaAttrRegex = /(\w+)="([^"]*)"/g;
             let mediaAttrMatch;
-            while ((mediaAttrMatch = mediaAttrRegex.exec(mediaTag)) !== null) {
+            while ((mediaAttrMatch = mediaAttrRegex.exec(mediaAttrs)) !== null) {
                 const [, key, value] = mediaAttrMatch;
-                episode.Media[0][key] = value;
+                media[key] = value;
             }
             
-            // Buscar tag Part
-            const partRegex = /<Part[^>]*>/g;
-            const partMatch = partRegex.exec(videoTag);
+            // Buscar tag Part dentro de este Media específico
+            const partRegex = /<Part\s+([^>]*?)(?:>[\s\S]*?<\/Part>|\/?>)/;
+            const partMatch = fullMediaTag.match(partRegex);
+            
             if (partMatch) {
-                episode.Media[0].Part = [{}];
-                const partTag = partMatch[0];
+                const partAttrs = partMatch[1];
+                media.Part = [{}];
                 
                 // Extraer atributos de Part
                 const partAttrRegex = /(\w+)="([^"]*)"/g;
                 let partAttrMatch;
-                while ((partAttrMatch = partAttrRegex.exec(partTag)) !== null) {
+                while ((partAttrMatch = partAttrRegex.exec(partAttrs)) !== null) {
                     const [, key, value] = partAttrMatch;
-                    episode.Media[0].Part[0][key] = value;
+                    media.Part[0][key] = value;
                 }
             }
+            
+            episode.Media.push(media);
         }
         
         result.MediaContainer.Metadata.push(episode);
@@ -292,7 +377,8 @@ app.get('/', (req, res) => {
     seasonNumber = '',
     episodeNumber = '',
     posterUrl = '',
-    autoDownload = ''
+    autoDownload = '',
+    closeAfter = '0'
   } = req.query;
   
   // Decodificar el partKey para mostrar espacios en lugar de %20
@@ -303,10 +389,563 @@ app.get('/', (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${title || 'Plex'} - Descarga</title>
+      <title>Iniciando descarga - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #1f2937;
+          color: #f3f4f6;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        body::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(229, 160, 13, 0.1) 0%, transparent 70%);
+          animation: rotate 20s linear infinite;
+        }
+        
+        @keyframes rotate {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        .container {
+          position: relative;
+          z-index: 1;
+          text-align: center;
+          max-width: 500px;
+          width: 100%;
+        }
+        
+        .logo-container {
+          margin-bottom: 60px;
+          animation: fadeInDown 0.6s ease-out;
+        }
+        
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .logo {
+          display: inline-flex;
+          align-items: center;
+          gap: 16px;
+        }
+        
+        .logo-icon {
+          width: 56px;
+          height: 56px;
+          background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 24px rgba(229, 160, 13, 0.4);
+        }
+        
+        .logo-icon svg {
+          width: 32px;
+          height: 32px;
+          fill: #000;
+        }
+        
+        .logo-text {
+          font-size: 2rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        
+        .download-card {
+          background: rgba(31, 41, 55, 0.8);
+          backdrop-filter: blur(20px);
+          border-radius: 24px;
+          padding: 60px 40px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(229, 160, 13, 0.2);
+          animation: fadeInUp 0.6s ease-out 0.2s both;
+        }
+        
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .download-icon-container {
+          margin-bottom: 32px;
+          position: relative;
+          display: inline-block;
+        }
+        
+        .download-icon {
+          width: 80px;
+          height: 80px;
+          background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 12px 32px rgba(229, 160, 13, 0.4);
+          animation: pulse 2s ease-in-out infinite;
+          position: relative;
+          z-index: 2;
+        }
+        
+        .download-icon svg {
+          width: 40px;
+          height: 40px;
+          fill: #000;
+          animation: bounce 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 12px 32px rgba(229, 160, 13, 0.4);
+          }
+          50% {
+            transform: scale(1.05);
+            box-shadow: 0 12px 40px rgba(229, 160, 13, 0.6);
+          }
+        }
+        
+        @keyframes bounce {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
+        }
+        
+        .ripple {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 80px;
+          height: 80px;
+          margin: -40px 0 0 -40px;
+          border-radius: 50%;
+          border: 2px solid #e5a00d;
+          opacity: 0;
+          animation: ripple 2s ease-out infinite;
+        }
+        
+        .ripple:nth-child(2) {
+          animation-delay: 0.5s;
+        }
+        
+        .ripple:nth-child(3) {
+          animation-delay: 1s;
+        }
+        
+        @keyframes ripple {
+          0% {
+            transform: scale(1);
+            opacity: 0.6;
+          }
+          100% {
+            transform: scale(2);
+            opacity: 0;
+          }
+        }
+        
+        .title {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: #f9fafb;
+          margin-bottom: 16px;
+          letter-spacing: -0.5px;
+        }
+        
+        .subtitle {
+          font-size: 1rem;
+          color: #9ca3af;
+          margin-bottom: 40px;
+          font-weight: 500;
+        }
+        
+        .countdown-container {
+          display: inline-block;
+          position: relative;
+        }
+        
+        .countdown {
+          font-size: 4rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          line-height: 1;
+          display: block;
+          min-width: 100px;
+          animation: scaleIn 1s ease-in-out infinite;
+        }
+        
+        @keyframes scaleIn {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.1);
+          }
+        }
+        
+        .progress-bar {
+          width: 100%;
+          height: 4px;
+          background: rgba(229, 160, 13, 0.2);
+          border-radius: 2px;
+          overflow: hidden;
+          margin-top: 40px;
+        }
+        
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #e5a00d 0%, #f5b81d 100%);
+          width: 0%;
+          animation: progress 3s linear;
+          border-radius: 2px;
+        }
+        
+        @keyframes progress {
+          from {
+            width: 0%;
+          }
+          to {
+            width: 100%;
+          }
+        }
+        
+        @media (max-width: 640px) {
+          .download-card {
+            padding: 40px 24px;
+          }
+          
+          .logo-text {
+            font-size: 1.5rem;
+          }
+          
+          .title {
+            font-size: 1.5rem;
+          }
+          
+          .countdown {
+            font-size: 3rem;
+          }
+          
+          .download-icon {
+            width: 64px;
+            height: 64px;
+          }
+          
+          .download-icon svg {
+            width: 32px;
+            height: 32px;
+          }
+        }
+      </style>
+      <script>
+        let countdown = 3;
+        const autoDownload = '${autoDownload}' === 'true';
+        const closeAfter = parseInt('${closeAfter}') || 0;
+        
+        window.onload = function() {
+          if (autoDownload) {
+            window.location.href = "${downloadURL}";
+            if (closeAfter > 0) {
+              setTimeout(function() {
+                try {
+                  window.close();
+                } catch (e) {
+                  document.body.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-family: Inter, sans-serif; color: #9ca3af;">Descarga iniciada. Puedes cerrar esta pestaña.</div>';
+                }
+              }, closeAfter);
+            }
+            return;
+          }
+          
+          const countdownEl = document.getElementById('countdown');
+          const interval = setInterval(function() {
+            countdown--;
+            if (countdownEl) countdownEl.textContent = countdown;
+            if (countdown <= 0) {
+              clearInterval(interval);
+              window.location.href = "${downloadURL}";
+            }
+          }, 1000);
+        }
+      </script>
+    </head>
+    <body>
+      <div class="container">
+        <div class="logo-container">
+          <div class="logo">
+            <div class="logo-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H9.5v-2h-2v2H6V7h1.5v2.5h2V7H11v10zm5 0h-1.75l-1.75-2.25V17H13V7h1.5v2.25L16.25 7H18l-2.25 3L18 13v4z"/>
+              </svg>
+            </div>
+            <span class="logo-text">Infinity Scrap</span>
+          </div>
+        </div>
+        
+        <div class="download-card">
+          <div class="download-icon-container">
+            <div class="ripple"></div>
+            <div class="ripple"></div>
+            <div class="ripple"></div>
+            <div class="download-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+              </svg>
+            </div>
+          </div>
+          
+          <h1 class="title">Iniciando descarga</h1>
+          <p class="subtitle">Tu archivo se descargará automáticamente</p>
+          
+          <div class="countdown-container">
+            <div class="countdown" id="countdown">3</div>
+          </div>
+          
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/episode', async (req, res) => {
+  const episodeRatingKey = req.query.episodeRatingKey;
+  const accessToken = req.query.accessToken;
+  const baseURI = req.query.baseURI;
+  const seasonRatingKey = req.query.seasonRatingKey;
+  const seasonNumber = req.query.seasonNumber;
+  const episodeNumber = req.query.episodeNumber;
+  const seriesTitle = req.query.seriesTitle;
+  const tmdbId = req.query.tmdbId;
+  const imdbId = req.query.imdbId;
+  const parentRatingKey = req.query.parentRatingKey;
+  const libraryKey = req.query.libraryKey || '';
+  const libraryTitle = req.query.libraryTitle || '';
+
+  if (!episodeRatingKey || !accessToken || !baseURI) {
+    return res.status(400).send('Faltan parámetros requeridos: episodeRatingKey, accessToken, baseURI');
+  }
+
+  try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    
+    // Obtener metadata del episodio desde Plex
+    const episodeUrl = `${baseURI}/library/metadata/${episodeRatingKey}?X-Plex-Token=${accessToken}`;
+    const xmlData = await httpsGetXML(episodeUrl);
+    const episodeData = parseXML(xmlData);
+
+    if (!episodeData || !episodeData.MediaContainer || !episodeData.MediaContainer.Metadata || episodeData.MediaContainer.Metadata.length === 0) {
+      return res.status(404).send('No se encontró información del episodio');
+    }
+
+    const metadataEntries = episodeData.MediaContainer.Metadata;
+    
+    // La petición a /library/metadata/{ratingKey} SIEMPRE devuelve solo el episodio específico
+    // No necesitamos buscar, el primer (y único) elemento ES el episodio que pedimos
+    const episode = metadataEntries[0];
+    
+    if (!episode) {
+      return res.status(404).send('No se encontró información del episodio solicitado');
+    }
+    
+    // Extraer información del episodio
+    const episodeTitle = episode.title || 'Sin título';
+    const episodeSummary = episode.summary || 'Sin descripción disponible';
+    const episodeThumb = episode.thumb ? `${baseURI}${episode.thumb}?X-Plex-Token=${accessToken}` : '';
+    const episodeYear = episode.year || episode.originallyAvailableAt?.split('-')[0] || '';
+    const episodeRating = episode.rating ? parseFloat(episode.rating).toFixed(1) : '';
+    const episodeDuration = episode.duration ? Math.round(episode.duration / 60000) : '';
+    const finalSeriesTitle = episode.grandparentTitle || seriesTitle || 'Serie';
+    const finalSeasonNumber = episode.parentIndex || seasonNumber || '';
+    const finalEpisodeNumber = episode.index || episodeNumber || '';
+    
+    // Extraer información técnica del archivo
+    let fileSize = '';
+    let quality = '';
+    let videoCodec = '';
+    let audioCodec = '';
+    let resolution = '';
+    let bitrate = '';
+    let fileName = '';
+    let downloadUrl = '';
+    
+    if (episode.Media && episode.Media[0]) {
+      const media = episode.Media[0];
+      const part = media.Part && media.Part[0] ? media.Part[0] : null;
+      
+      if (part) {
+        const fileSizeBytes = parseInt(part.size || '0', 10);
+        if (fileSizeBytes > 0) {
+          const gb = fileSizeBytes / (1024 * 1024 * 1024);
+          fileSize = gb >= 1 ? gb.toFixed(2) + ' GB' : (gb * 1024).toFixed(2) + ' MB';
+        }
+        
+        const partKey = part.key || '';
+        const fileFull = part.file || '';
+        fileName = fileFull.split('/').pop();
+        
+        // Decodificar entidades HTML en el nombre del archivo
+        const decodedFileName = fileName
+          .replace(/&#191;/g, '¿')
+          .replace(/&#233;/g, 'é')
+          .replace(/&#225;/g, 'á')
+          .replace(/&#237;/g, 'í')
+          .replace(/&#243;/g, 'ó')
+          .replace(/&#250;/g, 'ú')
+          .replace(/&#241;/g, 'ñ')
+          .replace(/&#193;/g, 'Á')
+          .replace(/&#201;/g, 'É')
+          .replace(/&#205;/g, 'Í')
+          .replace(/&#211;/g, 'Ó')
+          .replace(/&#218;/g, 'Ú')
+          .replace(/&#209;/g, 'Ñ')
+          .replace(/&#161;/g, '¡')
+          .replace(/&#63;/g, '?')
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&#39;/g, "'");
+        
+        fileName = decodedFileName;
+        const keyBase = partKey.replace(/\/[^\/]+$/, '/');
+        // Codificar el nombre del archivo para la URL
+        const encodedFileName = encodeURIComponent(decodedFileName);
+        downloadUrl = `${baseURI}${keyBase}${encodedFileName}?download=0&X-Plex-Token=${accessToken}`;
+      }
+      
+      videoCodec = media.videoCodec || '';
+      audioCodec = media.audioCodec || '';
+      resolution = media.videoResolution ? `${media.videoResolution}p` : '';
+      bitrate = media.bitrate ? `${Math.round(media.bitrate / 1000)} Mbps` : '';
+      
+      // Determinar calidad basada en resolución
+      if (resolution) {
+        const resValue = parseInt(media.videoResolution);
+        if (resValue >= 2160) quality = '4K';
+        else if (resValue >= 1080) quality = 'Full HD';
+        else if (resValue >= 720) quality = 'HD';
+        else quality = 'SD';
+      }
+    }
+    
+    // Obtener información adicional de TMDB si está disponible
+    let tmdbEpisodeData = null;
+    let tmdbEpisodeImage = '';
+    let imdbUrl = '';
+    let youtubeTrailerUrl = '';
+    
+    // VERSION 2.0 - Usar SIEMPRE los datos de Plex para título y descripción (son más confiables)
+    const displayTitle = episodeTitle;
+    const displayDescription = episodeSummary;
+    
+    if (tmdbId && finalSeasonNumber && finalEpisodeNumber) {
+      try {
+        const tmdbEpisodeUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${finalSeasonNumber}/episode/${finalEpisodeNumber}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=external_ids,videos`;
+        tmdbEpisodeData = await httpsGet(tmdbEpisodeUrl);
+        
+        if (tmdbEpisodeData) {
+          // Solo usar imagen de TMDB
+          if (tmdbEpisodeData.still_path) {
+            tmdbEpisodeImage = `https://image.tmdb.org/t/p/original${tmdbEpisodeData.still_path}`;
+          }
+          
+          // IMDB ID
+          if (tmdbEpisodeData.external_ids && tmdbEpisodeData.external_ids.imdb_id) {
+            imdbUrl = `https://www.imdb.com/title/${tmdbEpisodeData.external_ids.imdb_id}`;
+          } else if (imdbId) {
+            imdbUrl = `https://www.imdb.com/title/${imdbId}`;
+          }
+          
+          // YouTube trailer
+          if (tmdbEpisodeData.videos && tmdbEpisodeData.videos.results && tmdbEpisodeData.videos.results.length > 0) {
+            const trailer = tmdbEpisodeData.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+            if (trailer) {
+              youtubeTrailerUrl = `https://www.youtube.com/watch?v=${trailer.key}`;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error al obtener datos de TMDB para el episodio:', err);
+      }
+    }
+    
+    const displayPoster = tmdbEpisodeImage || episodeThumb;
+
+    const tmdbUrl = tmdbId ? `https://www.themoviedb.org/tv/${tmdbId}/season/${finalSeasonNumber}/episode/${finalEpisodeNumber}` : '';
+    const backToSeasonUrl = seasonRatingKey ? `/list?seasonRatingKey=${seasonRatingKey}&accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seasonNumber=${finalSeasonNumber}&seriesTitle=${encodeURIComponent(finalSeriesTitle)}${tmdbId ? '&tmdbId=' + tmdbId : ''}${parentRatingKey ? '&parentRatingKey=' + parentRatingKey : ''}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}` : '';
+
+    // Obtener backdrop de la serie desde TMDB
+    let seriesBackdrop = '';
+    if (tmdbId) {
+      try {
+        const seriesData = await httpsGet(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`);
+        if (seriesData && seriesData.backdrop_path) {
+          seriesBackdrop = `https://image.tmdb.org/t/p/original${seriesData.backdrop_path}`;
+        }
+      } catch (err) {
+        console.error('Error al obtener backdrop de la serie:', err);
+      }
+    }
+
+    // Generar HTML de la página del episodio
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${finalSeriesTitle} - S${finalSeasonNumber}E${finalEpisodeNumber} - Infinity Scrap</title>
+      <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <style>
         * {
           margin: 0;
@@ -319,234 +958,402 @@ app.get('/', (req, res) => {
           background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
           color: #e5e5e5;
           min-height: 100vh;
-          padding: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
         }
         
-        .hero-background {
+        .modal-overlay {
           position: fixed;
-          top: 0;
-          left: 0;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          z-index: 998;
+          cursor: pointer;
+        }
+        
+        .episode-container {
+          background: #282828;
+          border-radius: 16px;
           width: 100%;
-          height: 400px;
-          background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.95) 100%),
-                      ${posterUrl ? `url('${posterUrl}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)'};
+          max-width: 1200px;
+          max-height: 90vh;
+          overflow-y: auto;
+          position: relative;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+          z-index: 999;
+        }
+        
+        .episode-container::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .episode-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .episode-container::-webkit-scrollbar-thumb {
+          background-color: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        
+        .modal-backdrop-header {
+          position: relative;
           background-size: cover;
           background-position: center top;
-          filter: blur(20px);
-          opacity: 0.4;
-          z-index: 0;
-        }
-        
-        .container {
-          position: relative;
-          max-width: 900px;
-          margin: 0 auto;
-          z-index: 1;
-        }
-        
-        .header {
-          text-align: center;
-          padding: 20px 0 40px 0;
-        }
-        
-        .logo {
+          background-repeat: no-repeat;
+          background-image: url('${seriesBackdrop}');
+          min-height: 250px;
           display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          margin-bottom: 10px;
+          align-items: flex-end;
+          padding: 2.5rem 3.5rem 1.5rem 3.5rem;
+          border-radius: 12px 12px 0 0;
         }
         
-        .logo-icon {
-          width: 40px;
-          height: 40px;
-          background: #e5a00d;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 24px;
-          color: #000;
-        }
-        
-        .logo-text {
-          font-size: 1.8rem;
-          font-weight: 700;
-          color: #e5a00d;
-        }
-        
-        .tagline {
-          color: #999;
-          font-size: 0.9rem;
-          margin-top: 5px;
-        }
-        
-        .content-card {
-          background: rgba(30, 30, 30, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .media-section {
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 32px;
-          padding: 40px;
-        }
-        
-        .poster-container {
-          position: relative;
-        }
-        
-        .poster {
-          width: 100%;
-          border-radius: 12px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-          transition: transform 0.3s ease;
-        }
-        
-        .poster:hover {
-          transform: scale(1.02);
-        }
-        
-        .quality-badge {
+        .modal-backdrop-overlay {
           position: absolute;
-          top: 12px;
-          right: 12px;
-          background: rgba(229, 160, 13, 0.95);
-          color: #000;
-          padding: 4px 12px;
-          border-radius: 6px;
-          font-size: 0.75rem;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            rgba(40, 40, 40, 0.3) 0%,
+            rgba(40, 40, 40, 0.7) 50%,
+            #282828 100%
+          );
+          border-radius: 12px 12px 0 0;
+        }
+        
+        .modal-header-content {
+          position: relative;
+          z-index: 1;
+          width: 100%;
+        }
+        
+        .series-title {
+          font-size: 3rem;
           font-weight: 700;
-          letter-spacing: 0.5px;
-        }
-        
-        .info-section {
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-        
-        .title {
-          font-size: 2.2rem;
-          font-weight: 700;
-          color: #fff;
-          margin-bottom: 12px;
-          line-height: 1.2;
-        }
-        
-        .episode-info {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
-        }
-        
-        .badge {
-          background: rgba(255, 255, 255, 0.1);
-          padding: 6px 14px;
-          border-radius: 20px;
-          font-size: 0.85rem;
-          font-weight: 500;
-          color: #e5a00d;
-          border: 1px solid rgba(229, 160, 13, 0.3);
+          color: white;
+          margin-bottom: 0.5rem;
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
+          line-height: 1.1;
         }
         
         .episode-title {
-          font-size: 1.2rem;
-          color: #bbb;
-          margin: 16px 0;
-          font-weight: 500;
+          display: none;
         }
         
-        .metadata {
+        .modal-badges-container {
           display: flex;
-          gap: 24px;
-          margin-top: 20px;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+        
+        .modal-badges-row {
+          display: flex;
+          gap: 1rem;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        
+        .modal-icons-row {
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+          margin-left: auto;
+        }
+        
+        .episode-identifier {
+          background: #e5a00d;
+          color: #000;
+          padding: 0.4rem 0.8rem;
+          border-radius: 20px;
+          font-weight: 600;
           font-size: 0.9rem;
         }
         
-        .metadata-item {
+        .badge-icon-link {
+          display: inline-flex;
+          align-items: center;
+          transition: transform 0.2s ease;
+        }
+        
+        .badge-icon-link:hover {
+          transform: scale(1.1);
+        }
+        
+        .badge-icon {
+          height: 32px;
+          width: 32px;
+          object-fit: contain;
+        }
+        
+        .modal-hero {
+          padding: 2rem 3.5rem;
+          display: flex;
+          gap: 2rem;
+        }
+        
+        .modal-poster-container {
+          flex-shrink: 0;
+          width: 40%;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 1rem;
         }
         
-        .metadata-label {
-          color: #888;
-          font-size: 0.75rem;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+        .modal-poster-hero {
+          width: 100%;
+          position: relative;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         }
         
-        .metadata-value {
-          color: #fff;
+        .modal-poster-hero img {
+          width: 100%;
+          aspect-ratio: 16/9;
+          object-fit: cover;
+          display: block;
+        }
+        
+        .modal-main-info {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .synopsis-container {
+          position: relative;
+        }
+        
+        .modal-synopsis {
+          line-height: 1.7;
+          font-size: 1.08rem;
+          text-align: justify;
+          margin-bottom: 0;
+          color: #cccccc;
+          max-height: 6.8em;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+          position: relative;
+          padding-right: 0;
+        }
+        
+        .modal-synopsis.expanded {
+          max-height: none;
+        }
+        
+        .modal-synopsis::after {
+          content: '...';
+          position: absolute;
+          bottom: 0;
+          right: 1.2rem;
+          background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
+          color: #cccccc;
+          width: 2.2rem;
+          text-align: right;
+        }
+        
+        .modal-synopsis.expanded::after {
+          content: '';
+          display: none;
+        }
+        
+        .synopsis-toggle {
+          position: absolute;
+          bottom: 0;
+          right: 0;
+          background: #282828;
+          border: none;
+          color: #e5a00d;
+          font-size: 1.3rem;
+          font-weight: bold;
+          cursor: pointer;
+          padding: 0 0.25rem;
+          transition: transform 0.2s ease;
+          line-height: 1.7;
+          z-index: 2;
+        }
+        
+        .synopsis-toggle:hover {
+          transform: scale(1.15);
+          color: #f0b825;
+        }
+        
+        .tag {
+          background: #e5a00d;
+          color: #000;
+          padding: 0.4rem 0.8rem;
+          border-radius: 20px;
+          font-weight: 600;
+          font-size: 0.9rem;
+        }
+        
+        .rating-badge {
+          background: rgba(249, 168, 37, 0.2);
+          border: 2px solid #f9a825;
+          padding: 0.3rem 0.8rem;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: #f9a825;
           font-weight: 600;
         }
         
-        .download-section {
-          padding: 32px 40px;
-          background: rgba(20, 20, 20, 0.6);
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .download-btn {
-          display: flex;
+        .btn {
+          padding: 0.8rem 1.5rem;
+          border: none;
+          border-radius: 8px;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          text-decoration: none;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          width: 100%;
-          padding: 18px;
-          background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
+          gap: 0.5rem;
+        }
+        
+        .btn-primary {
+          background: #e5a00d;
           color: #000;
-          font-weight: 700;
-          font-size: 1.1rem;
-          border: none;
-          border-radius: 12px;
-          text-decoration: none;
-          transition: all 0.3s ease;
-          box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
         }
         
-        .download-btn:hover {
+        .btn-primary:hover {
+          background: #f0b825;
           transform: translateY(-2px);
-          box-shadow: 0 6px 24px rgba(229, 160, 13, 0.5);
-          background: linear-gradient(135deg, #f5b01d 0%, #dc9800 100%);
+          box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
         }
         
-        .download-icon {
-          width: 24px;
-          height: 24px;
+        .btn-secondary {
+          background: rgba(255, 255, 255, 0.1);
+          color: #e5e5e5;
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        .status-message {
-          text-align: center;
-          margin-top: 20px;
-          padding: 16px;
-          background: rgba(229, 160, 13, 0.1);
-          border-radius: 8px;
-          border: 1px solid rgba(229, 160, 13, 0.2);
+        .btn-secondary:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(229, 160, 13, 0.5);
         }
         
-        .status-message p {
+        .episode-info-card {
+          background: rgba(255, 255, 255, 0.07);
+          border-radius: 16px;
+          padding: 1rem;
+          margin-bottom: 1rem;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          flex: 1;
+        }
+        
+        .episode-description {
+          color: #d5d5d5;
+          font-size: 1.05rem;
+          line-height: 1.6;
+          text-align: justify;
+          max-height: 5.1em;
+          overflow: hidden;
+          position: relative;
+          transition: max-height 0.3s ease;
+          margin-bottom: 0;
+        }
+        
+        .episode-description.expanded {
+          max-height: none;
+        }
+        
+        .description-toggle {
+          background: transparent;
+          border: none;
           color: #e5a00d;
           font-size: 0.95rem;
-          margin-bottom: 8px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          margin-top: 0.75rem;
+          transition: color 0.2s;
+          display: none;
+          text-decoration: underline;
         }
         
-        .countdown {
+        .description-toggle:hover {
+          color: #f0b825;
+        }
+        
+        .info-card-title {
+          font-size: 1.6rem;
           font-weight: 700;
-          font-size: 1.1rem;
-          color: #fff;
+          color: #e5a00d;
+          margin-bottom: 2rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          border-bottom: 2px solid rgba(229, 160, 13, 0.3);
+          padding-bottom: 1rem;
+        }
+        
+        .info-row {
+          margin-bottom: 1.8rem;
+          padding: 1rem;
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 8px;
+          transition: all 0.3s ease;
+        }
+        
+        .info-row:hover {
+          background: rgba(0, 0, 0, 0.3);
+          transform: translateX(5px);
+        }
+        
+        .info-row:last-child {
+          margin-bottom: 0;
+        }
+        
+        .info-label {
+          color: #e5a00d;
+          font-weight: 700;
+          font-size: 0.85rem;
+          margin-bottom: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        
+        .info-label::before {
+          content: '▸';
+          color: #e5a00d;
+          font-size: 1.2rem;
+        }
+        
+        .info-value {
+          color: #e5e5e5;
+          font-size: 1.05rem;
+          line-height: 1.7;
+          padding-left: 1.5rem;
+        }
+        
+        .episode-description {
+          color: #d5d5d5;
+          font-size: 1.05rem;
+          line-height: 1.8;
+          text-align: justify;
+        }
+        
+        .file-info {
+          background: rgba(0, 0, 0, 0.3);
+          padding: 1rem 2.5rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .technical-details {
-          margin-top: 24px;
+          max-width: 800px;
+          margin: 0 auto;
         }
         
         .technical-toggle {
@@ -559,7 +1366,8 @@ app.get('/', (req, res) => {
           font-size: 0.85rem;
           transition: all 0.2s;
           width: 100%;
-          text-align: left;
+          text-align: center;
+          display: block;
         }
         
         .technical-toggle:hover {
@@ -603,154 +1411,193 @@ app.get('/', (req, res) => {
         }
         
         @media (max-width: 768px) {
-          .media-section {
-            grid-template-columns: 1fr;
-            gap: 24px;
-            padding: 24px;
+          .modal-hero {
+            flex-direction: column;
+            padding: 1.5rem;
           }
           
-          .poster-container {
-            max-width: 300px;
+          .modal-poster-container {
+            width: 100%;
+          }
+          
+          .modal-poster-hero {
+            width: 100%;
+            max-width: 400px;
             margin: 0 auto;
           }
           
-          .title {
-            font-size: 1.6rem;
+          .modal-main-info {
+            width: 100%;
           }
           
-          .download-section {
-            padding: 24px;
+          .modal-backdrop-header {
+            padding: 2rem 1.5rem 1rem;
+          }
+          
+          .series-title {
+            font-size: 2rem !important;
+          }
+          
+          .modal-badges-container {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+          }
+          
+          .modal-icons-row {
+            margin-left: 0;
+          }
+          
+          .episode-info-card {
+            padding: 1.5rem;
+          }
+          
+          .info-row {
+            flex-direction: column;
+            gap: 0.3rem;
           }
         }
       </style>
-      <script>
-        let countdown = 3;
-        const autoDownload = '${autoDownload}' === 'true';
-        
-        window.onload = function() {
-          if (autoDownload) {
-            // Descarga automática inmediata para múltiples descargas
-            window.location.href = "${downloadURL}";
-            return;
-          }
-          
-          const countdownEl = document.getElementById('countdown');
-          const interval = setInterval(function() {
-            countdown--;
-            if (countdownEl) countdownEl.textContent = countdown;
-            if (countdown <= 0) {
-              clearInterval(interval);
-              window.open("${downloadURL}", '_blank');
-            }
-          }, 1000);
-        }
-        
-        function toggleTechnical() {
-          const content = document.getElementById('technical-content');
-          const button = document.getElementById('technical-toggle');
-          content.classList.toggle('open');
-          button.textContent = content.classList.contains('open') 
-            ? '▼ Ocultar detalles técnicos' 
-            : '▶ Mostrar detalles técnicos';
-        }
-      </script>
     </head>
     <body>
-      <div class="hero-background"></div>
-      
-      <div class="container">
-        <div class="header">
-          <div class="logo">
-            <div class="logo-icon">P</div>
-            <span class="logo-text">Plex Download</span>
+      <div class="modal-overlay" onclick="window.location.href='${backToSeasonUrl}'"></div>
+      <div class="episode-container">
+        <!-- Header con backdrop -->
+        <div class="modal-backdrop-header">
+          <div class="modal-backdrop-overlay"></div>
+          <div class="modal-header-content">
+            <h1 class="series-title">${finalSeriesTitle}</h1>
+            <div class="modal-badges-container">
+              <div class="modal-badges-row">
+                ${episodeYear ? `<span class="tag">${episodeYear}</span>` : ''}
+                ${quality ? `<span class="tag">${quality}</span>` : ''}
+                ${episodeDuration ? `<span class="tag">${episodeDuration} min</span>` : ''}
+                ${fileSize ? `<span class="tag">${fileSize}</span>` : ''}
+                ${episodeRating ? `<div class="rating-badge">⭐ ${episodeRating}</div>` : ''}
+              </div>
+              <div class="modal-icons-row">
+                ${tmdbUrl ? `
+                  <a href="${tmdbUrl}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${imdbUrl ? `
+                  <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                  </a>
+                ` : ''}
+                ${youtubeTrailerUrl ? `
+                  <a href="${youtubeTrailerUrl}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                  </a>
+                ` : ''}
+              </div>
+            </div>
           </div>
-          <p class="tagline">Tu contenido, siempre disponible</p>
         </div>
         
-        <div class="content-card">
-          <div class="media-section">
-            <div class="poster-container">
-              ${posterUrl ? `
-                <img class="poster" src="${posterUrl}" alt="Carátula">
-                <div class="quality-badge">HD</div>
-              ` : '<div class="poster" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); aspect-ratio: 2/3;"></div>'}
+        <!-- Hero con poster e info -->
+        <div class="modal-hero">
+          <div class="modal-poster-container">
+            <div class="modal-poster-hero">
+              ${displayPoster ? `<img loading="lazy" src="${displayPoster}" alt="${episodeTitle}" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E';">` : `<img loading="lazy" src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E" alt="${episodeTitle}">`}
             </div>
-            
-            <div class="info-section">
-              <h1 class="title">${title || 'Contenido'}</h1>
-              
-              <div class="episode-info">
-                ${seasonNumber ? `<span class="badge">Temporada ${seasonNumber}</span>` : ''}
-                ${episodeNumber ? `<span class="badge">Episodio ${episodeNumber}</span>` : ''}
-                ${fileSize ? `<span class="badge">${fileSize}</span>` : ''}
-              </div>
-              
-              ${episodeTitle ? `<div class="episode-title">${episodeTitle}</div>` : ''}
-              
-              <div class="metadata">
-                ${fileName ? `
-                  <div class="metadata-item">
-                    <span class="metadata-label">Archivo</span>
-                    <span class="metadata-value">${fileName.length > 30 ? fileName.substring(0, 30) + '...' : fileName}</span>
-                  </div>
-                ` : ''}
-                ${baseURI && baseURI.startsWith('http') ? `
-                  <div class="metadata-item">
-                    <span class="metadata-label">Servidor</span>
-                    <span class="metadata-value">${new URL(baseURI).hostname}</span>
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-          </div>
-          
-          <div class="download-section">
-            <a class="download-btn" href="${downloadURL}">
-              <svg class="download-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <button class="btn btn-primary" style="width: 100%;" onclick="downloadEpisode()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
               </svg>
-              Descargar ahora
-            </a>
-            
-            <div class="status-message">
-              <p>Tu descarga comenzará automáticamente en <span class="countdown" id="countdown">3</span> segundos</p>
-            </div>
-            
-            <div class="technical-details">
-              <button class="technical-toggle" id="technical-toggle" onclick="toggleTechnical()">
-                ▶ Mostrar detalles técnicos
-              </button>
-              <div class="technical-content" id="technical-content">
-                <table class="info-table">
-                  <tr>
-                    <td class="label">Access Token</td>
-                    <td class="value">${accessToken ? accessToken.substring(0, 20) + '...' : 'N/A'}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Part Key</td>
-                    <td class="value">${partKey}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Base URL</td>
-                    <td class="value">${baseURI}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Nombre del archivo</td>
-                    <td class="value">${fileName}</td>
-                  </tr>
-                  <tr>
-                    <td class="label">Tamaño</td>
-                    <td class="value">${fileSize || 'Desconocido'}</td>
-                  </tr>
-                </table>
+              Descargar Capítulo
+            </button>
+          </div>
+          
+          <div class="modal-main-info">
+            <div class="episode-info-card">
+              <h2 style="font-size: 1.3rem; font-weight: 700; color: #e5a00d; margin-bottom: 1rem;">
+                Temporada ${finalSeasonNumber} - Capítulo ${finalEpisodeNumber}
+              </h2>
+              
+              <h3 style="font-size: 1.15rem; font-weight: 600; color: #ffffff; margin-bottom: 0.8rem;">
+                ${displayTitle}
+              </h3>
+              
+              <div class="episode-description" id="episodeDescription">
+                ${displayDescription}
               </div>
+              <button class="description-toggle" id="descriptionToggle" onclick="toggleDescription()">
+                Ver más
+              </button>
+            </div>
+            ${backToSeasonUrl ? `<a href="${backToSeasonUrl}" class="btn btn-secondary" style="width: 100%;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.828 11H20v2H7.828l5.364 5.364-1.414 1.414L4 12l7.778-7.778 1.414 1.414z"/>
+              </svg>
+              Volver a Temporada
+            </a>` : ''}
+          </div>
+        </div>
+        
+        <!-- Info del archivo -->
+        <div class="file-info">
+          <div class="technical-details">
+            <button class="technical-toggle" onclick="toggleTechnical()">
+              ▶ Mostrar detalles técnicos
+            </button>
+            <div class="technical-content" id="technicalContent">
+              <table class="info-table">
+                ${fileName ? `<tr><td class="label">Archivo</td><td class="value">${fileName}</td></tr>` : ''}
+                ${fileSize ? `<tr><td class="label">Tamaño</td><td class="value">${fileSize}</td></tr>` : ''}
+                ${resolution ? `<tr><td class="label">Resolución</td><td class="value">${resolution}</td></tr>` : ''}
+                ${videoCodec ? `<tr><td class="label">Códec de Video</td><td class="value">${videoCodec.toUpperCase()}</td></tr>` : ''}
+                ${audioCodec ? `<tr><td class="label">Códec de Audio</td><td class="value">${audioCodec.toUpperCase()}</td></tr>` : ''}
+                ${bitrate ? `<tr><td class="label">Bitrate</td><td class="value">${bitrate}</td></tr>` : ''}
+              </table>
             </div>
           </div>
         </div>
       </div>
+      
+      <script>
+        function toggleTechnical() {
+          const content = document.getElementById('technicalContent');
+          const button = document.querySelector('.technical-toggle');
+          content.classList.toggle('open');
+          button.textContent = content.classList.contains('open') ? '▼ Ocultar detalles técnicos' : '▶ Mostrar detalles técnicos';
+        }
+        
+        function toggleDescription() {
+          const description = document.getElementById('episodeDescription');
+          const button = document.getElementById('descriptionToggle');
+          description.classList.toggle('expanded');
+          button.textContent = description.classList.contains('expanded') ? 'Ver menos' : 'Ver más';
+        }
+        
+        // Detectar si la descripción necesita "Ver más"
+        window.addEventListener('load', function() {
+          const description = document.getElementById('episodeDescription');
+          const button = document.getElementById('descriptionToggle');
+          if (description && button) {
+            // Añadir margen de 15px para ignorar descendentes de letras (g, j, p, q, y)
+            if (description.scrollHeight > description.clientHeight + 15) {
+              button.style.display = 'inline-block';
+            }
+          }
+        });
+        
+        function downloadEpisode() {
+          // Descargar directamente usando la URL de Plex (igual que en /list)
+          const downloadUrl = '${downloadUrl}';
+          if (downloadUrl) {
+            window.location.href = downloadUrl;
+          }
+        }
+      </script>
     </body>
     </html>
-  `);
+    `);
+  } catch (error) {
+    console.error('Error al procesar episodio:', error);
+    res.status(500).send('Error al obtener información del episodio: ' + error.message);
+  }
 });
 
 app.get('/list', async (req, res) => {
@@ -761,8 +1608,14 @@ app.get('/list', async (req, res) => {
   const seasonNumber = req.query.seasonNumber;
   const seriesTitleParam = req.query.seriesTitle;
   const tmdbId = req.query.tmdbId;
+  const parentRatingKey = req.query.parentRatingKey;
+  const libraryKey = req.query.libraryKey || '';
+  const libraryTitle = req.query.libraryTitle || '';
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 10;
+  
+  // console.log('[/list] libraryKey recibido:', libraryKey);
+  // console.log('[/list] libraryTitle recibido:', libraryTitle);
   
   let downloads = [];
   
@@ -790,7 +1643,9 @@ app.get('/list', async (req, res) => {
             partKey = part.key || '';
             // Codificar el nombre del archivo para la URL
             const encodedFileName = encodeURIComponent(fileName);
-            fileUrl = `${baseURI}${part.key}/${encodedFileName}?download=0&X-Plex-Token=${accessToken}`;
+            // Reemplazar /file.mkv con el nombre real del archivo
+            const keyWithoutFile = part.key.replace(/\/[^\/]+$/, '');
+            fileUrl = `${baseURI}${keyWithoutFile}/${encodedFileName}?download=0&X-Plex-Token=${accessToken}`;
           }
           
           // Formatear tamaño de archivo
@@ -836,7 +1691,10 @@ app.get('/list', async (req, res) => {
             summary: ep.summary || '',
             accessToken: accessToken,
             partKey: encodeURIComponent(partKey),
-            baseURI: baseURI
+            baseURI: baseURI,
+            ratingKey: ep.ratingKey || '',
+            parentRatingKey: ep.parentRatingKey || seasonRatingKey,
+            grandparentRatingKey: ep.grandparentRatingKey || parentRatingKey
           };
         });
         
@@ -885,12 +1743,11 @@ app.get('/list', async (req, res) => {
     episodes = downloads.slice(1);
   }
   
-  // Calcular paginación
+  // Mostrar todos los episodios
   const totalEpisodes = episodes.length;
-  const totalPages = Math.ceil(totalEpisodes / pageSize);
-  const startIndex = (page - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalEpisodes);
-  const currentPageEpisodes = episodes.slice(startIndex, endIndex);
+  const startIndex = 0;
+  const endIndex = totalEpisodes;
+  const currentPageEpisodes = episodes;
   
   // Calcular tamaño total de la temporada
   const totalSizeBytes = episodes.reduce((sum, ep) => sum + (ep.fileSize || 0), 0);
@@ -952,7 +1809,7 @@ app.get('/list', async (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Lista de Descargas</title>
+      <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1630,11 +2487,28 @@ app.get('/list', async (req, res) => {
       </style>
       <script>
         const allEpisodes = ${JSON.stringify(episodes)};
-        const currentPageEpisodes = ${JSON.stringify(currentPageEpisodes)};
-        const page = ${page};
-        const pageSize = ${pageSize};
-        const totalPages = ${totalPages};
-        const startIndex = ${startIndex};
+        let displayedEpisodes = [];
+        let currentIndex = 0;
+        const episodesPerLoad = 20;
+        const totalEpisodes = allEpisodes.length;
+        const libraryKey = '${libraryKey}';
+        const libraryTitle = '${libraryTitle}';
+        
+        // Función para volver a la página de serie
+        function goBackToSeries() {
+          // Redirigir a /series-redirect para obtener todos los datos de la serie
+          const params = new URLSearchParams();
+          params.set('accessToken', '${accessToken}');
+          params.set('baseURI', '${baseURI}');
+          params.set('ratingKey', '${parentRatingKey}');
+          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
+          params.set('posterUrl', '');
+          ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
+          
+          window.location.href = \`/series-redirect?\${params.toString()}\`;
+        }
         
         // Función para formatear tamaño de archivo
         function formatFileSize(bytes) {
@@ -1651,6 +2525,12 @@ app.get('/list', async (req, res) => {
         let isDownloading = false;
         let downloadIndex = 0;
         
+        // Estado del gestor de descargas
+        let downloadQueue = [];
+        let currentDownloadIndex = -1;
+        let isPaused = false;
+        let isModalMinimized = false;
+        
         function downloadEpisode(globalIndex, fromSequential = false) {
           const download = allEpisodes[globalIndex];
           
@@ -1664,7 +2544,7 @@ app.get('/list', async (req, res) => {
             downloadIndex++;
             if (downloadIndex < allEpisodes.length) {
               updateProgress();
-              setTimeout(() => downloadEpisode(downloadIndex, true), 1500);
+              setTimeout(() => downloadEpisode(downloadIndex, true), 5500);
             } else {
               finishSequentialDownload();
             }
@@ -1699,27 +2579,204 @@ app.get('/list', async (req, res) => {
             downloadEpisode(globalIndex);
             pageDownloadIndex++;
             
-            setTimeout(downloadNextPageEpisode, 1500);
+            setTimeout(downloadNextPageEpisode, 5500);
           }
           
           downloadNextPageEpisode();
         }
         
-        function downloadSeasonSequential() {
-          if (isDownloading) return;
+        // Abrir modal de descargas
+        function openDownloadModal() {
+          // Inicializar cola con todos los episodios
+          downloadQueue = allEpisodes.map((ep, idx) => ({
+            index: idx,
+            episode: ep,
+            status: 'queued' // queued, downloading, completed, error
+          }));
           
-          isDownloading = true;
-          downloadIndex = 0;
+          currentDownloadIndex = -1;
+          isPaused = false;
+          isModalMinimized = false;
           
-          const btn = document.getElementById('download-season-btn');
-          const progress = document.getElementById('progress-indicator');
+          // Mostrar modal
+          document.getElementById('download-modal').style.display = 'flex';
+          updateModalUI();
           
-          btn.disabled = true;
-          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" opacity=".25"/><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"><animateTransform attributeName="transform" dur="0.75s" repeatCount="indefinite" type="rotate" values="0 12 12;360 12 12"/></path></svg> Descargando...';
-          if (progress) progress.classList.add('show');
+          // Iniciar descargas
+          processNextDownload();
+        }
+        
+        // Procesar siguiente descarga en la cola
+        function processNextDownload() {
+          if (isPaused) return;
           
-          updateProgress();
-          downloadEpisode(0, true);
+          currentDownloadIndex++;
+          
+          if (currentDownloadIndex >= downloadQueue.length) {
+            // Todas las descargas completadas
+            document.getElementById('modal-status').textContent = '✅ Todas las descargas completadas';
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('cancel-btn').textContent = 'Cerrar';
+            return;
+          }
+          
+          const item = downloadQueue[currentDownloadIndex];
+          item.status = 'downloading';
+          updateModalUI();
+          
+          // Construir URL del servidor intermediario (igual que los botones individuales)
+          const urlObj = new URL(item.episode.url);
+          const accessToken = urlObj.searchParams.get('X-Plex-Token') || '';
+          const baseURI = urlObj.origin;
+          const partKey = urlObj.pathname;
+          
+          const redirectorUrl = 'https://plex-redirect-production.up.railway.app/?'
+            + 'accessToken=' + encodeURIComponent(accessToken)
+            + '&partKey=' + encodeURIComponent(partKey)
+            + '&baseURI=' + encodeURIComponent(baseURI)
+            + '&fileSize=' + encodeURIComponent(item.episode.fileSize || '')
+            + '&fileName=' + encodeURIComponent(item.episode.fileName || '')
+            + '&downloadURL=' + encodeURIComponent(item.episode.url)
+            + '&title=' + encodeURIComponent(item.episode.seriesTitle || '')
+            + '&episodeTitle=' + encodeURIComponent(item.episode.episodeTitle || '')
+            + '&seasonNumber=' + encodeURIComponent(item.episode.seasonNumber || '')
+            + '&episodeNumber=' + encodeURIComponent(item.episode.episodeNumber || '')
+            + '&autoDownload=true'
+            + '&closeAfter=500'; // Indicar al servidor que cierre después de 500ms
+          
+          // Crear un elemento <a> para abrir en segundo plano sin cambiar el foco
+          const link = document.createElement('a');
+          link.href = redirectorUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          
+          // Simular click con modificadores para abrir en segundo plano
+          const evt = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true, // Ctrl+Click = abrir en segundo plano
+            metaKey: true  // Cmd+Click en Mac
+          });
+          
+          link.dispatchEvent(evt);
+          
+          // Marcar como completado después de dar tiempo a que se registre la descarga
+          setTimeout(() => {
+            item.status = 'completed';
+            updateModalUI();
+            
+            // Esperar 6 segundos antes de la siguiente descarga (aumentado para evitar errores de red en Opera)
+            setTimeout(processNextDownload, 6000);
+          }, 1000);
+        }
+        
+        // Actualizar UI del modal
+        function updateModalUI() {
+          const completed = downloadQueue.filter(i => i.status === 'completed').length;
+          const total = downloadQueue.length;
+          const percentage = Math.round((completed / total) * 100);
+          
+          // Calcular tamaño total
+          let totalSizeBytes = 0;
+          downloadQueue.forEach(item => {
+            if (item.episode.fileSize) {
+              totalSizeBytes += parseInt(item.episode.fileSize, 10);
+            }
+          });
+          
+          let totalSizeFormatted = '';
+          if (totalSizeBytes > 0) {
+            const gb = totalSizeBytes / (1024 * 1024 * 1024);
+            const tb = gb / 1024;
+            totalSizeFormatted = tb >= 1 ? \` • \${tb.toFixed(2)} TB\` : \` • \${gb.toFixed(2)} GB\`;
+          }
+          
+          // Actualizar header
+          document.getElementById('modal-status').textContent = \`\${completed} / \${total} episodios\${totalSizeFormatted}\`;
+          document.getElementById('modal-progress-fill').style.width = percentage + '%';
+          document.getElementById('modal-progress-text').textContent = percentage + '%';
+          
+          // Actualizar lista de episodios
+          const listHTML = downloadQueue.map(item => {
+            let statusIcon = '';
+            let statusClass = '';
+            
+            if (item.status === 'queued') {
+              statusIcon = '⏳';
+              statusClass = 'queued';
+            } else if (item.status === 'downloading') {
+              statusIcon = '🔄';
+              statusClass = 'downloading';
+            } else if (item.status === 'completed') {
+              statusIcon = '✅';
+              statusClass = 'completed';
+            } else if (item.status === 'error') {
+              statusIcon = '❌';
+              statusClass = 'error';
+            }
+            
+            const epNum = item.episode.episodeNumber || item.index + 1;
+            const epTitle = item.episode.episodeTitle || 'Sin título';
+            
+            return \`
+              <div class="modal-episode-item \${statusClass}">
+                <span class="modal-episode-status">\${statusIcon}</span>
+                <span class="modal-episode-title">S\${item.episode.seasonNumber || '?'}E\${epNum} - \${epTitle}</span>
+                <span class="modal-episode-size">\${item.episode.fileSizeFormatted || ''}</span>
+              </div>
+            \`;
+          }).join('');
+          
+          document.getElementById('modal-episode-list').innerHTML = listHTML;
+          
+          // Auto-scroll al episodio actual
+          const downloadingEl = document.querySelector('.modal-episode-item.downloading');
+          if (downloadingEl) {
+            downloadingEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+        
+        // Pausar/Reanudar
+        function togglePause() {
+          isPaused = !isPaused;
+          const btn = document.getElementById('pause-btn');
+          
+          if (isPaused) {
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Reanudar';
+          } else {
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg> Pausar';
+            processNextDownload();
+          }
+        }
+        
+        // Cancelar/Cerrar
+        function cancelDownloads() {
+          downloadQueue = [];
+          currentDownloadIndex = -1;
+          isPaused = false;
+          document.getElementById('download-modal').style.display = 'none';
+          
+          // Limpiar iframe si existe
+          const iframe = document.getElementById('download-iframe');
+          if (iframe) {
+            document.body.removeChild(iframe);
+          }
+        }
+        
+        // Minimizar/Maximizar
+        function toggleMinimize() {
+          isModalMinimized = !isModalMinimized;
+          const modal = document.getElementById('download-modal');
+          const btn = document.getElementById('minimize-btn');
+          
+          if (isModalMinimized) {
+            modal.classList.add('minimized');
+            btn.textContent = '🗖';
+          } else {
+            modal.classList.remove('minimized');
+            btn.textContent = '−';
+          }
         }
         
         function updateProgress() {
@@ -1792,19 +2849,28 @@ app.get('/list', async (req, res) => {
         function toggleSynopsis() {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
-          const ellipsis = document.getElementById('synopsis-ellipsis');
           if (synopsis && button) {
-            if (synopsis.style.maxHeight === 'none') {
+            if (synopsis.style.maxHeight === 'none' || synopsis.style.maxHeight === '') {
               synopsis.style.maxHeight = '10.2em';
               button.textContent = 'Ver más';
-              if (ellipsis) ellipsis.style.display = 'block';
             } else {
               synopsis.style.maxHeight = 'none';
               button.textContent = 'Ver menos';
-              if (ellipsis) ellipsis.style.display = 'none';
             }
           }
         }
+        
+        // Detectar si el texto necesita "Ver más" al cargar
+        window.addEventListener('load', function() {
+          const synopsis = document.getElementById('synopsis-text');
+          const button = document.getElementById('synopsis-toggle');
+          if (synopsis && button) {
+            // Verificar si el contenido se desborda
+            if (synopsis.scrollHeight > synopsis.clientHeight) {
+              button.style.display = 'inline-block';
+            }
+          }
+        });
       </script>
     </head>
     <body>
@@ -1812,7 +2878,7 @@ app.get('/list', async (req, res) => {
       <div style="background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(26,26,26,1) 100%), ${backdropPath ? `url('${backdropPath}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)'}; background-size: cover; background-position: center; padding: 3rem; position: relative;">
         <div style="max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 280px 1fr; gap: 2rem; align-items: flex-start;">
           <!-- Poster de la temporada -->
-          ${seasonPoster ? `<img src="${seasonPoster}" alt="${seriesTitle}" style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); object-fit: cover;">` : '<div style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
+          ${seasonPoster ? `<img loading="lazy" src="${seasonPoster}" alt="${seriesTitle}" style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); object-fit: cover;">` : '<div style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
           
           <!-- Información -->
           <div style="position: relative; z-index: 2;">
@@ -1829,17 +2895,17 @@ app.get('/list', async (req, res) => {
               <div style="display: flex; gap: 0.75rem; align-items: center;">
                 ${seasonInfo && seasonInfo.tmdbId ? `
                   <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                   </a>
                 ` : ''}
                 ${imdbId ? `
                   <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                   </a>
                 ` : ''}
                 ${trailerKey ? `
                   <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
                   </a>
                 ` : ''}
               </div>
@@ -1850,26 +2916,35 @@ app.get('/list', async (req, res) => {
                 <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0.5rem; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease;">
                   ${seasonSummary}
                 </div>
-                <div style="text-align: left;" id="synopsis-ellipsis">
-                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
+                <div style="text-align: left;">
+                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="display: none; background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
                 </div>
               </div>
             ` : ''}
             
             <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-              <button class="download-season-btn" id="download-season-btn" onclick="downloadSeasonSequential()" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease; box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3); flex: 1;justify-content: center;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(229, 160, 13, 0.3)';">
+              <button class="download-season-btn" id="download-season-btn" onclick="openDownloadModal()" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease; box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3); flex: 1;justify-content: center;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(229, 160, 13, 0.3)';">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
                 </svg>
                 Descargar Temporada Completa
               </button>
               
+              ${parentRatingKey ? `
+              <button onclick="goBackToSeries()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+                Volver a Serie
+              </button>
+              ` : `
               <button onclick="window.history.back()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
                 </svg>
                 Volver a Serie
               </button>
+              `}
             </div>
             
             <div class="progress-indicator" id="progress-indicator" style="margin-top: 1.5rem; display: none;">
@@ -1885,140 +2960,511 @@ app.get('/list', async (req, res) => {
       <!-- Lista de episodios -->
       <div style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
         
-        <div class="episodes-grid">
-          ${currentPageEpisodes.map((download, index) => {
-            const globalIndex = startIndex + index;
-            return `
+        <div class="episodes-grid" id="episodes-container">
+          <!-- Los episodios se cargarán dinámicamente -->
+        </div>
+        
+        <div id="loading-indicator" style="display: none; text-align: center; padding: 2rem; color: #e5a00d;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="animation: spin 1s linear infinite;">
+            <circle cx="12" cy="12" r="10" stroke-width="2" stroke-dasharray="31.4 31.4" />
+          </svg>
+          <p>Cargando más episodios...</p>
+        </div>
+        
+        <style>
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+      
+      <!-- Modal de descargas -->
+      <div id="download-modal" style="display: none; position: fixed; bottom: 20px; right: 20px; width: 450px; max-height: 600px; background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8); z-index: 9999; flex-direction: column; transition: all 0.3s ease; pointer-events: auto;">
+          
+        <!-- Header -->
+        <div id="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; border-bottom: 1px solid rgba(229, 160, 13, 0.2);">
+          <div style="flex: 1; min-width: 0;">
+            <h3 style="margin: 0; color: #e5a00d; font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gestor de Descargas</h3>
+            <p id="modal-status" style="margin: 0.25rem 0 0 0; color: #999; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">0 / 0 episodios</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-shrink: 0; margin-left: 0.75rem;">
+            <button id="minimize-btn" onclick="toggleMinimize()" style="background: transparent; border: none; color: #e5a00d; font-size: 1.5rem; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">−</button>
+            <button onclick="cancelDownloads()" style="background: transparent; border: none; color: #e5a00d; font-size: 1.3rem; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">✕</button>
+          </div>
+        </div>
+        
+        <!-- Barra de progreso -->
+        <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(229, 160, 13, 0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="color: #e5e5e5; font-size: 0.9rem; font-weight: 600;">Progreso total</span>
+            <span id="modal-progress-text" style="color: #e5a00d; font-size: 0.9rem; font-weight: 600;">0%</span>
+          </div>
+          <div style="background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden;">
+            <div id="modal-progress-fill" style="background: linear-gradient(90deg, #e5a00d 0%, #f0b825 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+        
+        <!-- Lista de episodios -->
+        <div id="modal-episode-list" style="flex: 1; overflow-y: auto; padding: 1rem 1.5rem; max-height: 350px;">
+          <!-- Los episodios se agregarán dinámicamente -->
+        </div>
+        
+        <!-- Controles -->
+        <div style="display: flex; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid rgba(229, 160, 13, 0.2);">
+          <button id="pause-btn" onclick="togglePause()" style="flex: 1; background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 0.75rem; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; transition: all 0.2s ease;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+            </svg>
+            Pausar
+          </button>
+          <button id="cancel-btn" onclick="cancelDownloads()" style="flex: 1; background: rgba(255, 59, 48, 0.15); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3); padding: 0.75rem; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='rgba(255, 59, 48, 0.25)';" onmouseout="this.style.background='rgba(255, 59, 48, 0.15)';">Cancelar</button>
+        </div>
+      </div>
+      
+      <style>
+        /* Modal minimizado */
+        #download-modal.minimized {
+          width: 400px;
+          height: 70px;
+          max-height: 70px;
+        }
+        
+        #download-modal.minimized > div:not(:first-child) {
+          display: none;
+        }
+        
+        #download-modal.minimized #modal-header {
+          border-bottom: none;
+        }
+        
+        #download-modal.minimized h3 {
+          font-size: 1rem;
+        }
+        
+        #download-modal.minimized #modal-status {
+          font-size: 0.85rem;
+        }
+        
+        /* Items de episodios */
+        .modal-episode-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          margin-bottom: 0.5rem;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          border-left: 3px solid transparent;
+          transition: all 0.2s ease;
+        }
+        
+        .modal-episode-item.queued {
+          border-left-color: #666;
+        }
+        
+        .modal-episode-item.downloading {
+          border-left-color: #e5a00d;
+          background: rgba(229, 160, 13, 0.1);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .modal-episode-item.completed {
+          border-left-color: #34c759;
+          opacity: 0.7;
+        }
+        
+        .modal-episode-item.error {
+          border-left-color: #ff3b30;
+          background: rgba(255, 59, 48, 0.1);
+        }
+        
+        .modal-episode-status {
+          font-size: 1.25rem;
+          flex-shrink: 0;
+        }
+        
+        .modal-episode-title {
+          color: #e5e5e5;
+          font-size: 0.9rem;
+          line-height: 1.4;
+          flex: 1;
+        }
+        
+        .modal-episode-size {
+          color: #999;
+          font-size: 0.8rem;
+          margin-left: 8px;
+          flex-shrink: 0;
+        }
+        
+        @keyframes pulse {
+          0%, 100% {
+            background: rgba(229, 160, 13, 0.1);
+          }
+          50% {
+            background: rgba(229, 160, 13, 0.2);
+          }
+        }
+        
+        /* Scrollbar personalizado */
+        #modal-episode-list::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        #modal-episode-list::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 4px;
+        }
+        
+        #modal-episode-list::-webkit-scrollbar-thumb {
+          background: rgba(229, 160, 13, 0.5);
+          border-radius: 4px;
+        }
+        
+        #modal-episode-list::-webkit-scrollbar-thumb:hover {
+          background: rgba(229, 160, 13, 0.7);
+        }
+      </style>
+      
+      <script>
+        // Funciones auxiliares
+        function toggleFilenameMeta(index) {
+          const text = document.getElementById('filename-meta-' + index);
+          const button = document.getElementById('expand-btn-meta-' + index);
+          const currentFileName = allEpisodes[index].fileName;
+          
+          if (button.textContent === '+') {
+            text.textContent = currentFileName;
+            button.textContent = '-';
+          } else {
+            text.textContent = currentFileName.length > 40 ? currentFileName.substring(0, 40) + '...' : currentFileName;
+            button.textContent = '+';
+          }
+        }
+        
+        function toggleTechnical(index) {
+          const content = document.getElementById('technical-content-' + index);
+          const button = document.getElementById('technical-toggle-' + index);
+          const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+          
+          if (isOpen) {
+            content.style.maxHeight = '0';
+            button.textContent = '▶ Mostrar detalles técnicos';
+          } else {
+            content.style.maxHeight = content.scrollHeight + 'px';
+            button.textContent = '▼ Ocultar detalles técnicos';
+          }
+        }
+        
+        // Función para renderizar un episodio
+        function renderEpisode(download, index) {
+          // Construir URL para ver detalles del episodio
+          const episodePageUrl = download.ratingKey 
+            ? \`/episode?episodeRatingKey=\${download.ratingKey}&accessToken=\${encodeURIComponent(download.accessToken)}&baseURI=\${encodeURIComponent(download.baseURI)}&seasonRatingKey=\${download.parentRatingKey || ''}&seasonNumber=\${download.seasonNumber || ''}&episodeNumber=\${download.episodeNumber || ''}&seriesTitle=\${encodeURIComponent('${seriesTitleParam}')}\${download.grandparentRatingKey ? '&parentRatingKey=' + download.grandparentRatingKey : ''}\${'${tmdbId}' ? '&tmdbId=${tmdbId}' : ''}\${'${imdbId}' ? '&imdbId=${imdbId}' : ''}\${'${libraryKey}' ? '&libraryKey=${encodeURIComponent(libraryKey)}' : ''}\${'${libraryTitle}' ? '&libraryTitle=${encodeURIComponent(libraryTitle)}' : ''}\`
+            : null;
+          
+          return \`
             <div class="episode-card">
-              ${download.posterUrl ? `<img class="episode-poster" src="${download.posterUrl}" alt="${download.episodeTitle}">` : `<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>`}
+              \${episodePageUrl 
+                ? \`<a href="\${episodePageUrl}" style="display: block; text-decoration: none;">
+                    \${download.posterUrl ? \`<img class="episode-poster" src="\${download.posterUrl}" alt="\${download.episodeTitle}" style="cursor: pointer;">\` : \`<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%); cursor: pointer;"></div>\`}
+                   </a>\`
+                : \`\${download.posterUrl ? \`<img class="episode-poster" src="\${download.posterUrl}" alt="\${download.episodeTitle}">\` : \`<div class="episode-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>\`}\`
+              }
               
               <div class="episode-info">
                 <div class="episode-number">
-                  ${download.seasonNumber ? `Temporada ${download.seasonNumber}` : ''} 
-                  ${download.episodeNumber ? `• Episodio ${download.episodeNumber}` : ''}
+                  \${download.seasonNumber ? \`Temporada \${download.seasonNumber}\` : ''} 
+                  \${download.episodeNumber ? \`• Episodio \${download.episodeNumber}\` : ''}
                 </div>
-                <div class="episode-title">${download.episodeTitle || download.fileName}</div>
+                \${episodePageUrl 
+                  ? \`<a href="\${episodePageUrl}" style="text-decoration: none; color: inherit;"><div class="episode-title" style="cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='#e5a00d'" onmouseout="this.style.color='#fff'">\${download.episodeTitle || download.fileName}</div></a>\`
+                  : \`<div class="episode-title">\${download.episodeTitle || download.fileName}</div>\`
+                }
                 <div class="episode-meta">
-                  ${download.fileSizeFormatted ? `<span>📦 ${download.fileSizeFormatted}</span>` : ''}
+                  \${download.fileSizeFormatted ? \`<span>📦 \${download.fileSizeFormatted}</span>\` : ''}
                   <div class="filename-meta">
-                    <span>📄 <span class="filename-text" id="filename-meta-${index}">${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span></span>
-                    ${download.fileName.length > 40 ? `<button class="expand-btn-meta" id="expand-btn-meta-${index}" onclick="toggleFilenameMeta(${index})">+</button>` : ''}
+                    <span>📄 <span class="filename-text" id="filename-meta-\${index}">\${download.fileName.length > 40 ? download.fileName.substring(0, 40) + '...' : download.fileName}</span></span>
+                    \${download.fileName.length > 40 ? \`<button class="expand-btn-meta" id="expand-btn-meta-\${index}" onclick="toggleFilenameMeta(\${index})">+</button>\` : ''}
                   </div>
                 </div>
                 
-                <button class="technical-toggle" id="technical-toggle-${index}" onclick="toggleTechnical(${index})">
+                <button class="technical-toggle" id="technical-toggle-\${index}" onclick="toggleTechnical(\${index})">
                   ▶ Mostrar detalles técnicos
                 </button>
-                <div class="technical-content" id="technical-content-${index}">
+                <div class="technical-content" id="technical-content-\${index}">
                   <table class="info-table">
                     <tr>
                       <td class="label">Access Token</td>
-                      <td class="value">${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</td>
+                      <td class="value">\${download.accessToken ? download.accessToken.substring(0, 20) + '...' : 'N/A'}</td>
                     </tr>
                     <tr>
                       <td class="label">Part Key</td>
-                      <td class="value">${decodeURIComponent(download.partKey)}</td>
+                      <td class="value">\${decodeURIComponent(download.partKey)}</td>
                     </tr>
                     <tr>
                       <td class="label">Base URL</td>
-                      <td class="value">${download.baseURI}</td>
+                      <td class="value">\${download.baseURI}</td>
                     </tr>
                     <tr>
                       <td class="label">Nombre del archivo</td>
-                      <td class="value">${download.fileName}</td>
+                      <td class="value">\${download.fileName}</td>
                     </tr>
                     <tr>
                       <td class="label">Tamaño</td>
-                      <td class="value">${download.fileSize || 'Desconocido'}</td>
+                      <td class="value">\${download.fileSize || 'Desconocido'}</td>
                     </tr>
                     <tr>
                       <td class="label">URL de descarga</td>
-                      <td class="value">${download.downloadURL}</td>
+                      <td class="value">\${download.url || 'N/A'}</td>
                     </tr>
                   </table>
                 </div>
               </div>
               
-              <button class="download-btn" onclick="downloadEpisode(${globalIndex})">
+              <button class="download-btn" onclick="downloadEpisode(\${index})">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
                 </svg>
                 Descargar
               </button>
             </div>
-          `}).join('')}
-        </div>
+          \`;
+        }
         
-        ${totalPages > 1 ? `
-        <div class="pagination-controls">
-          <div class="breadcrumbs">
-            <span>${seriesTitle}</span>
-            <span>•</span>
-            <span>Temporada ${seasonNumberFromEpisode}</span>
-            <span>•</span>
-            <span class="current">Episodios ${startIndex + 1}-${endIndex} de ${totalEpisodes}</span>
-          </div>
+        // Función para cargar más episodios
+        function loadMoreEpisodes() {
+          const container = document.getElementById('episodes-container');
+          const end = Math.min(currentIndex + episodesPerLoad, totalEpisodes);
           
-          <div class="pagination-nav">
-            ${page > 1 ? `
-              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=1&pageSize=${pageSize}" class="page-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.41 7.41L17 6l-6 6 6 6 1.41-1.41L13.83 12l4.58-4.59z"/>
-                  <path d="M12.41 7.41L11 6l-6 6 6 6 1.41-1.41L7.83 12l4.58-4.59z"/>
-                </svg>
-                Primera
-              </a>
-              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${page - 1}&pageSize=${pageSize}" class="page-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-                </svg>
-                Anterior
-              </a>
-            ` : ''}
-            
-            ${(() => {
-              let pageNumbers = '';
-              const startPage = Math.max(1, page - 2);
-              const endPage = Math.min(totalPages, page + 2);
-              
-              for (let i = startPage; i <= endPage; i++) {
-                const isCurrentPage = i === page;
-                pageNumbers += `
-                  <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${i}&pageSize=${pageSize}" 
-                     class="page-btn ${isCurrentPage ? 'current' : ''}">${i}</a>
-                `;
-              }
-              return pageNumbers;
-            })()}
-            
-            ${page < totalPages ? `
-              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${page + 1}&pageSize=${pageSize}" class="page-btn">
-                Siguiente
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-                </svg>
-              </a>
-              <a href="/list?downloads=${encodeURIComponent(JSON.stringify(downloads))}&page=${totalPages}&pageSize=${pageSize}" class="page-btn">
-                Última
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M5.59 7.41L7 6l6 6-6 6-1.41-1.41L10.17 12L5.59 7.41z"/>
-                  <path d="M11.59 7.41L13 6l6 6-6 6-1.41-1.41L16.17 12L11.59 7.41z"/>
-                </svg>
-              </a>
-            ` : ''}
-          </div>
+          for (let i = currentIndex; i < end; i++) {
+            const episodeHTML = renderEpisode(allEpisodes[i], i);
+            container.insertAdjacentHTML('beforeend', episodeHTML);
+            displayedEpisodes.push(allEpisodes[i]);
+          }
           
-          <div class="episode-jump">
-            <span>Ir al episodio:</span>
-            <input type="number" id="episode-input" min="1" max="${totalEpisodes}" placeholder="Nº">
-            <button onclick="jumpToEpisode()">Ir</button>
-          </div>
-        </div>
-        ` : ''}
-      </div>
+          currentIndex = end;
+        }
+        
+        // Detectar scroll para cargar más
+        let isLoading = false;
+        window.addEventListener('scroll', function() {
+          if (isLoading) return;
+          
+          const scrollPosition = window.innerHeight + window.scrollY;
+          const documentHeight = document.documentElement.scrollHeight;
+          
+          // Cargar más cuando estemos a 500px del final
+          if (scrollPosition >= documentHeight - 500 && currentIndex < totalEpisodes) {
+            isLoading = true;
+            document.getElementById('loading-indicator').style.display = 'block';
+            
+            setTimeout(() => {
+              loadMoreEpisodes();
+              document.getElementById('loading-indicator').style.display = 'none';
+              isLoading = false;
+            }, 300);
+          }
+        });
+        
+        // Cargar episodios iniciales
+        loadMoreEpisodes();
+      </script>
     </body>
     </html>
   `);
+});
+
+// Ruta redirectora para películas desde /browse
+app.get('/movie-redirect', async (req, res) => {
+  const {
+    accessToken = '',
+    baseURI = '',
+    ratingKey = '',
+    title = '',
+    posterUrl = '',
+    tmdbId = '',
+    libraryKey = '',
+    libraryTitle = ''
+  } = req.query;
+  
+  // console.log('[/movie-redirect] Obteniendo datos de película desde ratingKey:', ratingKey);
+  
+  try {
+    // Obtener XML de Plex para extraer fileName, fileSize, partKey y year
+    const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+    const xmlText = await httpsGetXML(metadataUrl);
+    
+    // Extraer partKey
+    let partKey = '';
+    const partKeyMatch = xmlText.match(/<Part[^>]*key="([^"]*)"[^>]*>/);
+    if (partKeyMatch) {
+      const fullPartKey = partKeyMatch[1];
+      // console.log('[/movie-redirect] fullPartKey:', fullPartKey);
+      
+      // Crear partKey sin el fileName (termina en /)
+      partKey = fullPartKey.replace(/\/[^\/]+$/, '/');
+      // console.log('[/movie-redirect] partKey extraído:', partKey);
+    } else {
+      // console.log('[/movie-redirect] ❌ No se pudo extraer partKey del XML');
+    }
+    
+    // Debug: Mostrar un fragmento del XML para ver qué contiene
+    const partSection = xmlText.substring(xmlText.indexOf('<Part'), xmlText.indexOf('</Part>') + 7);
+    // console.log('[/movie-redirect] XML Part section:', partSection);
+    
+    // Extraer fileName del atributo file (contiene la ruta completa)
+    let fileName = '';
+    // Usar un regex más específico que busque " file=" para evitar capturar otros atributos
+    const fileMatch = xmlText.match(/\sfile="([^"]+)"/);
+    if (fileMatch) {
+      const fullFilePath = fileMatch[1];
+      // console.log('[/movie-redirect] fullFilePath extraído:', fullFilePath);
+      
+      // Extraer solo el nombre del archivo (último segmento después de /)
+      const segments = fullFilePath.split('/');
+      fileName = segments[segments.length - 1];
+      // console.log('[/movie-redirect] fileName extraído del atributo file:', fileName);
+    } else {
+      // console.log('[/movie-redirect] ⚠️ No se encontró atributo file, usando fileName del partKey');
+      // Fallback: extraer del partKey
+      if (partKeyMatch) {
+        const segments = partKeyMatch[1].split('/');
+        fileName = segments[segments.length - 1];
+        // console.log('[/movie-redirect] fileName extraído del partKey (fallback):', fileName);
+      }
+    }
+    
+    // Extraer fileSize
+    let fileSize = '';
+    const sizeMatch = xmlText.match(/<Part[^>]*size="([^"]*)"[^>]*>/);
+    if (sizeMatch) {
+      const bytes = parseInt(sizeMatch[1]);
+      const gb = bytes / (1024 * 1024 * 1024);
+      fileSize = gb >= 1 ? gb.toFixed(2) + ' GBs' : (gb * 1024).toFixed(2) + ' MBs';
+      // console.log('[/movie-redirect] fileSize extraído:', fileSize);
+    }
+    
+    // Extraer año
+    let year = '';
+    const yearMatch = xmlText.match(/<Video[^>]*year="([^"]*)"[^>]*>/);
+    if (yearMatch) {
+      year = yearMatch[1];
+      // console.log('[/movie-redirect] year extraído:', year);
+    }
+    
+    // Extraer tmdbId del guid si no viene en los parámetros
+    let extractedTmdbId = tmdbId;
+    if (!extractedTmdbId || extractedTmdbId.trim() === '') {
+      // Buscar el atributo guid en cualquier lugar del tag Video
+      const guidMatch = xmlText.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+      if (guidMatch) {
+        extractedTmdbId = guidMatch[1];
+        // console.log('[/movie-redirect] ✅ tmdbId extraído del XML:', extractedTmdbId);
+      } else {
+        // Intentar extraer del nombre del archivo si contiene [tmdb-XXXXX]
+        const fileNameMatch = fileName.match(/\[tmdb-(\d+)\]/i);
+        if (fileNameMatch) {
+          extractedTmdbId = fileNameMatch[1];
+          // console.log('[/movie-redirect] ✅ tmdbId extraído del nombre del archivo:', extractedTmdbId);
+        } else {
+          // console.log('[/movie-redirect] ⚠️ No se encontró tmdbId en el XML ni en el nombre del archivo, se usará búsqueda automática');
+        }
+      }
+    }
+    
+    // Construir downloadURL correcto con download=0
+    const downloadURL = partKey && fileName 
+      ? `${baseURI}${partKey}${fileName}?download=0&X-Plex-Token=${accessToken}`
+      : `${baseURI}/library/metadata/${ratingKey}?download=0&X-Plex-Token=${accessToken}`;
+    
+    // Redirigir a /movie con todos los parámetros incluyendo tmdbId extraído
+    const redirectUrl = `/movie?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&downloadURL=${encodeURIComponent(downloadURL)}&partKey=${encodeURIComponent(partKey)}&title=${encodeURIComponent(title)}&year=${year}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${extractedTmdbId}&fileName=${encodeURIComponent(fileName)}&fileSize=${encodeURIComponent(fileSize)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}`;
+    
+    // console.log('[/movie-redirect] Redirigiendo a /movie con todos los parámetros (tmdbId:', extractedTmdbId, ')');
+    res.redirect(redirectUrl);
+    
+  } catch (error) {
+    console.error('[/movie-redirect] Error al obtener datos:', error);
+    // Si falla, redirigir sin los datos extras
+    res.redirect(`/movie?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${tmdbId}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}`);
+  }
+});
+
+// Ruta redirectora para series desde /browse
+app.get('/series-redirect', async (req, res) => {
+  const {
+    accessToken = '',
+    baseURI = '',
+    ratingKey = '',
+    title = '',
+    posterUrl = '',
+    tmdbId = '',
+    libraryKey = '',
+    libraryTitle = ''
+  } = req.query;
+  
+  // console.log('[/series-redirect] Obteniendo datos de serie desde ratingKey:', ratingKey);
+  // console.log('[/series-redirect] libraryKey recibido:', libraryKey);
+  // console.log('[/series-redirect] libraryTitle recibido:', libraryTitle);
+  
+  try {
+    // Obtener XML de Plex para extraer datos de la serie
+    const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+    const xmlText = await httpsGetXML(metadataUrl);
+    
+    // Extraer tmdbId del guid si no viene en los parámetros
+    let extractedTmdbId = tmdbId;
+    if (!extractedTmdbId || extractedTmdbId.trim() === '') {
+      const guidMatch = xmlText.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+      if (guidMatch) {
+        extractedTmdbId = guidMatch[1];
+        // console.log('[/series-redirect] ✅ tmdbId extraído del XML:', extractedTmdbId);
+      } else {
+        // console.log('[/series-redirect] ⚠️ No se encontró tmdbId en el XML, se usará búsqueda automática');
+      }
+    }
+    
+    // Obtener las temporadas
+    const seasonsUrl = `${baseURI}/library/metadata/${ratingKey}/children?X-Plex-Token=${accessToken}`;
+    const seasonsXml = await httpsGetXML(seasonsUrl);
+    
+    const seasons = [];
+    const seasonMatches = seasonsXml.matchAll(/<Directory[^>]*>/g);
+    
+    for (const match of seasonMatches) {
+      const seasonTag = match[0];
+      const seasonRatingKey = seasonTag.match(/ratingKey="([^"]*)"/)?.[1];
+      const seasonTitle = seasonTag.match(/title="([^"]*)"/)?.[1];
+      const seasonIndex = seasonTag.match(/index="([^"]*)"/)?.[1];
+      const seasonThumb = seasonTag.match(/thumb="([^"]*)"/)?.[1];
+      const leafCount = seasonTag.match(/leafCount="([^"]*)"/)?.[1] || '0';
+      
+      if (seasonRatingKey && seasonTitle) {
+        seasons.push({
+          ratingKey: seasonRatingKey,
+          title: seasonTitle,
+          seasonNumber: seasonIndex || '',
+          thumb: seasonThumb ? `${baseURI}${seasonThumb}?X-Plex-Token=${accessToken}` : '',
+          episodeCount: leafCount
+        });
+      }
+    }
+    
+    // console.log('[/series-redirect] Temporadas encontradas:', seasons.length);
+    
+    // Redirigir a /series con todos los parámetros incluyendo seasons
+    const redirectUrl = `/series?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seriesId=${ratingKey}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${extractedTmdbId}&seasons=${encodeURIComponent(JSON.stringify(seasons))}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}`;
+    
+    // console.log('[/series-redirect] Redirigiendo a /series con', seasons.length, 'temporadas (tmdbId:', extractedTmdbId, ')');
+    res.redirect(redirectUrl);
+    
+  } catch (error) {
+    console.error('[/series-redirect] Error al obtener datos:', error);
+    // Si falla, redirigir sin los datos extras
+    res.redirect(`/series?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seriesId=${ratingKey}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${tmdbId}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}`);
+  }
 });
 
 // Ruta para películas individuales
@@ -2031,16 +3477,153 @@ app.get('/movie', async (req, res) => {
     fileName = '',
     downloadURL = '',
     title = '',
+    year = '',
     posterUrl = '',
-    tmdbId = ''
+    tmdbId = '',
+    libraryKey = '',
+    libraryTitle = ''
   } = req.query;
 
-  const partKey = decodeURIComponent(encodedPartKey);
+  let partKey = decodeURIComponent(encodedPartKey);
+  
+  // Log para debug
+  // console.log('[/movie] tmdbId recibido:', tmdbId);
+  // console.log('[/movie] year recibido:', year);
+  // console.log('[/movie] fileSize recibido:', fileSize);
+  // console.log('[/movie] title recibido:', title);
+  // console.log('[/movie] downloadURL:', downloadURL);
+  // console.log('[/movie] partKey recibido:', partKey);
+  // console.log('[/movie] fileName recibido:', fileName);
+  
+  // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
+  let calculatedFileSize = fileSize;
+  let videoCodec = '';
+  let audioCodec = '';
+  let resolution = '';
+  let bitrate = '';
+  let container = '';
+  let quality = '';
+  let movieYear = '';
+  let originalTitle = '';
+  
+  if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
+    try {
+      const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+      if (ratingKeyMatch) {
+        const ratingKey = ratingKeyMatch[1];
+        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
+        const xmlText = await httpsGetXML(metadataUrl);
+        
+        // Extraer partKey si no viene en parámetros
+        if (!partKey) {
+          const partKeyMatch = xmlText.match(/<Part[^>]*key="([^"]*)"[^>]*>/);
+          if (partKeyMatch) {
+            const fullPartKey = partKeyMatch[1];
+            // Extraer solo la base del partKey (sin el filename)
+            partKey = fullPartKey.replace(/\/[^\/]+$/, '/');
+            // console.log('[/movie] partKey extraído del XML:', partKey);
+          }
+        }
+        
+        // Extraer fileSize
+        const sizeMatch = xmlText.match(/<Part[^>]*size="([^"]*)"[^>]*>/);
+        if (sizeMatch) {
+          const bytes = parseInt(sizeMatch[1]);
+          const gb = bytes / (1024 * 1024 * 1024);
+          calculatedFileSize = gb >= 1 ? gb.toFixed(2) + ' GBs' : (gb * 1024).toFixed(2) + ' MBs';
+          // console.log('[/movie] fileSize extraído del XML:', calculatedFileSize);
+        }
+        
+        // Extraer año y título original
+        const yearMatch = xmlText.match(/<Video[^>]*year="([^"]*)"[^>]*>/);
+        if (yearMatch) {
+          movieYear = yearMatch[1];
+          // console.log('[/movie] Año extraído del XML:', movieYear);
+        }
+        
+        const originalTitleMatch = xmlText.match(/<Video[^>]*originalTitle="([^"]*)"[^>]*>/);
+        if (originalTitleMatch) {
+          originalTitle = originalTitleMatch[1];
+          // console.log('[/movie] Título original extraído:', originalTitle);
+        }
+        
+        // Extraer detalles técnicos del Media
+        const videoCodecMatch = xmlText.match(/<Media[^>]*videoCodec="([^"]*)"[^>]*>/);
+        if (videoCodecMatch) videoCodec = videoCodecMatch[1];
+        
+        const audioCodecMatch = xmlText.match(/<Media[^>]*audioCodec="([^"]*)"[^>]*>/);
+        if (audioCodecMatch) audioCodec = audioCodecMatch[1];
+        
+        const videoResolutionMatch = xmlText.match(/<Media[^>]*videoResolution="([^"]*)"[^>]*>/);
+        if (videoResolutionMatch) {
+          resolution = `${videoResolutionMatch[1]}p`;
+          const resValue = parseInt(videoResolutionMatch[1]);
+          if (resValue >= 2160) quality = '4K';
+          else if (resValue >= 1080) quality = 'Full HD';
+          else if (resValue >= 720) quality = 'HD';
+          else quality = 'SD';
+        }
+        
+        const bitrateMatch = xmlText.match(/<Media[^>]*bitrate="([^"]*)"[^>]*>/);
+        if (bitrateMatch) bitrate = `${Math.round(parseInt(bitrateMatch[1]) / 1000)} Mbps`;
+        
+        const containerMatch = xmlText.match(/<Media[^>]*container="([^"]*)"[^>]*>/);
+        if (containerMatch) container = containerMatch[1].toUpperCase();
+        
+        // console.log('[/movie] Detalles técnicos:', { videoCodec, audioCodec, resolution, bitrate, container, quality });
+      }
+    } catch (error) {
+      console.error('[/movie] Error al extraer datos del XML:', error);
+    }
+  }
+  
+  // Usar año del parámetro como fallback si no viene en el XML
+  if (!movieYear && year) {
+    movieYear = year;
+    // console.log('[/movie] Usando año del parámetro como fallback:', movieYear);
+  }
   
   // Obtener datos completos de TMDB si tenemos el ID
   let movieData = null;
-  if (tmdbId) {
+  let autoSearchedTmdbId = '';
+  
+  if (tmdbId && tmdbId.trim() !== '') {
+    // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
     movieData = await fetchTMDBMovieData(tmdbId);
+    // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
+    if (movieData) {
+      // console.log('[/movie] movieData.title:', movieData.title);
+      // console.log('[/movie] movieData.year:', movieData.year);
+      // console.log('[/movie] movieData.genres:', movieData.genres);
+    }
+  } else if (title && movieYear) {
+    // Decodificar HTML entities en el título antes de buscar
+    const decodedTitle = decodeHtmlEntities(title);
+    
+    // Búsqueda automática en TMDB por título + año
+    // console.log('[/movie] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle, movieYear);
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}&year=${movieYear}`;
+      const searchResults = await httpsGet(searchUrl);
+      
+      if (searchResults && searchResults.results && searchResults.results.length > 0) {
+        // Tomar el primer resultado que coincida con el año
+        const firstResult = searchResults.results[0];
+        autoSearchedTmdbId = firstResult.id.toString();
+        // console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
+        
+        // Obtener datos completos con el ID encontrado
+        movieData = await fetchTMDBMovieData(autoSearchedTmdbId);
+        // console.log('[/movie] movieData obtenido por búsqueda automática');
+      } else {
+        // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
+      }
+    } catch (error) {
+      console.error('[/movie] Error en búsqueda automática de TMDB:', error);
+    }
+  } else {
+    // console.log('[/movie] NO SE RECIBIÓ tmdbId ni título+año válidos');
   }
   
   // Usar datos de TMDB o fallback a los datos de Plex
@@ -2053,7 +3636,7 @@ app.get('/movie', async (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${movieTitle} - Descarga</title>
+      <title>${movieTitle} - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2066,7 +3649,7 @@ app.get('/movie', async (req, res) => {
         
         body {
           font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-          background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+          background: transparent;
           color: #e5e5e5;
           min-height: 100vh;
           display: flex;
@@ -2083,6 +3666,7 @@ app.get('/movie', async (req, res) => {
           max-height: 90vh;
           overflow-y: auto;
           position: relative;
+          z-index: 999;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
           scrollbar-width: thin;
           scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -2107,7 +3691,7 @@ app.get('/movie', async (req, res) => {
           background-position: center top;
           background-repeat: no-repeat;
           background-image: url('${movieBackdrop}');
-          min-height: 233px;
+          min-height: 220px;
           display: flex;
           align-items: flex-end;
           padding: 2.5rem 3.5rem 1.5rem 3.5rem;
@@ -2131,6 +3715,42 @@ app.get('/movie', async (req, res) => {
           position: relative;
           z-index: 2;
           width: 100%;
+        }
+        
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.75);
+          z-index: 998;
+          cursor: pointer;
+          backdrop-filter: blur(4px);
+        }
+        
+        .close-button {
+          position: absolute;
+          top: 1.5rem;
+          right: 2rem;
+          z-index: 3;
+          background: rgba(0, 0, 0, 0.6);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-size: 2rem;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          line-height: 1;
+          padding: 0;
+        }
+        
+        .close-button:hover {
+          background: rgba(229, 160, 13, 0.9);
+          border-color: #e5a00d;
+          transform: scale(1.1);
         }
         
         .modal-title {
@@ -2319,53 +3939,32 @@ app.get('/movie', async (req, res) => {
           line-height: 1.7;
           font-size: 1.08rem;
           text-align: justify;
-          margin-bottom: 0;
+          margin-bottom: 0.5rem;
           color: #cccccc;
-          max-height: 8.5em;
+          max-height: 6.8em;
           overflow: hidden;
           transition: max-height 0.3s ease;
           position: relative;
-          padding-right: 0;
         }
         
         .modal-synopsis.expanded {
           max-height: none;
         }
         
-        .modal-synopsis::after {
-          content: '...';
-          position: absolute;
-          bottom: 0;
-          right: 1.2rem;
-          background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
-          color: #cccccc;
-          width: 2.2rem;
-          text-align: right;
-        }
-        
-        .modal-synopsis.expanded::after {
-          content: '';
+        .synopsis-toggle {
+          background: transparent;
+          border: none;
+          color: #e5a00d;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          transition: color 0.2s ease;
+          text-decoration: underline;
           display: none;
         }
         
-        .synopsis-toggle {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          background: #282828;
-          border: none;
-          color: #e5a00d;
-          font-size: 1.3rem;
-          font-weight: bold;
-          cursor: pointer;
-          padding: 0 0.25rem;
-          transition: transform 0.2s ease;
-          line-height: 1.7;
-          z-index: 2;
-        }
-        
         .synopsis-toggle:hover {
-          transform: scale(1.15);
           color: #f0b825;
         }
         
@@ -2496,17 +4095,20 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
+      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
+          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
             ${movieData && movieData.tagline ? `<div class="modal-tagline">${movieData.tagline}</div>` : ''}
             <div class="modal-badges-container">
               <div class="modal-badges-row">
-                ${fileSize ? `<span class="filesize-badge">${fileSize}</span>` : ''}
-                ${movieData && movieData.year ? `<span class="year-badge">${movieData.year}</span>` : ''}
+                ${calculatedFileSize ? `<span class="filesize-badge">${calculatedFileSize}</span>` : ''}
+                ${quality ? `<span class="year-badge">${quality}</span>` : ''}
+                ${movieData && movieData.year ? `<span class="year-badge">${movieData.year}</span>` : (movieYear ? `<span class="year-badge">${movieYear}</span>` : '')}
                 ${movieData && movieData.runtime ? `<span class="runtime-badge">${movieData.runtime}</span>` : ''}
                 ${movieData && movieData.rating !== 'N/A' ? `
                   <span class="rating-badge">
@@ -2518,24 +4120,24 @@ app.get('/movie', async (req, res) => {
                 ` : ''}
                 ${movieData && movieData.genres && movieData.genres.length > 0 ? `
                   <div class="genres-list">
-                    ${movieData.genres.map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
+                    ${movieData.genres.slice(0, 3).map(genre => `<span class="genre-tag">${genre}</span>`).join('')}
                   </div>
                 ` : ''}
               </div>
               <div class="modal-icons-row">
-                ${tmdbId ? `
-                  <a href="https://www.themoviedb.org/movie/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                ${(tmdbId || autoSearchedTmdbId) ? `
+                  <a href="https://www.themoviedb.org/movie/${tmdbId || autoSearchedTmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
                   </a>
                 ` : ''}
                 ${movieData && movieData.imdbId ? `
                   <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
                   </a>
                 ` : ''}
                 ${movieData && movieData.trailerKey ? `
                   <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
                   </a>
                 ` : ''}
               </div>
@@ -2547,7 +4149,7 @@ app.get('/movie', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img src="${moviePoster}" alt="${movieTitle}">
+              <img loading="lazy" src="${moviePoster}" alt="${movieTitle}">
             </div>
             <button class="download-button" onclick="window.location.href='${downloadURL}'">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -2574,7 +4176,7 @@ app.get('/movie', async (req, res) => {
                 <div class="modal-synopsis" id="synopsis-text">
                   ${movieData.overview}
                 </div>
-                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
+                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">Ver más</button>
               </div>
             ` : `
               <div class="synopsis-container">
@@ -2600,19 +4202,23 @@ app.get('/movie', async (req, res) => {
                 </tr>
                 <tr>
                   <td class="label">Part Key</td>
-                  <td class="value">${encodedPartKey}</td>
+                  <td class="value">${partKey || 'N/A'}</td>
                 </tr>
                 <tr>
-                  <td class="label">Base URL</td>
+                  <td class="label">Base URI</td>
                   <td class="value">${baseURI}</td>
                 </tr>
                 <tr>
                   <td class="label">Nombre del archivo</td>
-                  <td class="value">${fileName}</td>
+                  <td class="value">${fileName || 'N/A'}</td>
                 </tr>
                 <tr>
                   <td class="label">Tamaño</td>
-                  <td class="value">${fileSize || 'Desconocido'}</td>
+                  <td class="value">${calculatedFileSize || 'Desconocido'}</td>
+                </tr>
+                <tr>
+                  <td class="label">URL de Descarga</td>
+                  <td class="value" style="word-break: break-all;">${downloadURL}</td>
                 </tr>
               </table>
             </div>
@@ -2633,16 +4239,27 @@ app.get('/movie', async (req, res) => {
         function toggleSynopsis() {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
-          synopsis.classList.toggle('expanded');
-          button.textContent = synopsis.classList.contains('expanded') ? '−' : '+';
+          
+          if (synopsis.classList.contains('expanded')) {
+            synopsis.classList.remove('expanded');
+            button.textContent = 'Ver más';
+          } else {
+            synopsis.classList.add('expanded');
+            button.textContent = 'Ver menos';
+          }
         }
         
-        // Auto-descargar al cargar la página
-        window.onload = function() {
-          setTimeout(function() {
-            window.location.href = '${downloadURL}';
-          }, 1000);
-        };
+        // Detectar si el texto necesita "Ver más" al cargar
+        window.addEventListener('load', function() {
+          const synopsis = document.getElementById('synopsis-text');
+          const button = document.getElementById('synopsis-toggle');
+          if (synopsis && button) {
+            // Verificar si el contenido se desborda
+            if (synopsis.scrollHeight > synopsis.clientHeight) {
+              button.style.display = 'inline-block';
+            }
+          }
+        });
       </script>
     </body>
     </html>
@@ -2659,8 +4276,13 @@ app.get('/series', async (req, res) => {
     posterUrl = '',
     tmdbId = '',
     totalSize = '',
-    seasons: seasonsParam = '[]'
+    seasons: seasonsParam = '[]',
+    libraryKey = '',
+    libraryTitle = ''
   } = req.query;
+  
+  // console.log('[/series] libraryKey recibido:', libraryKey);
+  // console.log('[/series] libraryTitle recibido:', libraryTitle);
   
   // Parsear temporadas
   let seasons = [];
@@ -2670,10 +4292,72 @@ app.get('/series', async (req, res) => {
     console.error('Error parsing seasons:', e);
   }
   
-  // Obtener datos de TMDB si está disponible
+  // Calcular tamaño total de todas las temporadas
+  let calculatedTotalSize = totalSize;
+  if ((!totalSize || totalSize === '') && seasons.length > 0 && accessToken && baseURI) {
+    // console.log('[/series] Calculando tamaño total de la serie...');
+    let totalBytes = 0;
+    
+    for (const season of seasons) {
+      try {
+        const seasonUrl = `${baseURI}/library/metadata/${season.ratingKey}/children?X-Plex-Token=${accessToken}`;
+        const seasonXml = await httpsGetXML(seasonUrl);
+        
+        // Extraer todos los tamaños de los episodios
+        const sizeMatches = seasonXml.match(/size="(\d+)"/g);
+        if (sizeMatches) {
+          for (const sizeMatch of sizeMatches) {
+            const bytes = parseInt(sizeMatch.match(/\d+/)[0]);
+            totalBytes += bytes;
+          }
+        }
+      } catch (error) {
+        console.error(`[/series] Error calculando tamaño de temporada ${season.title}:`, error);
+      }
+    }
+    
+    if (totalBytes > 0) {
+      const gb = totalBytes / (1024 * 1024 * 1024);
+      calculatedTotalSize = gb >= 1 ? gb.toFixed(2) + ' GB' : (gb * 1024).toFixed(2) + ' MB';
+      // console.log('[/series] Tamaño total calculado:', calculatedTotalSize);
+    }
+  }
+  
+  // Obtener datos de TMDB
   let seriesData = null;
-  if (tmdbId) {
+  let autoSearchedTmdbId = '';
+  
+  if (tmdbId && tmdbId.trim() !== '') {
+    // console.log('[/series] Llamando a fetchTMDBSeriesData con tmdbId:', tmdbId);
     seriesData = await fetchTMDBSeriesData(tmdbId);
+    // console.log('[/series] seriesData obtenido:', seriesData ? 'SI' : 'NO');
+  } else if (seriesTitle) {
+    // Decodificar HTML entities en el título antes de buscar
+    const decodedTitle = decodeHtmlEntities(seriesTitle);
+    
+    // Búsqueda automática en TMDB por título
+    // console.log('[/series] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle);
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}`;
+      const searchResults = await httpsGet(searchUrl);
+      
+      if (searchResults && searchResults.results && searchResults.results.length > 0) {
+        // Tomar el primer resultado
+        const firstResult = searchResults.results[0];
+        autoSearchedTmdbId = firstResult.id.toString();
+        // console.log('[/series] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.name);
+        
+        // Obtener datos completos con el ID encontrado
+        seriesData = await fetchTMDBSeriesData(autoSearchedTmdbId);
+        // console.log('[/series] seriesData obtenido por búsqueda automática');
+      } else {
+        // console.log('[/series] ⚠️ No se encontraron resultados en TMDB para:', decodedTitle);
+      }
+    } catch (error) {
+      console.error('[/series] Error en búsqueda automática de TMDB:', error);
+    }
+  } else {
+    // console.log('[/series] NO SE RECIBIÓ tmdbId ni título válido');
   }
   
   // Usar poster y backdrop de TMDB si están disponibles
@@ -2686,7 +4370,7 @@ app.get('/series', async (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${seriesTitle} - PlexDL</title>
+      <title>${seriesTitle} - Infinity Scrap</title>
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <style>
         * {
@@ -2714,6 +4398,7 @@ app.get('/series', async (req, res) => {
           max-height: 90vh;
           overflow-y: auto;
           position: relative;
+          z-index: 999;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
           scrollbar-width: thin;
           scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -2755,12 +4440,49 @@ app.get('/series', async (req, res) => {
             #282828 100%
           );
           border-radius: 12px 12px 0 0;
+          z-index: 1;
         }
         
         .modal-header-content {
           position: relative;
-          z-index: 1;
+          z-index: 2;
           width: 100%;
+        }
+        
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.75);
+          z-index: 998;
+          cursor: pointer;
+          backdrop-filter: blur(4px);
+        }
+        
+        .close-button {
+          position: absolute;
+          top: 1.5rem;
+          right: 2rem;
+          z-index: 3;
+          background: rgba(0, 0, 0, 0.6);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-size: 2rem;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          line-height: 1;
+          padding: 0;
+        }
+        
+        .close-button:hover {
+          background: rgba(229, 160, 13, 0.9);
+          border-color: #e5a00d;
+          transform: scale(1.1);
         }
         
         .modal-title {
@@ -2937,53 +4659,32 @@ app.get('/series', async (req, res) => {
           line-height: 1.7;
           font-size: 1.08rem;
           text-align: justify;
-          margin-bottom: 0;
+          margin-bottom: 0.5rem;
           color: #cccccc;
-          max-height: 6.8em;
+          max-height: 5.1em;
           overflow: hidden;
           transition: max-height 0.3s ease;
           position: relative;
-          padding-right: 0;
         }
         
         .modal-synopsis.expanded {
           max-height: none;
         }
         
-        .modal-synopsis::after {
-          content: '...';
-          position: absolute;
-          bottom: 0;
-          right: 1.2rem;
-          background: linear-gradient(to right, transparent 0%, #282828 25%, #282828 100%);
-          color: #cccccc;
-          width: 2,2rem;
-          text-align: right;
-        }
-        
-        .modal-synopsis.expanded::after {
-          content: '';
+        .synopsis-toggle {
+          background: transparent;
+          border: none;
+          color: #e5a00d;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          transition: color 0.2s ease;
+          text-decoration: underline;
           display: none;
         }
         
-        .synopsis-toggle {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          background: #282828;
-          border: none;
-          color: #e5a00d;
-          font-size: 1.3rem;
-          font-weight: bold;
-          cursor: pointer;
-          padding: 0 0.25rem;
-          transition: transform 0.2s ease;
-          line-height: 1.7;
-          z-index: 2;
-        }
-        
         .synopsis-toggle:hover {
-          transform: scale(1.15);
           color: #f0b825;
         }
         
@@ -3094,16 +4795,18 @@ app.get('/series', async (req, res) => {
       </style>
     </head>
     <body>
+      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=show'"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
+          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=show'" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${seriesTitle}</h1>
             ${seriesData && seriesData.tagline ? `<div class="modal-tagline">${seriesData.tagline}</div>` : ''}
             <div class="modal-badges-container">
               <div class="modal-badges-row">
-                ${totalSize ? `<span class="filesize-badge">${totalSize}</span>` : ''}
+                ${calculatedTotalSize ? `<span class="filesize-badge">${calculatedTotalSize}</span>` : ''}
                 ${seriesData && seriesData.year ? `<span class="year-badge">${seriesData.year}</span>` : ''}
                 ${seriesData && seriesData.status ? `<span class="status-badge">${seriesData.status}</span>` : ''}
                 ${seriesData && seriesData.rating !== 'N/A' ? `
@@ -3121,19 +4824,19 @@ app.get('/series', async (req, res) => {
                 ` : ''}
               </div>
               <div class="modal-icons-row">
-                ${tmdbId ? `
-                  <a href="https://www.themoviedb.org/tv/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                ${tmdbId || autoSearchedTmdbId ? `
+                  <a href="https://www.themoviedb.org/tv/${tmdbId || autoSearchedTmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
                   </a>
                 ` : ''}
                 ${seriesData && seriesData.imdbId ? `
                   <a href="https://www.imdb.com/title/${seriesData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
                   </a>
                 ` : ''}
                 ${seriesData && seriesData.trailerKey ? `
                   <a href="https://www.youtube.com/watch?v=${seriesData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
                   </a>
                 ` : ''}
               </div>
@@ -3145,7 +4848,7 @@ app.get('/series', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img src="${seriesPoster}" alt="${seriesTitle}">
+              <img loading="lazy" src="${seriesPoster}" alt="${seriesTitle}">
             </div>
           </div>
           
@@ -3165,7 +4868,7 @@ app.get('/series', async (req, res) => {
                 <div class="modal-synopsis" id="synopsis-text">
                   ${seriesData.overview}
                 </div>
-                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">+</button>
+                <button class="synopsis-toggle" id="synopsis-toggle" onclick="toggleSynopsis()">Ver más</button>
               </div>
             ` : `
               <div class="synopsis-container">
@@ -3182,8 +4885,8 @@ app.get('/series', async (req, res) => {
           <h2 class="seasons-title">Temporadas</h2>
           <div class="seasons-grid">
             ${seasons.map(season => `
-              <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', ${season.index}, '${seriesTitle}', '${tmdbId}')">
-                <img src="${season.poster}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
+              <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', '${season.seasonNumber}', '${encodeURIComponent(seriesTitle)}', '${tmdbId || autoSearchedTmdbId}', '${seriesId}', '${libraryKey}', '${libraryTitle}')">
+                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
                 <div class="season-info">
                   <div class="season-name">${season.title}</div>
                   <div class="season-episodes">${season.episodeCount} episodios</div>
@@ -3199,20 +4902,40 @@ app.get('/series', async (req, res) => {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
           if (synopsis && button) {
-            synopsis.classList.toggle('expanded');
-            button.textContent = synopsis.classList.contains('expanded') ? '−' : '+';
+            if (synopsis.classList.contains('expanded')) {
+              synopsis.classList.remove('expanded');
+              button.textContent = 'Ver más';
+            } else {
+              synopsis.classList.add('expanded');
+              button.textContent = 'Ver menos';
+            }
           }
         }
         
-        function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId) {
+        // Detectar si el texto necesita "Ver más" al cargar
+        window.addEventListener('load', function() {
+          const synopsis = document.getElementById('synopsis-text');
+          const button = document.getElementById('synopsis-toggle');
+          if (synopsis && button) {
+            // Verificar si el contenido se desborda
+            if (synopsis.scrollHeight > synopsis.clientHeight) {
+              button.style.display = 'inline-block';
+            }
+          }
+        });
+        
+        function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId, parentRatingKey, libraryKey, libraryTitle) {
           // Redirigir a la página /list con los datos de la temporada
           const params = new URLSearchParams();
           params.set('accessToken', accessToken);
           params.set('baseURI', baseURI);
           params.set('seasonRatingKey', seasonRatingKey);
           params.set('seasonNumber', seasonNumber);
-          params.set('seriesTitle', seriesTitle);
+          params.set('seriesTitle', decodeURIComponent(seriesTitle));
+          params.set('parentRatingKey', parentRatingKey || seasonRatingKey);
           if (tmdbId) params.set('tmdbId', tmdbId);
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
           
           window.location.href = '/list?' + params.toString();
         }
@@ -3222,7 +4945,1257 @@ app.get('/series', async (req, res) => {
   `);
 });
 
+// Ruta API para obtener datos de temporadas
+app.get('/api/seasons', async (req, res) => {
+  const { accessToken, baseURI, seriesId } = req.query;
+  
+  if (!accessToken || !baseURI || !seriesId) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+  
+  try {
+    const seriesUrl = `${baseURI}/library/metadata/${seriesId}?X-Plex-Token=${accessToken}`;
+    const seriesXmlData = await httpsGetXML(seriesUrl);
+    
+    // Parsear XML para obtener información básica de la serie
+    const titleMatch = seriesXmlData.match(/title="([^"]*)"/);
+    const thumbMatch = seriesXmlData.match(/thumb="([^"]*)"/);
+    const seriesTitle = titleMatch ? titleMatch[1] : '';
+    const thumb = thumbMatch ? thumbMatch[1] : '';
+    const posterUrl = thumb ? `${baseURI}${thumb}?X-Plex-Token=${accessToken}` : '';
+    
+    // Obtener temporadas
+    const seasonsUrl = `${baseURI}/library/metadata/${seriesId}/children?X-Plex-Token=${accessToken}`;
+    const seasonsXmlData = await httpsGetXML(seasonsUrl);
+    
+    const seasonRegex = /<Directory[^>]*type="season"[^>]*>/g;
+    const seasonMatches = [...seasonsXmlData.matchAll(seasonRegex)];
+    
+    const seasons = [];
+    let totalSizeBytes = 0;
+    
+    for (const match of seasonMatches) {
+      const seasonTag = match[0];
+      
+      const indexMatch = seasonTag.match(/index="([^"]*)"/);
+      const titleMatch = seasonTag.match(/title="([^"]*)"/);
+      const thumbMatch = seasonTag.match(/thumb="([^"]*)"/);
+      const keyMatch = seasonTag.match(/key="([^"]*)"/);
+      const ratingKeyMatch = seasonTag.match(/ratingKey="([^"]*)"/);
+      const leafCountMatch = seasonTag.match(/leafCount="([^"]*)"/);
+      
+      const seasonIndex = indexMatch ? indexMatch[1] : '0';
+      const seasonTitle = titleMatch ? titleMatch[1] : `Temporada ${seasonIndex}`;
+      const seasonThumb = thumbMatch ? thumbMatch[1] : '';
+      const seasonKey = keyMatch ? keyMatch[1] : '';
+      const seasonRatingKey = ratingKeyMatch ? ratingKeyMatch[1] : '';
+      const leafCount = leafCountMatch ? leafCountMatch[1] : '0';
+      
+      const seasonPosterUrl = seasonThumb ? `${baseURI}${seasonThumb}?X-Plex-Token=${accessToken}` : '';
+      
+      // Obtener episodios para calcular tamaño
+      const episodesUrl = `${baseURI}${seasonKey}?X-Plex-Token=${accessToken}`;
+      const episodesXmlData = await httpsGetXML(episodesUrl);
+      
+      const sizeRegex = /<Part[^>]*size="([^"]*)"/g;
+      const sizeMatches = [...episodesXmlData.matchAll(sizeRegex)];
+      
+      for (const sizeMatch of sizeMatches) {
+        const size = parseInt(sizeMatch[1], 10);
+        if (!isNaN(size)) {
+          totalSizeBytes += size;
+        }
+      }
+      
+      seasons.push({
+        index: seasonIndex,
+        title: seasonTitle,
+        poster: seasonPosterUrl,
+        key: seasonKey,
+        ratingKey: seasonRatingKey,
+        episodeCount: leafCount
+      });
+    }
+    
+    // Calcular tamaño total
+    let totalSize = '';
+    if (totalSizeBytes > 0) {
+      const gb = totalSizeBytes / (1024 * 1024 * 1024);
+      const tb = gb / 1024;
+      totalSize = tb >= 1 ? tb.toFixed(2) + ' TB' : gb.toFixed(2) + ' GB';
+    }
+    
+    res.json({
+      title: seriesTitle,
+      posterUrl: posterUrl,
+      totalSize: totalSize,
+      seasons: seasons
+    });
+    
+  } catch (error) {
+    console.error('Error fetching seasons:', error);
+    res.status(500).json({ error: 'Error fetching seasons data' });
+  }
+});
+
+// Ruta para explorar contenido de una biblioteca
+app.get('/browse', async (req, res) => {
+  const { accessToken, baseURI, libraryKey, libraryTitle, libraryType } = req.query;
+  
+  if (!accessToken || !baseURI || !libraryKey) {
+    return res.status(400).send('Faltan parámetros requeridos');
+  }
+  
+  try {
+    // Obtener contenido de la biblioteca
+    const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
+    const xmlData = await httpsGetXML(contentUrl);
+    
+    // Extraer items (películas o series) con todos sus metadatos, géneros, colecciones y países
+    const items = [];
+    const tagType = libraryType === 'movie' ? 'Video' : 'Directory';
+    const allGenres = new Set();
+    const allCollections = new Set();
+    const allCountries = new Set();
+    
+    // Extraer todos los géneros disponibles en la biblioteca
+    const genreMatches = xmlData.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
+    for (const match of genreMatches) {
+      allGenres.add(match[1]);
+    }
+    
+    // Extraer todas las colecciones
+    const collectionMatches = xmlData.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
+    for (const match of collectionMatches) {
+      allCollections.add(match[1]);
+    }
+    
+    // Extraer todos los países
+    const countryMatches = xmlData.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
+    for (const match of countryMatches) {
+      allCountries.add(match[1]);
+    }
+    
+    // Extraer items con géneros, colecciones y países
+    const videoSections = xmlData.split(`<${tagType}`).slice(1);
+    for (const section of videoSections) {
+      const fullTag = `<${tagType}${section.split('>')[0]}>`;
+      const contentUntilEnd = section.split(`</${tagType}>`)[0];
+      
+      const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
+      const titleMatch = fullTag.match(/title="([^"]*)"/);
+      const yearMatch = fullTag.match(/year="([^"]*)"/);
+      const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
+      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+      const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
+      const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
+      const summaryMatch = fullTag.match(/summary="([^"]*)"/);
+      const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
+      
+      if (ratingKeyMatch && titleMatch) {
+        // Extraer géneros de este item
+        const itemGenres = [];
+        const genreItemMatches = contentUntilEnd.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
+        for (const gMatch of genreItemMatches) {
+          itemGenres.push(gMatch[1]);
+        }
+        
+        // Extraer colecciones de este item
+        const itemCollections = [];
+        const collectionItemMatches = contentUntilEnd.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
+        for (const cMatch of collectionItemMatches) {
+          itemCollections.push(cMatch[1]);
+        }
+        
+        // Extraer países de este item
+        const itemCountries = [];
+        const countryItemMatches = contentUntilEnd.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
+        for (const coMatch of countryItemMatches) {
+          itemCountries.push(coMatch[1]);
+        }
+        
+        items.push({
+          ratingKey: ratingKeyMatch[1],
+          title: titleMatch[1],
+          year: yearMatch ? yearMatch[1] : '',
+          thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
+          tmdbId: tmdbMatch ? tmdbMatch[1] : '',
+          rating: ratingMatch ? parseFloat(ratingMatch[1]).toFixed(1) : '0',
+          summary: summaryMatch ? summaryMatch[1] : '',
+          addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
+          genres: itemGenres,
+          collections: itemCollections,
+          countries: itemCountries
+        });
+      }
+    }
+
+    // Obtener listas únicas para filtros
+    const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
+    const uniqueGenres = Array.from(allGenres).sort();
+    const uniqueCollections = Array.from(allCollections).sort();
+    const uniqueCountries = Array.from(allCountries).sort();
+    
+    // Extraer estadísticas del XML
+    let totalSizeBytes = 0;
+    // Extraer size solo de archivos dentro de Video tags (no thumbnails)
+    const videoTags = xmlData.split('<Video').slice(1);
+    for (const videoSection of videoTags) {
+      const videoEnd = videoSection.indexOf('</Video>');
+      if (videoEnd === -1) continue;
+      const videoContent = videoSection.substring(0, videoEnd);
+      const sizeMatches = videoContent.matchAll(/<Part[^>]*size="([^"]*)"[^>]*>/g);
+      for (const match of sizeMatches) {
+        totalSizeBytes += parseInt(match[1]) || 0;
+      }
+    }
+    const totalSizeGB = (totalSizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+    const totalSizeTB = (totalSizeBytes / (1024 * 1024 * 1024 * 1024)).toFixed(2);
+    const totalSizeFormatted = totalSizeBytes >= 1024 * 1024 * 1024 * 1024 
+      ? `${totalSizeTB} TB` 
+      : `${totalSizeGB} GB`;
+    
+    // Calcular duración total
+    let totalDurationMs = 0;
+    const durationMatches = xmlData.matchAll(/duration="([^"]*)"/g);
+    for (const match of durationMatches) {
+      totalDurationMs += parseInt(match[1]) || 0;
+    }
+    const totalHours = Math.floor(totalDurationMs / (1000 * 60 * 60));
+    const totalDays = Math.floor(totalHours / 24);
+    const remainingHours = totalHours % 24;
+    const durationFormatted = totalDays > 0 
+      ? `${totalDays}d ${remainingHours}h` 
+      : `${totalHours}h`;
+    
+    // Para series: contar temporadas (childCount tiene el número de temporadas por serie)
+    let totalSeasons = 0;
+    let totalEpisodes = 0;
+    if (libraryType === 'show') {
+      const childCountMatches = xmlData.matchAll(/childCount="([^"]*)"/g);
+      const leafCountMatches = xmlData.matchAll(/leafCount="([^"]*)"/g);
+      for (const match of childCountMatches) {
+        totalSeasons += parseInt(match[1]) || 0;
+      }
+      for (const match of leafCountMatches) {
+        totalEpisodes += parseInt(match[1]) || 0;
+      }
+    }
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=1.0, maximum-scale=5.0">
+        <meta name="theme-color" content="#e5a00d">
+        <meta name="description" content="Biblioteca de ${libraryTitle}">
+        <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+        <title>${libraryTitle} - Infinity Scrap</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          :root {
+            --primary-color: #e5a00d;
+            --primary-dark: #c28a0b;
+            --bg-dark: #0f0f0f;
+            --bg-secondary: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #b3b3b3;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --card-size: 180px;
+          }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html { scroll-behavior: smooth; }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+          }
+          .container { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
+          .navbar {
+            background: rgba(31, 41, 55, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1rem 0;
+            border-bottom: 1px solid rgba(229, 160, 13, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+          }
+          .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+          }
+          .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(229, 160, 13, 0.1);
+            border: 1px solid rgba(229, 160, 13, 0.3);
+            border-radius: 8px;
+            color: #e5a00d;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+          }
+          .back-button:hover {
+            background: rgba(229, 160, 13, 0.2);
+            transform: translateX(-4px);
+          }
+          .library-header {
+            padding: 2rem 0;
+          }
+          .library-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+          }
+          .search-form {
+            display: flex;
+            gap: 1rem;
+          }
+          .search-input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: rgba(31, 41, 55, 0.8);
+            border: 1px solid rgba(229, 160, 13, 0.2);
+            border-radius: 8px;
+            color: #f3f4f6;
+            font-size: 1rem;
+          }
+          .search-input:focus {
+            outline: none;
+            border-color: #e5a00d;
+          }
+          .search-btn {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+          }
+          .search-btn:hover {
+            transform: translateY(-2px);
+          }
+          .info-row {
+            display: flex;
+            gap: 2rem;
+            color: #9ca3af;
+            font-size: 0.875rem;
+          }
+          .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1.5rem;
+            padding: 2rem 0;
+          }
+          .movie-card {
+            cursor: pointer;
+            transition: transform 0.3s ease;
+          }
+          .movie-card:hover {
+            transform: translateY(-8px);
+          }
+          .poster {
+            width: 100%;
+            aspect-ratio: 2/3;
+            border-radius: 12px;
+            object-fit: cover;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            margin-bottom: 0.75rem;
+            background: rgba(31, 41, 55, 0.5);
+          }
+          .movie-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .movie-year {
+            font-size: 0.75rem;
+            color: #9ca3af;
+          }
+          .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            padding: 2rem 0;
+          }
+          .page-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(229, 160, 13, 0.1);
+            border: 1px solid rgba(229, 160, 13, 0.3);
+            border-radius: 8px;
+            color: #e5a00d;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+          }
+          .page-btn:hover {
+            background: rgba(229, 160, 13, 0.2);
+          }
+          .page-info {
+            color: #9ca3af;
+          }
+          /* Navbar styles */
+          .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }
+          .nav-content { display: flex; justify-content: space-between; align-items: center; }
+          .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
+          .logo-title { color: var(--primary-color); font-size: 1.5rem; font-weight: 700; }
+          .navbar-links { display: flex; gap: 1rem; align-items: center; margin-left: auto; margin-right: 0.5rem; }
+          .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: color 0.2s; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem; border-radius: 6px; }
+          .navbar-links a:hover, .navbar-links a.active { color: var(--primary-color); }
+          .navbar-controls { display: flex; gap: 1rem; align-items: center; margin-left: auto; }
+          .search-container { position: relative; display: flex; align-items: center; }
+          .search-container input { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 2.5rem 0.5rem 1rem; color: var(--text-primary); width: 250px; height: 38px; }
+          .search-container input:focus { outline: none; border-color: var(--primary-color); }
+          .search-container i { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); }
+          
+          /* Library controls */
+          .library-controls { background: var(--bg-secondary); padding: 1rem 1rem; border-bottom: 1px solid var(--border-color); }
+          .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 0 0.5rem; }
+          .filters-group { display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1; justify-content: center; align-items: center; }
+          .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 1rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem; min-width: 140px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .filter-select option { white-space: normal; }
+          .filter-select:focus { outline: none; border-color: var(--primary-color); }
+          .btn-clear-filters { background: var(--primary-color); color: #000; border: none; border-radius: 6px; padding: 0.5rem 1.2rem; cursor: pointer; font-weight: 600; transition: background 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+          .btn-clear-filters:hover { background: var(--primary-dark); }
+          
+          /* View controls */
+          .view-controls { display: flex; gap: 1rem; align-items: center; min-width: fit-content; }
+          .grid-size-control { display: flex; align-items: center; gap: 0.75rem; transition: opacity 0.3s, visibility 0.3s; }
+          .grid-size-control.hidden { opacity: 0; visibility: hidden; width: 0; overflow: hidden; }
+          .grid-size-control i { color: var(--text-secondary); }
+          .grid-size-control input[type="range"] { width: 120px; height: 4px; background: var(--bg-dark); border-radius: 2px; outline: none; -webkit-appearance: none; }
+          .grid-size-control input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: var(--primary-color); cursor: pointer; border-radius: 50%; }
+          .grid-size-control input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--primary-color); cursor: pointer; border-radius: 50%; border: none; }
+          .view-buttons { display: flex; gap: 0.5rem; }
+          .view-btn { background: var(--bg-dark); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; color: var(--text-secondary); transition: all 0.2s; }
+          .view-btn:hover { color: var(--primary-color); border-color: var(--primary-color); }
+          .view-btn.active { background: var(--primary-color); color: #000; border-color: var(--primary-color); }
+          
+          /* Movie grid */
+          .main-content { padding: 2rem 0; min-height: 60vh; }
+          .movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-size, 180px), 1fr)); gap: 1.5rem; transition: all 0.3s ease; }
+          .movie-grid.list-view { grid-template-columns: 1fr; }
+          .movie-card { position: relative; cursor: pointer; transition: all 0.3s ease; border-radius: 8px; overflow: hidden; background: var(--bg-secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+          .movie-card:hover { transform: translateY(-8px); box-shadow: 0 8px 24px rgba(229, 160, 13, 0.3); }
+          
+          /* Movie poster */
+          .movie-poster { position: relative; overflow: hidden; border-radius: 8px; aspect-ratio: 2/3; }
+          .movie-poster img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; display: block; }
+          .movie-card:hover .movie-poster img { transform: scale(1.1); }
+          .no-poster { width: 100%; height: 100%; background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 0.875rem; }
+          
+          /* Episode count badge for series */
+          .episode-count-badge { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(229, 160, 13, 0.95); color: #000; padding: 0.35rem 0.65rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+          
+          /* Movie overlay */
+          .movie-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 50%, transparent 100%); opacity: 0; transition: opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; padding: 1rem; }
+          .movie-card:hover .movie-overlay { opacity: 1; }
+          .movie-overlay-content { transform: translateY(20px); transition: transform 0.3s ease; }
+          .movie-card:hover .movie-overlay-content { transform: translateY(0); }
+          
+          /* Movie info - Grid mode (default) */
+          .movie-info { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+          .movie-title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+          .movie-year { color: var(--text-secondary); font-weight: 500; font-size: 0.75rem; line-height: 1.2; }
+          .movie-meta { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; }
+          .movie-rating { color: var(--primary-color); letter-spacing: 1px; display: flex; align-items: center; gap: 0.25rem; font-weight: 600; }
+          .movie-rating i { font-size: 0.7rem; }
+          
+          /* Grid mode específico - año en línea separada, ocultar géneros y sinopsis */
+          .movie-grid:not(.list-view) .movie-year.grid-only { display: block; }
+          .movie-grid:not(.list-view) .movie-year.list-only { display: none; }
+          .movie-grid:not(.list-view) .movie-genres { display: none; }
+          .movie-grid:not(.list-view) .movie-overview { display: none; }
+          
+          /* Overlay info */
+          .overlay-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; line-height: 1.2; }
+          .overlay-meta { display: flex; gap: 1rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
+          .overlay-year { color: var(--text-secondary); }
+          .overlay-rating { color: var(--primary-color); display: flex; align-items: center; gap: 0.25rem; font-weight: 600; }
+          .overlay-rating i { font-size: 0.75rem; }
+          
+          /* Animations */
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          
+          /* List view */
+          .movie-grid.list-view .movie-card { display: flex; flex-direction: row; align-items: stretch; height: 150px; padding: 0; overflow: hidden; }
+          .movie-grid.list-view .movie-poster { aspect-ratio: 2/3; width: 100px; height: 150px; flex-shrink: 0; margin: 0; }
+          .movie-grid.list-view .movie-poster img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px 0 0 8px; }
+          .movie-grid.list-view .movie-info { padding: 1rem 1.5rem 1.25rem 1.5rem; flex: 1; display: flex; flex-direction: column; justify-content: flex-start; gap: 0.5rem; overflow: hidden; }
+          .movie-grid.list-view .movie-title { font-size: 1.25rem; font-weight: 700; order: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .movie-grid.list-view .movie-year.list-only { display: inline; color: var(--text-secondary); font-weight: 400; font-size: 1.25rem; }
+          .movie-grid.list-view .movie-year.grid-only { display: none; }
+          .movie-grid.list-view .movie-meta { display: flex; flex-direction: row; align-items: center; gap: 1rem; font-size: 0.875rem; order: 2; flex-wrap: wrap; }
+          .movie-grid.list-view .movie-rating { color: var(--primary-color); display: flex; align-items: center; gap: 0.35rem; font-weight: 600; }
+          .movie-grid.list-view .movie-genres { color: var(--text-secondary); font-size: 0.875rem; font-weight: 400; display: inline !important; }
+          .movie-grid.list-view .movie-overview { display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; order: 3; opacity: 0.8; }
+          .movie-grid.list-view .movie-overlay { display: none; }
+          
+          /* Responsive */
+          @media (max-width: 768px) {
+            .navbar-links { display: none; }
+            .search-container input { width: 180px; }
+            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+            .view-controls { display: none; }
+            .filters-group { flex-direction: column; width: 100%; }
+            .filter-select { width: 100%; max-width: 100%; }
+            .library-controls { padding: 1rem; }
+            .controls-row { flex-direction: column; gap: 1rem; }
+          }
+          
+          @media (max-width: 480px) {
+            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; }
+            .container { padding: 0 1rem; }
+          }
+        </style>
+      </head>
+      <body>
+        <!-- Loading Screen -->
+        <div id="loading-screen" style="display:none; position:fixed; inset:0; background:var(--bg-dark); z-index:9999; display:flex; align-items:center; justify-content:center;">
+          <div style="text-align:center;"><i class="fas fa-film" style="font-size:3rem; color:var(--primary-color); animation:spin 1s linear infinite;"></i><p style="margin-top:1rem; color:var(--text-secondary);">Cargando biblioteca...</p></div>
+        </div>
+
+        <!-- Navbar -->
+        <nav class="navbar">
+          <div class="container">
+            <div class="nav-content">
+              <a class="navbar-brand" href="/library?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}">
+                <div class="logo-container">
+                  <span class="logo-title">Infinity Scrap</span>
+                </div>
+              </a>
+              <div class="navbar-links" id="navbar-links">
+                <!-- Las bibliotecas se cargarán dinámicamente -->
+                <span id="library-links"></span>
+              </div>
+              <div class="navbar-controls">
+                <div class="search-container">
+                  <input type="text" id="search-input" placeholder="Buscar ${libraryTitle.toLowerCase()}...">
+                  <i class="fas fa-search"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </nav>
+        
+        <!-- Library Header -->
+        <header style="padding:1.5rem 0; background:var(--bg-secondary); border-bottom:1px solid var(--border-color);">
+          <div class="container">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <h1 style="font-size:2rem; font-weight:700; margin: 0; color: var(--primary-color);"><i class="fas fa-${libraryType === 'movie' ? 'film' : 'tv'}"></i> ${libraryTitle}</h1>
+                <span id="footer-count" style="font-size: 1.125rem; font-weight: 600; color: var(--primary-color);">(${items.length} ${libraryType === 'movie' ? 'películas' : 'series'})</span>
+              </div>
+              <div class="view-controls">
+                <div class="grid-size-control" id="grid-size-control">
+                  <input type="range" id="grid-size-slider" min="120" max="250" value="180" step="10">
+                  <i class="fas fa-expand-alt"></i>
+                </div>
+                <div class="view-buttons">
+                  <button class="view-btn active" id="grid-view-btn" title="Vista grid">
+                    <i class="fas fa-th"></i>
+                  </button>
+                  <button class="view-btn" id="list-view-btn" title="Vista lista">
+                    <i class="fas fa-list"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+        
+        <!-- Library Controls -->
+        <div class="library-controls">
+          <div class="container">
+            <div class="controls-row">
+              <div class="filters-group" style="width: 100%;">
+                <select id="genre-filter" class="filter-select">
+                  <option value="">Géneros</option>
+                  ${uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('')}
+                </select>
+                <select id="year-filter" class="filter-select">
+                  <option value="">Años</option>
+                  ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
+                </select>
+                <select id="collection-filter" class="filter-select" style="display: ${libraryType === 'movie' && uniqueCollections.length > 0 ? 'inline-block' : 'none'};">
+                  <option value="">Colecciones</option>
+                  ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+                <select id="country-filter" class="filter-select">
+                  <option value="">Países</option>
+                  ${uniqueCountries.map(co => `<option value="${co}">${co}</option>`).join('')}
+                </select>
+                <select id="sort-filter" class="filter-select">
+                  <option value="added-desc">Recientes</option>
+                  <option value="added-asc">Antiguos</option>
+                  <option value="title">Título A-Z</option>
+                  <option value="title-desc">Título Z-A</option>
+                  <option value="year-desc">Año ↓</option>
+                  <option value="year-asc">Año ↑</option>
+                  <option value="rating-desc">Puntuación ↓</option>
+                  <option value="rating-asc">Puntuación ↑</option>
+                </select>
+                <button id="clear-filters" class="btn-clear-filters">
+                  <i class="fas fa-broom"></i> Limpiar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+          <div class="container">
+            <div id="movies-grid" class="movie-grid">
+              <!-- Tarjetas se generarán dinámicamente desde JSON -->
+            </div>
+          </div>
+        </main>
+        
+        <script>
+          // Datos en JSON para generación dinámica
+          const itemsData = ${JSON.stringify(items)};
+          const accessToken = '${accessToken}';
+          const baseURI = '${baseURI}';
+          const libraryType = '${libraryType}';
+          const libraryKey = '${libraryKey}';
+          const libraryTitle = '${libraryTitle}';
+          
+          // Función para generar HTML de una tarjeta
+          function createCardHTML(item) {
+            const itemTitle = item.title;
+            const itemYear = item.year || '';
+            const itemRating = parseFloat(item.rating) || 0;
+            const posterPath = item.thumb || '';
+            const tmdbId = item.tmdbId || '';
+            const genres = item.genres ? item.genres.join(',') : '';
+            const genresDisplay = item.genres ? item.genres.slice(0, 3).join(', ') : '';
+            const collections = item.collections ? item.collections.join(',') : '';
+            const countries = item.countries ? item.countries.join(',') : '';
+            const summary = item.summary || '';
+            const addedAt = item.addedAt || 0;
+            
+            const detailUrl = libraryType === 'movie' 
+              ? \`/movie-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`
+              : \`/series-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
+            
+            return \`
+              <div class="movie-card" 
+                   data-title="\${itemTitle.toLowerCase()}" 
+                   data-year="\${itemYear}"
+                   data-rating="\${itemRating}"
+                   data-genres="\${genres.toLowerCase()}"
+                   data-collections="\${collections.toLowerCase()}"
+                   data-countries="\${countries.toLowerCase()}"
+                   data-summary="\${summary.replace(/"/g, '&quot;')}"
+                   data-tmdb-id="\${tmdbId}"
+                   data-rating-key="\${item.ratingKey}"
+                   data-added-at="\${addedAt}"
+                   onclick="window.location.href='\${detailUrl}'">
+                <div class="movie-poster">
+                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" loading="lazy" />\` : '<div class="no-poster">Sin imagen</div>'}
+                  <div class="movie-overlay">
+                    <div class="movie-overlay-content">
+                      <div class="overlay-title">\${itemTitle}</div>
+                      <div class="overlay-meta">
+                        \${itemYear ? \`<span class="overlay-year">\${itemYear}</span>\` : ''}
+                        <span class="overlay-rating" data-tmdb-rating>
+                          <i class="fas fa-star"></i>
+                          <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="movie-info">
+                  <div class="movie-title" title="\${itemTitle}">\${itemTitle}\${itemYear ? \` <span class="movie-year list-only">(\${itemYear})</span>\` : ''}</div>
+                  \${itemYear ? \`<div class="movie-year grid-only">\${itemYear}</div>\` : ''}
+                  <div class="movie-meta">
+                    <span class="movie-rating" data-tmdb-rating>
+                      <i class="fas fa-star"></i>
+                      <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
+                    </span>
+                    \${genresDisplay ? \`<span class="movie-genres">\${genresDisplay}</span>\` : ''}
+                  </div>
+                  <div class="movie-overview">\${summary}</div>
+                </div>
+              </div>
+            \`;
+          }
+          
+          // Variables para lazy loading
+          let allCards = [];
+          let currentDisplayedIndex = 0;
+          const BATCH_SIZE = 50;
+          let isLoading = false;
+          let observer = null;
+          
+          // Renderizar solo un lote de tarjetas
+          function renderBatch(startIndex, endIndex) {
+            const grid = document.getElementById('movies-grid');
+            const batch = itemsData.slice(startIndex, endIndex);
+            const htmlArray = batch.map(item => createCardHTML(item));
+            grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
+            return Array.from(grid.querySelectorAll('.movie-card'));
+          }
+          
+          // Generar primer lote de tarjetas
+          allCards = renderBatch(0, BATCH_SIZE);
+          currentDisplayedIndex = BATCH_SIZE;
+          
+          // Cargar más tarjetas al hacer scroll
+          function loadMoreCards() {
+            if (isLoading || currentDisplayedIndex >= itemsData.length) return;
+            isLoading = true;
+            
+            const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, itemsData.length);
+            const newCards = renderBatch(currentDisplayedIndex, endIndex);
+            allCards = allCards.concat(newCards);
+            currentDisplayedIndex = endIndex;
+            isLoading = false;
+            
+            // Configurar observer en la última tarjeta nueva
+            if (currentDisplayedIndex < itemsData.length) {
+              setupScrollObserver();
+            }
+          }
+          
+          // Observer para detectar scroll al final
+          function setupScrollObserver() {
+            if (observer) observer.disconnect();
+            
+            const lastCard = allCards[allCards.length - 1];
+            if (!lastCard) return;
+            
+            observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  loadMoreCards();
+                }
+              });
+            }, {
+              rootMargin: '200px'
+            });
+            
+            observer.observe(lastCard);
+          }
+          
+          // Iniciar observer
+          setupScrollObserver();
+          
+          // Load all libraries and show them in navbar
+          fetch('${baseURI}/library/sections?X-Plex-Token=${accessToken}')
+            .then(r => r.text())
+            .then(xmlText => {
+              const parser = new DOMParser();
+              const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+              const directories = xmlDoc.querySelectorAll('Directory');
+              const libraryLinksContainer = document.getElementById('library-links');
+              
+              directories.forEach(dir => {
+                const key = dir.getAttribute('key');
+                const title = dir.getAttribute('title');
+                const type = dir.getAttribute('type');
+                
+                if (key && title && (type === 'movie' || type === 'show')) {
+                  const a = document.createElement('a');
+                  const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + key + '&libraryTitle=' + encodeURIComponent(title) + '&libraryType=' + type;
+                  a.href = browseUrl;
+                  a.innerHTML = '<i class="fas fa-' + (type === 'movie' ? 'film' : 'tv') + '"></i> ' + title;
+                  if (title === '${libraryTitle}') a.classList.add('active');
+                  libraryLinksContainer.appendChild(a);
+                }
+              });
+            })
+            .catch(e => console.error('Error loading libraries:', e));
+          
+          // **FILTROS DINÁMICOS**: Actualizar opciones de filtros basados en items filtrados
+          function updateDynamicFilters(filteredItems) {
+            // Obtener valores actuales seleccionados
+            const currentGenre = document.getElementById('genre-filter').value;
+            const currentYear = document.getElementById('year-filter').value;
+            const currentCollection = document.getElementById('collection-filter').value;
+            const currentCountry = document.getElementById('country-filter').value;
+            
+            // Extraer valores disponibles de items filtrados
+            const availableGenres = new Set();
+            const availableYears = new Set();
+            const availableCollections = new Set();
+            const availableCountries = new Set();
+            
+            filteredItems.forEach(item => {
+              if (item.genres) item.genres.forEach(g => availableGenres.add(g));
+              if (item.year) availableYears.add(item.year);
+              if (item.collections) item.collections.forEach(c => availableCollections.add(c));
+              if (item.countries) item.countries.forEach(co => availableCountries.add(co));
+            });
+            
+            // Actualizar filtro de género
+            const genreFilter = document.getElementById('genre-filter');
+            const genreOptions = '<option value="">Géneros</option>' + 
+              Array.from(availableGenres).sort().map(genre => 
+                \`<option value="\${genre}" \${genre === currentGenre ? 'selected' : ''}>\${genre}</option>\`
+              ).join('');
+            genreFilter.innerHTML = genreOptions;
+            
+            // Actualizar filtro de año
+            const yearFilter = document.getElementById('year-filter');
+            const yearOptions = '<option value="">Años</option>' + 
+              Array.from(availableYears).sort((a, b) => b - a).map(year => 
+                \`<option value="\${year}" \${year === currentYear ? 'selected' : ''}>\${year}</option>\`
+              ).join('');
+            yearFilter.innerHTML = yearOptions;
+            
+            // Actualizar filtro de colección (solo para películas)
+            if ('${libraryType}' === 'movie' && availableCollections.size > 0) {
+              const collectionFilter = document.getElementById('collection-filter');
+              const collectionOptions = '<option value="">Colecciones</option>' + 
+                Array.from(availableCollections).sort().map(collection => 
+                  \`<option value="\${collection}" \${collection === currentCollection ? 'selected' : ''}>\${collection}</option>\`
+                ).join('');
+              collectionFilter.innerHTML = collectionOptions;
+              collectionFilter.style.display = 'inline-block';
+            }
+            
+            // Actualizar filtro de país
+            const countryFilter = document.getElementById('country-filter');
+            const countryOptions = '<option value="">Países</option>' + 
+              Array.from(availableCountries).sort().map(country => 
+                \`<option value="\${country}" \${country === currentCountry ? 'selected' : ''}>\${country}</option>\`
+              ).join('');
+            countryFilter.innerHTML = countryOptions;
+          }
+          
+          // Filtrar y ordenar sobre los datos JSON
+          function applyFilters() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const genreValue = document.getElementById('genre-filter').value.toLowerCase();
+            const yearValue = document.getElementById('year-filter').value;
+            const collectionValue = document.getElementById('collection-filter').value.toLowerCase();
+            const countryValue = document.getElementById('country-filter').value.toLowerCase();
+            const sortValue = document.getElementById('sort-filter').value;
+            
+            // Filtrar sobre los datos JSON completos
+            let filteredData = itemsData.filter(item => {
+              const title = item.title.toLowerCase();
+              const genres = item.genres ? item.genres.map(g => g.toLowerCase()).join(',') : '';
+              const year = item.year;
+              const collections = item.collections ? item.collections.map(c => c.toLowerCase()).join(',') : '';
+              const countries = item.countries ? item.countries.map(c => c.toLowerCase()).join(',') : '';
+              
+              if (searchTerm && !title.includes(searchTerm)) return false;
+              if (genreValue && !genres.includes(genreValue)) return false;
+              if (yearValue && year !== yearValue) return false;
+              if (collectionValue && !collections.includes(collectionValue)) return false;
+              if (countryValue && !countries.includes(countryValue)) return false;
+              
+              return true;
+            });
+            
+            // **FILTROS DINÁMICOS**: Actualizar opciones disponibles basadas en los items filtrados
+            updateDynamicFilters(filteredData);
+            
+            // Ordenar
+            filteredData.sort((a, b) => {
+              switch(sortValue) {
+                case 'title':
+                  return a.title.localeCompare(b.title);
+                case 'title-desc':
+                  return b.title.localeCompare(a.title);
+                case 'year-desc':
+                  return (b.year || '0') - (a.year || '0');
+                case 'year-asc':
+                  return (a.year || '0') - (b.year || '0');
+                case 'rating-desc':
+                  return (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0);
+                case 'rating-asc':
+                  return (parseFloat(a.rating) || 0) - (parseFloat(b.rating) || 0);
+                case 'added-desc':
+                  return (b.addedAt || 0) - (a.addedAt || 0);
+                case 'added-asc':
+                  return (a.addedAt || 0) - (b.addedAt || 0);
+                default:
+                  return 0;
+              }
+            });
+            
+            // Limpiar grid y regenerar con datos filtrados
+            const grid = document.getElementById('movies-grid');
+            grid.innerHTML = '';
+            
+            // Actualizar itemsData temporal con filtrados
+            window.filteredItems = filteredData;
+            
+            // Resetear lazy loading
+            if (observer) observer.disconnect();
+            currentDisplayedIndex = 0;
+            allCards = [];
+            
+            // Renderizar primer lote
+            if (filteredData.length > 0) {
+              const firstBatch = filteredData.slice(0, BATCH_SIZE);
+              const htmlArray = firstBatch.map(item => createCardHTML(item));
+              grid.innerHTML = htmlArray.join('');
+              allCards = Array.from(grid.querySelectorAll('.movie-card'));
+              currentDisplayedIndex = BATCH_SIZE;
+              
+              // Configurar observer si hay más
+              if (filteredData.length > BATCH_SIZE) {
+                setupFilteredScrollObserver();
+              }
+            }
+            
+            // Actualizar contador
+            document.getElementById('footer-count').textContent = '(' + filteredData.length + ' ${libraryType === 'movie' ? 'películas' : 'series'}' + ')';
+          }
+          
+          // Observer para scroll con datos filtrados
+          function setupFilteredScrollObserver() {
+            if (observer) observer.disconnect();
+            
+            const lastCard = allCards[allCards.length - 1];
+            if (!lastCard) return;
+            
+            observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting && !isLoading) {
+                  isLoading = true;
+                  const filteredData = window.filteredItems || itemsData;
+                  const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, filteredData.length);
+                  const batch = filteredData.slice(currentDisplayedIndex, endIndex);
+                  
+                  const grid = document.getElementById('movies-grid');
+                  const htmlArray = batch.map(item => createCardHTML(item));
+                  grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
+                  
+                  allCards = Array.from(grid.querySelectorAll('.movie-card'));
+                  currentDisplayedIndex = endIndex;
+                  isLoading = false;
+                  
+                  if (currentDisplayedIndex < filteredData.length) {
+                    setupFilteredScrollObserver();
+                  }
+                }
+              });
+            }, {
+              rootMargin: '200px'
+            });
+            
+            observer.observe(lastCard);
+          }
+          
+          // Update filter options based on currently visible cards
+          function updateFilterOptions(cards) {
+            const currentGenre = document.getElementById('genre-filter').value;
+            const currentYear = document.getElementById('year-filter').value;
+            const currentCollection = document.getElementById('collection-filter').value;
+            const currentCountry = document.getElementById('country-filter').value;
+            
+            // Extract available values from visible cards
+            const availableGenres = new Set();
+            const availableYears = new Set();
+            const availableCollections = new Set();
+            const availableCountries = new Set();
+            
+            cards.forEach(card => {
+              if (card.dataset.genres) {
+                card.dataset.genres.split(',').forEach(g => {
+                  if (g.trim()) availableGenres.add(g.trim());
+                });
+              }
+              if (card.dataset.year) availableYears.add(card.dataset.year);
+              if (card.dataset.collections) {
+                card.dataset.collections.split(',').forEach(c => {
+                  if (c.trim()) availableCollections.add(c.trim());
+                });
+              }
+              if (card.dataset.countries) {
+                card.dataset.countries.split(',').forEach(co => {
+                  if (co.trim()) availableCountries.add(co.trim());
+                });
+              }
+            });
+            
+            // Update genre filter
+            const genreFilter = document.getElementById('genre-filter');
+            const genreOptions = genreFilter.querySelectorAll('option:not(:first-child)');
+            genreOptions.forEach(opt => {
+              opt.disabled = !availableGenres.has(opt.value.toLowerCase());
+            });
+            
+            // Update year filter
+            const yearFilter = document.getElementById('year-filter');
+            const yearOptions = yearFilter.querySelectorAll('option:not(:first-child)');
+            yearOptions.forEach(opt => {
+              opt.disabled = !availableYears.has(opt.value);
+            });
+            
+            // Update collection filter (only for movies)
+            if ('${libraryType}' === 'movie') {
+              const collectionFilter = document.getElementById('collection-filter');
+              const collectionOptions = collectionFilter.querySelectorAll('option:not(:first-child)');
+              collectionOptions.forEach(opt => {
+                opt.disabled = !availableCollections.has(opt.value.toLowerCase());
+              });
+            }
+            
+            // Update country filter
+            const countryFilter = document.getElementById('country-filter');
+            const countryOptions = countryFilter.querySelectorAll('option:not(:first-child)');
+            countryOptions.forEach(opt => {
+              opt.disabled = !availableCountries.has(opt.value.toLowerCase());
+            });
+          }
+          
+          // Event listeners for filters
+          document.getElementById('search-input').addEventListener('input', applyFilters);
+          document.getElementById('genre-filter').addEventListener('change', applyFilters);
+          document.getElementById('year-filter').addEventListener('change', applyFilters);
+          document.getElementById('collection-filter').addEventListener('change', applyFilters);
+          document.getElementById('country-filter').addEventListener('change', applyFilters);
+          document.getElementById('sort-filter').addEventListener('change', applyFilters);
+          
+          document.getElementById('clear-filters').addEventListener('click', () => {
+            document.getElementById('search-input').value = '';
+            document.getElementById('genre-filter').value = '';
+            document.getElementById('year-filter').value = '';
+            document.getElementById('collection-filter').value = '';
+            document.getElementById('country-filter').value = '';
+            document.getElementById('sort-filter').value = 'added-desc';
+            applyFilters();
+          });
+          
+          // Grid size slider
+          const gridSizeSlider = document.getElementById('grid-size-slider');
+          const moviesGrid = document.getElementById('movies-grid');
+          
+          gridSizeSlider.addEventListener('input', (e) => {
+            const size = e.target.value;
+            moviesGrid.style.setProperty('--card-size', size + 'px');
+          });
+          
+          // View mode toggle
+          const gridViewBtn = document.getElementById('grid-view-btn');
+          const listViewBtn = document.getElementById('list-view-btn');
+          const gridSizeControl = document.getElementById('grid-size-control');
+          
+          gridViewBtn.addEventListener('click', () => {
+            moviesGrid.classList.remove('list-view');
+            gridViewBtn.classList.add('active');
+            listViewBtn.classList.remove('active');
+            if (gridSizeControl) gridSizeControl.classList.remove('hidden');
+          });
+          
+          listViewBtn.addEventListener('click', () => {
+            moviesGrid.classList.add('list-view');
+            listViewBtn.classList.add('active');
+            gridViewBtn.classList.remove('active');
+            if (gridSizeControl) gridSizeControl.classList.add('hidden');
+          });
+          
+          // Los datos ya están en Plex (rating, géneros, sinopsis)
+          // No necesitamos fetch de TMDB
+          // console.log('✅ Usando datos de Plex: ratings, géneros, colecciones y sinopsis ya disponibles');
+          
+          // Initialize with "Recientes" filter and apply
+          document.getElementById('sort-filter').value = 'added-desc';
+          applyFilters();
+          
+          // Hide loading screen
+          document.getElementById('loading-screen').style.display = 'none';
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error fetching library content:', error);
+    res.status(500).send('Error al obtener el contenido de la biblioteca');
+  }
+});
+
+// Ruta para mostrar las bibliotecas disponibles
+app.get('/library', async (req, res) => {
+  const { accessToken, baseURI } = req.query;
+  
+  if (!accessToken || !baseURI) {
+    return res.status(400).send('Faltan parámetros requeridos: accessToken, baseURI');
+  }
+  
+  try {
+    // Obtener todas las bibliotecas de Plex
+    const librariesUrl = `${baseURI}/library/sections?X-Plex-Token=${accessToken}`;
+    const xmlData = await httpsGetXML(librariesUrl);
+    
+    // Extraer bibliotecas del XML
+    const libraries = [];
+    const directoryMatches = xmlData.matchAll(/<Directory[^>]*>/g);
+    
+    for (const match of directoryMatches) {
+      const dirTag = match[0];
+      const keyMatch = dirTag.match(/key="([^"]*)"/);
+      const titleMatch = dirTag.match(/title="([^"]*)"/);
+      const typeMatch = dirTag.match(/type="([^"]*)"/);
+      
+      if (keyMatch && titleMatch && typeMatch) {
+        libraries.push({
+          key: keyMatch[1],
+          title: titleMatch[1],
+          type: typeMatch[1]
+        });
+      }
+    }
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bibliotecas - Infinity Scrap</title>
+        <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            color: #f3f4f6;
+            min-height: 100vh;
+            padding: 2rem;
+          }
+          .container {
+            max-width: 1400px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 4rem;
+          }
+          .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+          }
+          .logo-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(229, 160, 13, 0.4);
+          }
+          .logo-text {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+          h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+          }
+          .subtitle {
+            font-size: 1.125rem;
+            color: #9ca3af;
+          }
+          .libraries-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+          }
+          .library-card {
+            background: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 2.5rem;
+            border: 1px solid rgba(229, 160, 13, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+          }
+          .library-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(229, 160, 13, 0.3);
+            border-color: rgba(229, 160, 13, 0.5);
+          }
+          .library-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+          }
+          .library-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+          }
+          .library-type {
+            font-size: 0.875rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">
+              <div class="logo-icon">☁</div>
+              <span class="logo-text">Infinity Scrap</span>
+            </div>
+            <h1>Selecciona una Biblioteca</h1>
+            <p class="subtitle">Explora tu contenido multimedia</p>
+          </div>
+          
+          <div class="libraries-grid">
+            ${libraries.map(lib => `
+              <div class="library-card" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${lib.key}&libraryTitle=${encodeURIComponent(lib.title)}&libraryType=${lib.type}'">
+                <div class="library-icon">${lib.type === 'movie' ? '🎬' : lib.type === 'show' ? '📺' : '🎭'}</div>
+                <div class="library-title">${lib.title}</div>
+                <div class="library-type">${lib.type === 'movie' ? 'Películas' : lib.type === 'show' ? 'Series' : 'Contenido'}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error fetching libraries:', error);
+    res.status(500).send('Error al obtener las bibliotecas');
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Servidor escuchando en el puerto ${port}`);
+  // console.log(`Servidor escuchando en el puerto ${port}`);
 });
