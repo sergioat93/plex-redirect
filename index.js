@@ -132,6 +132,18 @@ function parseXML(xmlString) {
         }
     };
     
+    // Extraer atributos del MediaContainer
+    const mediaContainerMatch = xmlString.match(/<MediaContainer\s+([^>]*?)>/);
+    if (mediaContainerMatch) {
+        const containerAttrs = mediaContainerMatch[1];
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(containerAttrs)) !== null) {
+            const [, key, value] = attrMatch;
+            result.MediaContainer[key] = value;
+        }
+    }
+    
     // Extraer tag Video principal (solo el primer nivel, no los anidados)
     const videoTagRegex = /<Video\s+([^>]*?)(?:>[\s\S]*?<\/Video>|\/?>)/g;
     const videoMatches = xmlString.matchAll(videoTagRegex);
@@ -778,8 +790,8 @@ app.get('/episode', async (req, res) => {
   const tmdbId = req.query.tmdbId;
   const imdbId = req.query.imdbId;
   const parentRatingKey = req.query.parentRatingKey;
-  const libraryKey = req.query.libraryKey || '';
-  const libraryTitle = req.query.libraryTitle || '';
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
 
   if (!episodeRatingKey || !accessToken || !baseURI) {
     return res.status(400).send('Faltan parámetros requeridos: episodeRatingKey, accessToken, baseURI');
@@ -797,6 +809,16 @@ app.get('/episode', async (req, res) => {
 
     if (!episodeData || !episodeData.MediaContainer || !episodeData.MediaContainer.Metadata || episodeData.MediaContainer.Metadata.length === 0) {
       return res.status(404).send('No se encontró información del episodio');
+    }
+
+    // Extraer libraryKey y libraryTitle del MediaContainer si no se proporcionaron
+    if (!libraryKey && episodeData.MediaContainer.librarySectionID) {
+      libraryKey = episodeData.MediaContainer.librarySectionID;
+      console.log('[/episode] libraryKey extraído del XML:', libraryKey);
+    }
+    if (!libraryTitle && episodeData.MediaContainer.librarySectionTitle) {
+      libraryTitle = episodeData.MediaContainer.librarySectionTitle;
+      console.log('[/episode] libraryTitle extraído del XML:', libraryTitle);
     }
 
     const metadataEntries = episodeData.MediaContainer.Metadata;
@@ -1621,8 +1643,8 @@ app.get('/list', async (req, res) => {
   const seriesTitleParam = req.query.seriesTitle;
   const tmdbId = req.query.tmdbId;
   const parentRatingKey = req.query.parentRatingKey;
-  const libraryKey = req.query.libraryKey || '';
-  const libraryTitle = req.query.libraryTitle || '';
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 10;
   
@@ -1637,6 +1659,16 @@ app.get('/list', async (req, res) => {
       const seasonUrl = `${baseURI}/library/metadata/${seasonRatingKey}/children?X-Plex-Token=${accessToken}`;
       const xmlData = await httpsGetXML(seasonUrl);
       const seasonData = parseXML(xmlData);
+      
+      // Extraer libraryKey y libraryTitle del MediaContainer si no se proporcionaron
+      if (!libraryKey && seasonData.MediaContainer.librarySectionID) {
+        libraryKey = seasonData.MediaContainer.librarySectionID;
+        console.log('[/list] libraryKey extraído del XML:', libraryKey);
+      }
+      if (!libraryTitle && seasonData.MediaContainer.librarySectionTitle) {
+        libraryTitle = seasonData.MediaContainer.librarySectionTitle;
+        console.log('[/list] libraryTitle extraído del XML:', libraryTitle);
+      }
       
       if (seasonData && seasonData.MediaContainer && seasonData.MediaContainer.Metadata) {
         const episodes = seasonData.MediaContainer.Metadata;
@@ -1780,14 +1812,33 @@ app.get('/list', async (req, res) => {
   let imdbId = null;
   let trailerKey = null;
   
-  // Intentar mejorar datos con TMDB si disponible
-  if (seasonInfo && seasonInfo.tmdbId) {
+  // Intentar mejorar datos con TMDB
+  let tmdbIdToUse = (seasonInfo && seasonInfo.tmdbId) || tmdbId || null;
+  
+  // Si no hay tmdbId pero hay título de serie, buscar en TMDB
+  if (!tmdbIdToUse && seriesTitle) {
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(seriesTitle)}&language=es-ES`;
+      const searchResponse = await fetch(searchUrl);
+      const searchData = await searchResponse.json();
+      
+      if (searchData.results && searchData.results.length > 0) {
+        tmdbIdToUse = searchData.results[0].id;
+        console.log(`✅ TMDB ID encontrado para "${seriesTitle}": ${tmdbIdToUse}`);
+      }
+    } catch (error) {
+      console.error('Error buscando serie en TMDB:', error);
+    }
+  }
+  
+  // Obtener datos de TMDB si disponible
+  if (tmdbIdToUse) {
     try {
       // Obtener datos completos de la serie
-      const seriesData = await fetchTMDBSeriesData(seasonInfo.tmdbId);
+      const seriesData = await fetchTMDBSeriesData(tmdbIdToUse);
       
       // Obtener datos específicos de la temporada
-      const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumberFromEpisode);
+      const seasonData = await fetchTMDBSeasonData(tmdbIdToUse, seasonNumberFromEpisode);
       
       if (seasonData && seasonData.overview) {
         seasonSummary = seasonData.overview;
@@ -1810,6 +1861,11 @@ app.get('/list', async (req, res) => {
         backdropPath = seriesData.backdropPath;
         imdbId = seriesData.imdbId;
         trailerKey = seriesData.trailerKey;
+      }
+      
+      // Actualizar el tmdbId en seasonInfo para uso posterior
+      if (seasonInfo) {
+        seasonInfo.tmdbId = tmdbIdToUse;
       }
     } catch (error) {
       console.error('Error fetching TMDB data:', error);
@@ -3028,27 +3084,31 @@ app.get('/list', async (req, res) => {
               
               <!-- Info -->
               <div class="series-info">
-                <!-- Meta badges e iconos en la misma fila -->
-                <div class="series-meta" style="align-items: center;">
-                  <span class="episodes-count-badge">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
-                  ${totalSizeFormatted ? `<span class="meta-badge">${totalSizeFormatted}</span>` : ''}
-                  ${seasonYear ? `<span class="meta-badge">${seasonYear}</span>` : ''}
+                <!-- Meta badges e iconos: badges a la izquierda, iconos a la derecha -->
+                <div class="series-meta" style="align-items: center; justify-content: space-between; width: 100%;">
+                  <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                    <span class="episodes-count-badge">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
+                    ${totalSizeFormatted ? `<span class="meta-badge">${totalSizeFormatted}</span>` : ''}
+                    ${seasonYear ? `<span class="meta-badge">${seasonYear}</span>` : ''}
+                  </div>
                   
-                  ${seasonInfo && seasonInfo.tmdbId ? `
-                    <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-flex; align-items: center;">
-                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                    </a>
-                  ` : ''}
-                  ${imdbId ? `
-                    <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-flex; align-items: center;">
-                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                    </a>
-                  ` : ''}
-                  ${trailerKey ? `
-                    <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-flex; align-items: center;">
-                      <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                    </a>
-                  ` : ''}
+                  <div style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
+                    ${tmdbIdToUse ? `
+                      <a href="https://www.themoviedb.org/tv/${tmdbIdToUse}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                    ${imdbId ? `
+                      <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                    ${trailerKey ? `
+                      <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                  </div>
                 </div>
                 
                 <!-- Synopsis -->
@@ -3603,10 +3663,11 @@ app.get('/movie', async (req, res) => {
     title = '',
     year = '',
     posterUrl = '',
-    tmdbId = '',
-    libraryKey = '',
-    libraryTitle = ''
+    tmdbId = ''
   } = req.query;
+  
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
 
   let partKey = decodeURIComponent(encodedPartKey);
   
@@ -3638,6 +3699,17 @@ app.get('/movie', async (req, res) => {
         const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
         // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
         const xmlText = await httpsGetXML(metadataUrl);
+        
+        // Parse XML para extraer libraryKey y libraryTitle si no se proporcionaron
+        const parsedXML = parseXML(xmlText);
+        if (!libraryKey && parsedXML.MediaContainer.librarySectionID) {
+          libraryKey = parsedXML.MediaContainer.librarySectionID;
+          console.log('[/movie] libraryKey extraído del XML:', libraryKey);
+        }
+        if (!libraryTitle && parsedXML.MediaContainer.librarySectionTitle) {
+          libraryTitle = parsedXML.MediaContainer.librarySectionTitle;
+          console.log('[/movie] libraryTitle extraído del XML:', libraryTitle);
+        }
         
         // Extraer partKey si no viene en parámetros
         if (!partKey) {
@@ -4400,10 +4472,11 @@ app.get('/series', async (req, res) => {
     posterUrl = '',
     tmdbId = '',
     totalSize = '',
-    seasons: seasonsParam = '[]',
-    libraryKey = '',
-    libraryTitle = ''
+    seasons: seasonsParam = '[]'
   } = req.query;
+  
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
   
   // console.log('[/series] libraryKey recibido:', libraryKey);
   // console.log('[/series] libraryTitle recibido:', libraryTitle);
@@ -4426,6 +4499,17 @@ app.get('/series', async (req, res) => {
       try {
         const seasonUrl = `${baseURI}/library/metadata/${season.ratingKey}/children?X-Plex-Token=${accessToken}`;
         const seasonXml = await httpsGetXML(seasonUrl);
+        const parsedSeasonData = parseXML(seasonXml);
+        
+        // Extraer libraryKey y libraryTitle del primer resultado si no se proporcionaron
+        if (!libraryKey && parsedSeasonData.MediaContainer.librarySectionID) {
+          libraryKey = parsedSeasonData.MediaContainer.librarySectionID;
+          console.log('[/series] libraryKey extraído del XML:', libraryKey);
+        }
+        if (!libraryTitle && parsedSeasonData.MediaContainer.librarySectionTitle) {
+          libraryTitle = parsedSeasonData.MediaContainer.librarySectionTitle;
+          console.log('[/series] libraryTitle extraído del XML:', libraryTitle);
+        }
         
         // Extraer todos los tamaños de los episodios
         const sizeMatches = seasonXml.match(/size="(\d+)"/g);
