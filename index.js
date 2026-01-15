@@ -5999,7 +5999,7 @@ app.get('/browse', async (req, res) => {
             
             .navbar-links { 
               gap: 0.35rem;
-              max-width: calc(100vw - 180px);
+              max-width: calc(100vw - 140px);
               overflow-x: auto;
               scrollbar-width: none;
             }
@@ -6081,7 +6081,7 @@ app.get('/browse', async (req, res) => {
             /* Bibliotecas compactas */
             .navbar-links { 
               gap: 0.25rem;
-              max-width: calc(100vw - 150px);
+              max-width: calc(100vw - 120px);
               overflow-x: auto;
               scrollbar-width: none;
             }
@@ -6142,6 +6142,9 @@ app.get('/browse', async (req, res) => {
           @media (max-width: 480px) {
             .logo-title { font-size: 1rem; }
             
+            .navbar-links { 
+              max-width: calc(100vw - 100px);
+            }
             .navbar-links a { 
               font-size: 0.7rem; 
               padding: 0.3rem 0.45rem; 
@@ -6488,10 +6491,11 @@ app.get('/browse', async (req, res) => {
               // Calcular cuántas bibliotecas mostrar según ancho de pantalla
               function getMaxVisible() {
                 const width = window.innerWidth;
-                if (width <= 540) return 1; // Solo 1 en móvil pequeño
-                if (width <= 768) return 2; // 2 en móvil
-                if (width <= 1024) return 3; // 3 en tablet
-                return 5; // 5 en desktop
+                if (width <= 480) return 3; // 3 en móvil pequeño
+                if (width <= 540) return 4; // 4 en móvil
+                if (width <= 768) return 5; // 5 en tablet
+                if (width <= 1024) return 6; // 6 en tablet grande
+                return 7; // 7 en desktop
               }
               
               function renderLibraries() {
@@ -6519,59 +6523,56 @@ app.get('/browse', async (req, res) => {
               
               renderLibraries();
               
+              // Configurar dropdown inmediatamente después de renderizar
+              const moreLibrariesContainer = document.getElementById('more-libraries');
+              
+              // Flag para evitar múltiples listeners
+              let dropdownListenerAdded = false;
+              
+              // Event delegation en el documento para el botón Más
+              if (!dropdownListenerAdded) {
+                document.addEventListener('click', function(e) {
+                  const moreBtn = e.target.closest('#more-btn');
+                  
+                  // Si se hizo click en el botón Más
+                  if (moreBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const dropdown = document.getElementById('dropdown-menu');
+                    if (dropdown) {
+                      const wasActive = moreBtn.classList.contains('active');
+                      moreBtn.classList.toggle('active');
+                      dropdown.classList.toggle('show');
+                      console.log('🔽 Dropdown:', wasActive ? 'cerrando' : 'abriendo');
+                    }
+                    return;
+                  }
+                  
+                  // Si se hizo click fuera del contenedor del dropdown
+                  const moreContainer = document.getElementById('more-libraries');
+                  if (moreContainer && !moreContainer.contains(e.target)) {
+                    const btn = document.getElementById('more-btn');
+                    const menu = document.getElementById('dropdown-menu');
+                    if (btn && btn.classList.contains('active')) {
+                      btn.classList.remove('active');
+                      if (menu) menu.classList.remove('show');
+                      console.log('🔽 Dropdown cerrado (click fuera)');
+                    }
+                  }
+                });
+                dropdownListenerAdded = true;
+                console.log('✅ Dropdown listener configurado');
+              }
+              
               // Reajustar al cambiar tamaño de ventana
               let resizeTimeout;
               window.addEventListener('resize', () => {
                 clearTimeout(resizeTimeout);
                 resizeTimeout = setTimeout(() => {
                   renderLibraries();
-                  setupDropdown();
                 }, 200);
               });
-              
-              // Setup dropdown con delegación de eventos
-              function setupDropdown() {
-                const moreBtnEl = document.getElementById('more-btn');
-                const dropdownMenuEl = document.getElementById('dropdown-menu');
-                const moreLibrariesEl = document.getElementById('more-libraries');
-                
-                if (!moreBtnEl || !dropdownMenuEl || !moreLibrariesEl) {
-                  console.log('⚠️ Dropdown elements not found');
-                  return;
-                }
-                
-                // Remover listeners anteriores clonando el botón
-                const newMoreBtn = moreBtnEl.cloneNode(true);
-                moreBtnEl.parentNode.replaceChild(newMoreBtn, moreBtnEl);
-                
-                console.log('✅ Setting up dropdown listeners');
-                
-                // Click en el botón
-                newMoreBtn.addEventListener('click', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  
-                  const isActive = this.classList.contains('active');
-                  this.classList.toggle('active');
-                  dropdownMenuEl.classList.toggle('show');
-                  
-                  console.log('🔽 Dropdown:', !isActive ? 'opened' : 'closed');
-                });
-                
-                // Click fuera para cerrar
-                document.addEventListener('click', function(e) {
-                  const container = document.getElementById('more-libraries');
-                  if (container && !container.contains(e.target)) {
-                    const btn = document.getElementById('more-btn');
-                    const menu = document.getElementById('dropdown-menu');
-                    if (btn) btn.classList.remove('active');
-                    if (menu) menu.classList.remove('show');
-                  }
-                });
-              }
-              
-              // Ejecutar setup después de un pequeño delay
-              setTimeout(setupDropdown, 200);
             })
             .catch(e => console.error('Error loading libraries:', e));
           
