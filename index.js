@@ -6006,16 +6006,16 @@ app.get('/browse', async (req, res) => {
             }
             .navbar-links a { 
               font-size: 0.75rem; 
-              padding: 0.35rem 0.45rem;
+              padding: 0.35rem 0.4rem;
               flex-shrink: 0;
-              gap: 0.35rem;
+              gap: 0.3rem;
             }
             .navbar-links a i { font-size: 0.7rem; }
             
             .dropdown-container { margin-left: 0.15rem; }
             .more-btn { 
               font-size: 0.7rem; 
-              padding: 0.35rem 0.45rem;
+              padding: 0.35rem 0.4rem;
               gap: 0.25rem;
             }
             .more-btn i { font-size: 0.65rem; }
@@ -6528,35 +6528,73 @@ app.get('/browse', async (req, res) => {
                   // Mostrar el botón primero
                   moreLibrariesContainer.style.setProperty('display', 'inline-flex');
                   
-                  // Ahora calcular cuántas caben con el botón visible
+                  // Algoritmo optimizado: intentar poner la activa + las más cortas
                   requestAnimationFrame(() => {
                     const links = Array.from(libraryLinksContainer.children);
-                    let visibleCount = allLibraries.length;
                     
-                    // Ir quitando bibliotecas de atrás hacia adelante hasta que no haya overflow
-                    while (visibleCount > 1 && navbarLinks.scrollWidth > navbarLinks.clientWidth) {
-                      visibleCount--;
-                      
-                      // Re-renderizar con menos bibliotecas
+                    // Crear array con índice y ancho de cada biblioteca
+                    const libsWithWidth = allLibraries.map((lib, index) => ({
+                      index: index,
+                      lib: lib,
+                      width: links[index] ? links[index].offsetWidth : 0,
+                      isActive: lib.isActive
+                    }));
+                    
+                    // Separar la activa y ordenar las demás por ancho (más cortas primero)
+                    const activeLib = libsWithWidth.find(l => l.isActive);
+                    const otherLibs = libsWithWidth.filter(l => !l.isActive).sort((a, b) => a.width - b.width);
+                    
+                    // Intentar agregar bibliotecas hasta que haya overflow
+                    let visibleIndices = [];
+                    if (activeLib) visibleIndices.push(activeLib.index);
+                    
+                    // Limpiar y re-renderizar solo con las seleccionadas
+                    const tryRender = (indices) => {
                       libraryLinksContainer.innerHTML = '';
-                      dropdownMenu.innerHTML = '';
                       
-                      allLibraries.forEach((lib, index) => {
+                      // Ordenar índices para mantener el orden original
+                      indices.sort((a, b) => a - b);
+                      
+                      indices.forEach(i => {
+                        const lib = allLibraries[i];
                         const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
                         const a = document.createElement('a');
                         a.href = browseUrl;
                         a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
                         if (lib.isActive) a.classList.add('active');
-                        
-                        if (index < visibleCount) {
-                          libraryLinksContainer.appendChild(a);
-                        } else {
-                          dropdownMenu.appendChild(a.cloneNode(true));
-                        }
+                        libraryLinksContainer.appendChild(a);
                       });
+                    };
+                    
+                    // Intentar agregar las más cortas una por una
+                    for (let i = 0; i < otherLibs.length; i++) {
+                      const testIndices = [...visibleIndices, otherLibs[i].index];
+                      tryRender(testIndices);
+                      
+                      // Esperar un frame y verificar overflow
+                      if (navbarLinks.scrollWidth <= navbarLinks.clientWidth) {
+                        visibleIndices.push(otherLibs[i].index);
+                      } else {
+                        // Ya no cabe, volver al estado anterior
+                        tryRender(visibleIndices);
+                        break;
+                      }
                     }
                     
-                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length);
+                    // Poner las no visibles en el dropdown
+                    dropdownMenu.innerHTML = '';
+                    allLibraries.forEach((lib, index) => {
+                      if (!visibleIndices.includes(index)) {
+                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                        const a = document.createElement('a');
+                        a.href = browseUrl;
+                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                        if (lib.isActive) a.classList.add('active');
+                        dropdownMenu.appendChild(a);
+                      }
+                    });
+                    
+                    console.log('📚 Bibliotecas:', visibleIndices.length, 'visibles de', allLibraries.length);
                   });
                 });
               }
