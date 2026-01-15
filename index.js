@@ -6562,6 +6562,20 @@ app.get('/browse', async (req, res) => {
                   if (allFit) {
                     // CASO 1: Caben todas las bibliotecas sin necesidad del botón Más
                     moreContainer.style.display = 'none';
+                    
+                    // Asegurar que TODAS las bibliotecas están visibles
+                    libraryLinksContainer.innerHTML = '';
+                    dropdownMenu.innerHTML = '';
+                    
+                    allLibraries.forEach((lib) => {
+                      const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                      const a = document.createElement('a');
+                      a.href = browseUrl;
+                      a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                      if (lib.isActive) a.classList.add('active');
+                      libraryLinksContainer.appendChild(a);
+                    });
+                    
                     console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ') - NO mostrar Más');
                   } else {
                     // CASO 2: No caben todas, necesitamos el botón Más
