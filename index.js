@@ -5819,13 +5819,13 @@ app.get('/browse', async (req, res) => {
           }
 
           /* Dropdown moderno */
-          .dropdown-container { position: relative; display: inline-flex; }
-          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; }
+          .dropdown-container { position: relative; display: inline-flex; z-index: 1200; }
+          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 1200; }
           .more-btn:hover { color: var(--primary-color); border-color: var(--primary-color); background: rgba(229, 160, 13, 0.05); }
           .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
           .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
           .more-btn.active i { transform: rotate(180deg); }
-          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1100; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1300; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
           .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
           .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
           .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
@@ -6516,8 +6516,8 @@ app.get('/browse', async (req, res) => {
                   const navContentWidth = navContent.offsetWidth;
                   const logo = navContent.querySelector('.navbar-brand');
                   const logoWidth = logo ? logo.offsetWidth : 0;
-                  const moreBtnWidth = 70; // Aproximado
-                  const gaps = 40; // Márgenes y gaps
+                  const moreBtnWidth = 55; // Reducido de 70 a 55
+                  const gaps = 20; // Reducido de 40 a 20
                   const availableWidth = navContentWidth - logoWidth - moreBtnWidth - gaps;
                   
                   const links = Array.from(container.children);
@@ -6526,12 +6526,21 @@ app.get('/browse', async (req, res) => {
                   
                   // Calcular cuántas bibliotecas caben
                   for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth + 8; // +gap
+                    const linkWidth = links[i].offsetWidth + 4; // Reducido de 8 a 4 (gap real)
                     if (totalWidth + linkWidth <= availableWidth) {
                       totalWidth += linkWidth;
                       visibleCount++;
                     } else {
                       break;
+                    }
+                  }
+                  
+                  // Intentar agregar una más si el espacio sobrante es suficiente
+                  if (visibleCount < links.length) {
+                    const remainingSpace = availableWidth - totalWidth;
+                    const nextLink = links[visibleCount];
+                    if (nextLink && nextLink.offsetWidth + 4 <= remainingSpace + 15) {
+                      visibleCount++;
                     }
                   }
                   
