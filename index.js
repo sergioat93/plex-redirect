@@ -6643,22 +6643,8 @@ app.get('/browse', async (req, res) => {
                         if (btn) btn.classList.remove('active');
                         if (menu) menu.classList.remove('show');
                         
-                        // Re-renderizar para mostrar la biblioteca al principio
-                        renderLibraries();
-                        
-                        // NO navegar automáticamente - dejar que el usuario vea la biblioteca resaltada
-                        // El usuario puede hacer click en ella si quiere navegar
-                        console.log('✅ Biblioteca "' + clickedLib.title + '" ahora es la primera. Haz click en ella para navegar.');
-                      }
-                    }
-                    return;
-                  }
-                  
-                  // Si se hizo click en una biblioteca VISIBLE (no del dropdown), navegar normalmente
-                  const visibleLink = e.target.closest('#library-links a');
-                  if (visibleLink && !e.defaultPrevented) {
-                    // Dejar que la navegación normal ocurra
-                    console.log('🔗 Navegando a biblioteca:', visibleLink.textContent.trim());
+                        // Navegar a la biblioteca después de re-renderizar
+                        window.location.href = dropdownLink.href;
                       }
                     }
                     return;
