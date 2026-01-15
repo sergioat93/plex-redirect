@@ -6516,8 +6516,20 @@ app.get('/browse', async (req, res) => {
                   const navContent = container.closest('.nav-content');
                   if (!navContent) return;
                   
-                  // Ancho total del navbar
-                  const totalWidth = navContent.offsetWidth;
+                  // Usar el ancho REAL del navbar (viewport width menos padding del container)
+                  const navbar = container.closest('.navbar');
+                  const navbarContainer = navbar ? navbar.querySelector('.container') : null;
+                  
+                  // Ancho total disponible (considerar el padding del container)
+                  let totalWidth = 0;
+                  if (navbarContainer) {
+                    totalWidth = navbarContainer.offsetWidth;
+                    // Restar padding del container (0 1rem = 16px por lado)
+                    const containerPadding = 32; // 16px * 2
+                    totalWidth = totalWidth - containerPadding;
+                  } else {
+                    totalWidth = navContent.offsetWidth;
+                  }
                   
                   // Restar elementos fijos (logo y controles)
                   const logo = navContent.querySelector('.navbar-brand');
@@ -6525,13 +6537,16 @@ app.get('/browse', async (req, res) => {
                   const logoWidth = logo ? logo.offsetWidth : 0;
                   const controlsWidth = controls ? controls.offsetWidth : 0;
                   
-                  // Gap del nav-content (1rem = 16px según CSS)
-                  const navGap = 32; // 2 gaps de 16px (entre logo-links y links-controls)
+                  // Gap del nav-content (según CSS: gap: 1rem = 16px, pero en responsive puede ser 0.5rem = 8px)
+                  const navGap = window.innerWidth <= 768 ? 16 : 32; // 2 gaps
                   
                   // Espacio real disponible para las bibliotecas
                   const availableSpace = totalWidth - logoWidth - controlsWidth - navGap;
                   
                   console.log('📐 Cálculo de espacio:', {
+                    viewport: window.innerWidth,
+                    containerWidth: navbarContainer ? navbarContainer.offsetWidth : 0,
+                    navContentWidth: navContent.offsetWidth,
                     total: totalWidth,
                     logo: logoWidth,
                     controls: controlsWidth,
