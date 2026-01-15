@@ -5583,9 +5583,9 @@ app.get('/browse', async (req, res) => {
           .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
           .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
           .logo-title { color: var(--primary-color); font-size: 1.5rem; font-weight: 700; white-space: nowrap; }
-          .navbar-links { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: center; }
-          .navbar-links #library-links { display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap; }
-          .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.875rem; }
+          .navbar-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: flex-start; }
+          .navbar-links #library-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; }
+          .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem 0.65rem; border-radius: 6px; font-size: 0.875rem; }
           .navbar-links a:hover { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); }
           .navbar-links a.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.15); font-weight: 600; }
           .navbar-controls { display: flex; gap: 1rem; align-items: center; }
@@ -6512,19 +6512,16 @@ app.get('/browse', async (req, res) => {
                   
                   if (!container || !moreContainer) return;
                   
-                  // Calcular espacio disponible
-                  const navContent = container.closest('.nav-content');
-                  if (!navContent) return;
+                  // Calcular espacio disponible CORRECTAMENTE
+                  // Usar el ancho del contenedor navbar-links que es donde realmente caben las bibliotecas
+                  const navbarLinksContainer = container.parentElement; // navbar-links
+                  if (!navbarLinksContainer) return;
                   
-                  const navContentWidth = navContent.offsetWidth;
-                  const logo = navContent.querySelector('.navbar-brand');
-                  const logoWidth = logo ? logo.offsetWidth : 0;
-                  const controls = navContent.querySelector('.navbar-controls');
-                  const controlsWidth = controls ? controls.offsetWidth : 0;
-                  const gaps = 20; // Margen de seguridad reducido
+                  const availableContainerWidth = navbarLinksContainer.offsetWidth;
+                  const gaps = 10; // Margen de seguridad mínimo
                   
                   // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
-                  const availableWidthWithoutBtn = navContentWidth - logoWidth - controlsWidth - gaps;
+                  const availableWidthWithoutBtn = availableContainerWidth - gaps;
                   
                   const links = Array.from(container.children);
                   let totalWidth = 0;
@@ -6532,7 +6529,7 @@ app.get('/browse', async (req, res) => {
                   
                   // Verificar si caben todas las bibliotecas
                   for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth + 4; // Gap reducido
+                    const linkWidth = links[i].offsetWidth + (i > 0 ? 4 : 0); // Gap de 0.25rem = 4px entre links
                     totalWidth += linkWidth;
                     if (totalWidth > availableWidthWithoutBtn) {
                       allFit = false;
@@ -6547,15 +6544,15 @@ app.get('/browse', async (req, res) => {
                   } else {
                     // CASO 2: No caben todas, necesitamos el botón Más
                     // Recalcular CON el espacio del botón Más
-                    const moreBtnWidth = 60;
-                    const availableWidthWithBtn = navContentWidth - logoWidth - controlsWidth - moreBtnWidth - gaps;
+                    const moreBtnWidth = 65;
+                    const availableWidthWithBtn = availableContainerWidth - moreBtnWidth - gaps;
                     
                     totalWidth = 0;
                     let visibleCount = 0;
                     
                     // Calcular cuántas caben con el botón Más presente
                     for (let i = 0; i < links.length; i++) {
-                      const linkWidth = links[i].offsetWidth + 4;
+                      const linkWidth = links[i].offsetWidth + (i > 0 ? 4 : 0);
                       if (totalWidth + linkWidth <= availableWidthWithBtn) {
                         totalWidth += linkWidth;
                         visibleCount++;
@@ -6646,13 +6643,22 @@ app.get('/browse', async (req, res) => {
                         if (btn) btn.classList.remove('active');
                         if (menu) menu.classList.remove('show');
                         
-                        // Re-renderizar
+                        // Re-renderizar para mostrar la biblioteca al principio
                         renderLibraries();
                         
-                        // Navegar a la biblioteca
-                        setTimeout(() => {
-                          window.location.href = dropdownLink.href;
-                        }, 100);
+                        // NO navegar automáticamente - dejar que el usuario vea la biblioteca resaltada
+                        // El usuario puede hacer click en ella si quiere navegar
+                        console.log('✅ Biblioteca "' + clickedLib.title + '" ahora es la primera. Haz click en ella para navegar.');
+                      }
+                    }
+                    return;
+                  }
+                  
+                  // Si se hizo click en una biblioteca VISIBLE (no del dropdown), navegar normalmente
+                  const visibleLink = e.target.closest('#library-links a');
+                  if (visibleLink && !e.defaultPrevented) {
+                    // Dejar que la navegación normal ocurra
+                    console.log('🔗 Navegando a biblioteca:', visibleLink.textContent.trim());
                       }
                     }
                     return;
