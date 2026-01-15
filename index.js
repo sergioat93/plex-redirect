@@ -5596,8 +5596,7 @@ app.get('/browse', async (req, res) => {
             background: var(--bg-secondary);
             padding: 0.75rem 1rem;
             border-bottom: 1px solid var(--border-color);
-            position: sticky;
-            top: 60px;
+            position: relative;
             z-index: 998;
           }
 
