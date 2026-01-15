@@ -5797,9 +5797,9 @@ app.get('/browse', async (req, res) => {
 
           .sidebar-clear-btn {
             width: 100%;
-            background: transparent;
-            border: 1px solid var(--primary-color);
-            color: var(--primary-color);
+            background: var(--primary-color);
+            border: none;
+            color: #000;
             padding: 0.75rem;
             border-radius: 8px;
             font-weight: 600;
@@ -5814,8 +5814,8 @@ app.get('/browse', async (req, res) => {
           }
 
           .sidebar-clear-btn:hover {
-            background: var(--primary-color);
-            color: #000;
+            background: var(--primary-dark);
+            transform: scale(1.02);
           }
 
           /* Dropdown moderno */
@@ -5991,12 +5991,19 @@ app.get('/browse', async (req, res) => {
           @media (max-width: 768px) {
             .mobile-search-bar { display: block; }
             .library-controls { display: none; }
+            .search-container { display: none !important; }
             
             .navbar .container { padding: 0.5rem 1rem; }
             .nav-content { gap: 0.5rem; }
             .logo-title { font-size: 1.2rem; }
             
-            .navbar-links { gap: 0.35rem; }
+            .navbar-links { 
+              gap: 0.35rem;
+              max-width: calc(100vw - 180px);
+              overflow-x: auto;
+              scrollbar-width: none;
+            }
+            .navbar-links::-webkit-scrollbar { display: none; }
             .navbar-links a { 
               font-size: 0.8rem; 
               padding: 0.4rem 0.6rem; 
@@ -6074,8 +6081,11 @@ app.get('/browse', async (req, res) => {
             /* Bibliotecas compactas */
             .navbar-links { 
               gap: 0.25rem;
-              max-width: calc(100vw - 200px);
+              max-width: calc(100vw - 150px);
+              overflow-x: auto;
+              scrollbar-width: none;
             }
+            .navbar-links::-webkit-scrollbar { display: none; }
             .navbar-links a { 
               font-size: 0.75rem; 
               padding: 0.35rem 0.5rem; 
@@ -6513,36 +6523,55 @@ app.get('/browse', async (req, res) => {
               let resizeTimeout;
               window.addEventListener('resize', () => {
                 clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(renderLibraries, 200);
+                resizeTimeout = setTimeout(() => {
+                  renderLibraries();
+                  setupDropdown();
+                }, 200);
               });
               
-              // Toggle dropdown - usar setTimeout para asegurar que el DOM esté listo
-              setTimeout(() => {
-                const moreBtnCheck = document.getElementById('more-btn');
-                const dropdownMenuCheck = document.getElementById('dropdown-menu');
+              // Setup dropdown con delegación de eventos
+              function setupDropdown() {
+                const moreBtnEl = document.getElementById('more-btn');
+                const dropdownMenuEl = document.getElementById('dropdown-menu');
+                const moreLibrariesEl = document.getElementById('more-libraries');
                 
-                if (moreBtnCheck && dropdownMenuCheck) {
-                  moreBtnCheck.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    moreBtnCheck.classList.toggle('active');
-                    dropdownMenuCheck.classList.toggle('show');
-                  });
-                  
-                  // Cerrar dropdown al hacer click fuera
-                  document.addEventListener('click', (event) => {
-                    if (!moreBtnCheck.contains(event.target)) {
-                      moreBtnCheck.classList.remove('active');
-                      dropdownMenuCheck.classList.remove('show');
-                    }
-                  });
-                  
-                  // Prevenir que el dropdown se cierre al hacer click dentro
-                  dropdownMenuCheck.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                  });
+                if (!moreBtnEl || !dropdownMenuEl || !moreLibrariesEl) {
+                  console.log('⚠️ Dropdown elements not found');
+                  return;
                 }
-              }, 100);
+                
+                // Remover listeners anteriores clonando el botón
+                const newMoreBtn = moreBtnEl.cloneNode(true);
+                moreBtnEl.parentNode.replaceChild(newMoreBtn, moreBtnEl);
+                
+                console.log('✅ Setting up dropdown listeners');
+                
+                // Click en el botón
+                newMoreBtn.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  
+                  const isActive = this.classList.contains('active');
+                  this.classList.toggle('active');
+                  dropdownMenuEl.classList.toggle('show');
+                  
+                  console.log('🔽 Dropdown:', !isActive ? 'opened' : 'closed');
+                });
+                
+                // Click fuera para cerrar
+                document.addEventListener('click', function(e) {
+                  const container = document.getElementById('more-libraries');
+                  if (container && !container.contains(e.target)) {
+                    const btn = document.getElementById('more-btn');
+                    const menu = document.getElementById('dropdown-menu');
+                    if (btn) btn.classList.remove('active');
+                    if (menu) menu.classList.remove('show');
+                  }
+                });
+              }
+              
+              // Ejecutar setup después de un pequeño delay
+              setTimeout(setupDropdown, 200);
             })
             .catch(e => console.error('Error loading libraries:', e));
           
