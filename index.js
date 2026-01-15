@@ -5819,13 +5819,13 @@ app.get('/browse', async (req, res) => {
           }
 
           /* Dropdown moderno */
-          .dropdown-container { position: relative; display: inline-flex; z-index: 2100; }
-          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 2100; }
+          .dropdown-container { position: relative; display: inline-flex; z-index: 2200; }
+          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 2200; }
           .more-btn:hover { color: var(--primary-color); border-color: var(--primary-color); background: rgba(229, 160, 13, 0.05); }
           .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
           .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
           .more-btn.active i { transform: rotate(180deg); }
-          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2100; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2200; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
           .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
           .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
           .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
@@ -6519,10 +6519,12 @@ app.get('/browse', async (req, res) => {
                   const navContentWidth = navContent.offsetWidth;
                   const logo = navContent.querySelector('.navbar-brand');
                   const logoWidth = logo ? logo.offsetWidth : 0;
-                  const gaps = 30; // Margen de seguridad
+                  const controls = navContent.querySelector('.navbar-controls');
+                  const controlsWidth = controls ? controls.offsetWidth : 0;
+                  const gaps = 40; // Margen de seguridad para gaps entre elementos
                   
                   // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
-                  const availableWidthWithoutBtn = navContentWidth - logoWidth - gaps;
+                  const availableWidthWithoutBtn = navContentWidth - logoWidth - controlsWidth - gaps;
                   
                   const links = Array.from(container.children);
                   let totalWidth = 0;
@@ -6546,7 +6548,7 @@ app.get('/browse', async (req, res) => {
                     // CASO 2: No caben todas, necesitamos el botón Más
                     // Recalcular CON el espacio del botón Más
                     const moreBtnWidth = 60;
-                    const availableWidthWithBtn = navContentWidth - logoWidth - moreBtnWidth - gaps;
+                    const availableWidthWithBtn = navContentWidth - logoWidth - controlsWidth - moreBtnWidth - gaps;
                     
                     totalWidth = 0;
                     let visibleCount = 0;
