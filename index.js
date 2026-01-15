@@ -6560,31 +6560,6 @@ app.get('/browse', async (req, res) => {
                   });
                 });
               }
-                      dropdownMenu.innerHTML = '';
-                      
-                      allLibraries.forEach((lib, index) => {
-                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
-                        const a = document.createElement('a');
-                        a.href = browseUrl;
-                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
-                        if (lib.isActive) a.classList.add('active');
-                        
-                        if (index === 0) {
-                          libraryLinksContainer.appendChild(a);
-                        } else {
-                          dropdownMenu.appendChild(a.cloneNode(true));
-                        }
-                      });
-                      
-                      moreContainer.style.display = 'inline-flex';
-                    } else {
-                      // Todas caben (visibleCount >= allLibraries.length)
-                      moreContainer.style.display = 'none';
-                      console.log('✅ Tras recalcular, todas caben');
-                    }
-                  }
-                });
-              }
               
               renderLibraries();
               
