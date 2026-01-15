@@ -6523,9 +6523,6 @@ app.get('/browse', async (req, res) => {
               
               renderLibraries();
               
-              // Configurar dropdown inmediatamente después de renderizar
-              const moreLibrariesContainer = document.getElementById('more-libraries');
-              
               // Flag para evitar múltiples listeners
               let dropdownListenerAdded = false;
               
