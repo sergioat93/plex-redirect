@@ -6521,7 +6521,7 @@ app.get('/browse', async (req, res) => {
                   const logoWidth = logo ? logo.offsetWidth : 0;
                   const controls = navContent.querySelector('.navbar-controls');
                   const controlsWidth = controls ? controls.offsetWidth : 0;
-                  const gaps = 40; // Margen de seguridad para gaps entre elementos
+                  const gaps = 20; // Margen de seguridad reducido
                   
                   // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
                   const availableWidthWithoutBtn = navContentWidth - logoWidth - controlsWidth - gaps;
@@ -6532,7 +6532,7 @@ app.get('/browse', async (req, res) => {
                   
                   // Verificar si caben todas las bibliotecas
                   for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth + 8; // +gap
+                    const linkWidth = links[i].offsetWidth + 4; // Gap reducido
                     totalWidth += linkWidth;
                     if (totalWidth > availableWidthWithoutBtn) {
                       allFit = false;
@@ -6555,7 +6555,7 @@ app.get('/browse', async (req, res) => {
                     
                     // Calcular cuántas caben con el botón Más presente
                     for (let i = 0; i < links.length; i++) {
-                      const linkWidth = links[i].offsetWidth + 8;
+                      const linkWidth = links[i].offsetWidth + 4;
                       if (totalWidth + linkWidth <= availableWidthWithBtn) {
                         totalWidth += linkWidth;
                         visibleCount++;
@@ -6615,6 +6615,45 @@ app.get('/browse', async (req, res) => {
                       moreBtn.classList.toggle('active');
                       dropdown.classList.toggle('show');
                       console.log('🔽 Dropdown:', wasActive ? 'cerrando' : 'abriendo');
+                    }
+                    return;
+                  }
+                  
+                  // Si se hizo click en una biblioteca del dropdown
+                  const dropdownLink = e.target.closest('#dropdown-menu a');
+                  if (dropdownLink) {
+                    e.preventDefault();
+                    
+                    // Extraer libraryKey de la URL
+                    const url = new URL(dropdownLink.href);
+                    const clickedKey = url.searchParams.get('libraryKey');
+                    
+                    if (clickedKey) {
+                      // Encontrar la biblioteca clickeada
+                      const clickedLib = allLibraries.find(lib => lib.key === clickedKey);
+                      if (clickedLib) {
+                        // Remover de su posición actual
+                        const index = allLibraries.indexOf(clickedLib);
+                        allLibraries.splice(index, 1);
+                        // Agregar al principio
+                        allLibraries.unshift(clickedLib);
+                        
+                        console.log('📌 Biblioteca movida al principio:', clickedLib.title);
+                        
+                        // Cerrar dropdown
+                        const btn = document.getElementById('more-btn');
+                        const menu = document.getElementById('dropdown-menu');
+                        if (btn) btn.classList.remove('active');
+                        if (menu) menu.classList.remove('show');
+                        
+                        // Re-renderizar
+                        renderLibraries();
+                        
+                        // Navegar a la biblioteca
+                        setTimeout(() => {
+                          window.location.href = dropdownLink.href;
+                        }, 100);
+                      }
                     }
                     return;
                   }
