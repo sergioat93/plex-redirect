@@ -5583,7 +5583,7 @@ app.get('/browse', async (req, res) => {
           .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
           .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
           .logo-title { color: var(--primary-color); font-size: 1.5rem; font-weight: 700; white-space: nowrap; }
-          .navbar-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: flex-start; }
+          .navbar-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: center; }
           .navbar-links #library-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; }
           .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem 0.65rem; border-radius: 6px; font-size: 0.875rem; }
           .navbar-links a:hover { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); }
@@ -6497,7 +6497,7 @@ app.get('/browse', async (req, res) => {
               function renderLibraries() {
                 libraryLinksContainer.innerHTML = '';
                 dropdownMenu.innerHTML = '';
-                moreLibrariesContainer.style.display = 'none';
+                moreLibrariesContainer.style.setProperty('display', 'none', 'important');
                 
                 // Renderizar TODAS las bibliotecas
                 allLibraries.forEach((lib) => {
@@ -6519,14 +6519,14 @@ app.get('/browse', async (req, res) => {
                   
                   if (!isOverflowing) {
                     // No hay overflow, mostrar todas
-                    moreLibrariesContainer.style.display = 'none';
+                    moreLibrariesContainer.style.setProperty('display', 'none', 'important');
                     console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ')');
                     return;
                   }
                   
                   // Hay overflow - necesitamos el botón "Más"
                   // Mostrar el botón primero
-                  moreLibrariesContainer.style.display = 'inline-flex';
+                  moreLibrariesContainer.style.setProperty('display', 'inline-flex');
                   
                   // Ahora calcular cuántas caben con el botón visible
                   requestAnimationFrame(() => {
