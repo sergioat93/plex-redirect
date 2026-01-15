@@ -6512,30 +6512,52 @@ app.get('/browse', async (req, res) => {
                   
                   if (!container || !moreContainer) return;
                   
-                  // Calcular espacio disponible CORRECTAMENTE
-                  // Usar el ancho del contenedor navbar-links que es donde realmente caben las bibliotecas
-                  const navbarLinksContainer = container.parentElement; // navbar-links
-                  if (!navbarLinksContainer) return;
+                  // CALCULAR ESPACIO DISPONIBLE CORRECTAMENTE
+                  const navContent = container.closest('.nav-content');
+                  if (!navContent) return;
                   
-                  const availableContainerWidth = navbarLinksContainer.offsetWidth;
-                  const gaps = 10; // Margen de seguridad mínimo
+                  // Ancho total del navbar
+                  const totalWidth = navContent.offsetWidth;
                   
-                  // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
-                  const availableWidthWithoutBtn = availableContainerWidth - gaps;
+                  // Restar elementos fijos (logo y controles)
+                  const logo = navContent.querySelector('.navbar-brand');
+                  const controls = navContent.querySelector('.navbar-controls');
+                  const logoWidth = logo ? logo.offsetWidth : 0;
+                  const controlsWidth = controls ? controls.offsetWidth : 0;
+                  
+                  // Gap del nav-content (1rem = 16px según CSS)
+                  const navGap = 32; // 2 gaps de 16px (entre logo-links y links-controls)
+                  
+                  // Espacio real disponible para las bibliotecas
+                  const availableSpace = totalWidth - logoWidth - controlsWidth - navGap;
+                  
+                  console.log('📐 Cálculo de espacio:', {
+                    total: totalWidth,
+                    logo: logoWidth,
+                    controls: controlsWidth,
+                    gaps: navGap,
+                    disponible: availableSpace
+                  });
                   
                   const links = Array.from(container.children);
-                  let totalWidth = 0;
+                  
+                  // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
+                  let totalWidthLibs = 0;
                   let allFit = true;
                   
                   // Verificar si caben todas las bibliotecas
                   for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth + (i > 0 ? 4 : 0); // Gap de 0.25rem = 4px entre links
-                    totalWidth += linkWidth;
-                    if (totalWidth > availableWidthWithoutBtn) {
+                    const linkWidth = links[i].offsetWidth;
+                    const gapWidth = i > 0 ? 4 : 0; // Gap de 0.25rem = 4px
+                    totalWidthLibs += linkWidth + gapWidth;
+                    
+                    if (totalWidthLibs > availableSpace) {
                       allFit = false;
                       break;
                     }
                   }
+                  
+                  console.log('✓ Primera pasada - totalWidthLibs:', totalWidthLibs, 'allFit:', allFit);
                   
                   if (allFit) {
                     // CASO 1: Caben todas las bibliotecas sin necesidad del botón Más
@@ -6544,22 +6566,27 @@ app.get('/browse', async (req, res) => {
                   } else {
                     // CASO 2: No caben todas, necesitamos el botón Más
                     // Recalcular CON el espacio del botón Más
-                    const moreBtnWidth = 65;
-                    const availableWidthWithBtn = availableContainerWidth - moreBtnWidth - gaps;
+                    const moreBtnWidth = 70; // Ancho aproximado del botón "Más"
+                    const availableWithBtn = availableSpace - moreBtnWidth;
                     
-                    totalWidth = 0;
+                    totalWidthLibs = 0;
                     let visibleCount = 0;
                     
                     // Calcular cuántas caben con el botón Más presente
                     for (let i = 0; i < links.length; i++) {
-                      const linkWidth = links[i].offsetWidth + (i > 0 ? 4 : 0);
-                      if (totalWidth + linkWidth <= availableWidthWithBtn) {
-                        totalWidth += linkWidth;
+                      const linkWidth = links[i].offsetWidth;
+                      const gapWidth = i > 0 ? 4 : 0;
+                      const widthNeeded = linkWidth + gapWidth;
+                      
+                      if (totalWidthLibs + widthNeeded <= availableWithBtn) {
+                        totalWidthLibs += widthNeeded;
                         visibleCount++;
                       } else {
                         break;
                       }
                     }
+                    
+                    console.log('✓ Segunda pasada - visibleCount:', visibleCount, 'de', allLibraries.length);
                     
                     // Reorganizar: visibles vs dropdown
                     if (visibleCount > 0 && visibleCount < allLibraries.length) {
@@ -6582,10 +6609,31 @@ app.get('/browse', async (req, res) => {
                       
                       moreContainer.style.display = 'inline-flex';
                       console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length, '- Mostrar Más (' + (allLibraries.length - visibleCount) + ' ocultas)');
+                    } else if (visibleCount === 0) {
+                      // Error: no cabe ni una - mostrar al menos una
+                      console.log('⚠️ No cabe ninguna - forzar mostrar al menos 1');
+                      libraryLinksContainer.innerHTML = '';
+                      dropdownMenu.innerHTML = '';
+                      
+                      allLibraries.forEach((lib, index) => {
+                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                        const a = document.createElement('a');
+                        a.href = browseUrl;
+                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                        if (lib.isActive) a.classList.add('active');
+                        
+                        if (index === 0) {
+                          libraryLinksContainer.appendChild(a);
+                        } else {
+                          dropdownMenu.appendChild(a.cloneNode(true));
+                        }
+                      });
+                      
+                      moreContainer.style.display = 'inline-flex';
                     } else {
-                      // Error: no cabe ni una
-                      console.log('⚠️ Error: no cabe ninguna biblioteca visible');
+                      // Todas caben (visibleCount >= allLibraries.length)
                       moreContainer.style.display = 'none';
+                      console.log('✅ Tras recalcular, todas caben');
                     }
                   }
                 });
