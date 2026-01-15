@@ -5942,15 +5942,14 @@ app.get('/browse', async (req, res) => {
               display: flex; 
               gap: 0.5rem;
               flex-wrap: nowrap;
-              overflow-x: auto;
-              scrollbar-width: none;
-              -ms-overflow-style: none;
+              flex: 1;
+              min-width: 0;
             }
-            .navbar-links::-webkit-scrollbar { display: none; }
             .navbar-links a { 
               padding: 0.5rem 0.75rem; 
               font-size: 0.875rem; 
               white-space: nowrap;
+              flex-shrink: 0;
             }
             .navbar-links a i { font-size: 0.875rem; }
             
@@ -5999,14 +5998,13 @@ app.get('/browse', async (req, res) => {
             
             .navbar-links { 
               gap: 0.35rem;
-              max-width: calc(100vw - 140px);
-              overflow-x: auto;
-              scrollbar-width: none;
+              flex: 1;
+              min-width: 0;
             }
-            .navbar-links::-webkit-scrollbar { display: none; }
             .navbar-links a { 
               font-size: 0.8rem; 
-              padding: 0.4rem 0.6rem; 
+              padding: 0.4rem 0.6rem;
+              flex-shrink: 0;
             }
             .navbar-links a i { font-size: 0.75rem; }
             
@@ -6081,14 +6079,13 @@ app.get('/browse', async (req, res) => {
             /* Bibliotecas compactas */
             .navbar-links { 
               gap: 0.25rem;
-              max-width: calc(100vw - 120px);
-              overflow-x: auto;
-              scrollbar-width: none;
+              flex: 1;
+              min-width: 0;
             }
-            .navbar-links::-webkit-scrollbar { display: none; }
             .navbar-links a { 
               font-size: 0.75rem; 
-              padding: 0.35rem 0.5rem; 
+              padding: 0.35rem 0.5rem;
+              flex-shrink: 0;
             }
             .navbar-links a i { display: none; }
             
@@ -6143,11 +6140,13 @@ app.get('/browse', async (req, res) => {
             .logo-title { font-size: 1rem; }
             
             .navbar-links { 
-              max-width: calc(100vw - 100px);
+              flex: 1;
+              min-width: 0;
             }
             .navbar-links a { 
               font-size: 0.7rem; 
-              padding: 0.3rem 0.45rem; 
+              padding: 0.3rem 0.45rem;
+              flex-shrink: 0;
             }
             .more-btn { 
               font-size: 0.65rem; 
@@ -6488,37 +6487,81 @@ app.get('/browse', async (req, res) => {
                 }
               });
               
-              // Calcular cuántas bibliotecas mostrar según ancho de pantalla
-              function getMaxVisible() {
-                const width = window.innerWidth;
-                if (width <= 480) return 3; // 3 en móvil pequeño
-                if (width <= 540) return 4; // 4 en móvil
-                if (width <= 768) return 5; // 5 en tablet
-                if (width <= 1024) return 6; // 6 en tablet grande
-                return 7; // 7 en desktop
-              }
-              
+              // Calcular dinámicamente cuántas bibliotecas caben
               function renderLibraries() {
-                const maxVisible = getMaxVisible();
                 libraryLinksContainer.innerHTML = '';
                 dropdownMenu.innerHTML = '';
                 
-                allLibraries.forEach((lib, index) => {
+                // Renderizar todas las bibliotecas primero
+                allLibraries.forEach((lib) => {
                   const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
                   const a = document.createElement('a');
                   a.href = browseUrl;
                   a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
                   if (lib.isActive) a.classList.add('active');
-                  
-                  if (index < maxVisible) {
-                    libraryLinksContainer.appendChild(a);
-                  } else {
-                    dropdownMenu.appendChild(a.cloneNode(true));
-                  }
+                  libraryLinksContainer.appendChild(a);
                 });
                 
-                // Mostrar dropdown solo si hay bibliotecas adicionales
-                moreLibrariesContainer.style.display = allLibraries.length > maxVisible ? 'block' : 'none';
+                // Esperar un frame para que el DOM se actualice
+                requestAnimationFrame(() => {
+                  const container = libraryLinksContainer;
+                  const moreContainer = moreLibrariesContainer;
+                  
+                  if (!container || !moreContainer) return;
+                  
+                  // Calcular espacio disponible
+                  const navContent = container.closest('.nav-content');
+                  if (!navContent) return;
+                  
+                  const navContentWidth = navContent.offsetWidth;
+                  const logo = navContent.querySelector('.navbar-brand');
+                  const logoWidth = logo ? logo.offsetWidth : 0;
+                  const moreBtnWidth = 70; // Aproximado
+                  const gaps = 40; // Márgenes y gaps
+                  const availableWidth = navContentWidth - logoWidth - moreBtnWidth - gaps;
+                  
+                  const links = Array.from(container.children);
+                  let totalWidth = 0;
+                  let visibleCount = 0;
+                  
+                  // Calcular cuántas bibliotecas caben
+                  for (let i = 0; i < links.length; i++) {
+                    const linkWidth = links[i].offsetWidth + 8; // +gap
+                    if (totalWidth + linkWidth <= availableWidth) {
+                      totalWidth += linkWidth;
+                      visibleCount++;
+                    } else {
+                      break;
+                    }
+                  }
+                  
+                  // Si no caben todas, reorganizar
+                  if (visibleCount < allLibraries.length && visibleCount > 0) {
+                    libraryLinksContainer.innerHTML = '';
+                    dropdownMenu.innerHTML = '';
+                    
+                    allLibraries.forEach((lib, index) => {
+                      const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                      const a = document.createElement('a');
+                      a.href = browseUrl;
+                      a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                      if (lib.isActive) a.classList.add('active');
+                      
+                      if (index < visibleCount) {
+                        libraryLinksContainer.appendChild(a);
+                      } else {
+                        dropdownMenu.appendChild(a.cloneNode(true));
+                      }
+                    });
+                    
+                    moreContainer.style.display = 'inline-flex';
+                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length);
+                  } else {
+                    // Caben todas, ocultar botón Más
+                    moreContainer.style.display = 'none';
+                    console.log('✅ Todas las bibliotecas caben:', allLibraries.length);
+                  }
+                });
               }
               
               renderLibraries();
