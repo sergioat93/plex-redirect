@@ -5598,7 +5598,7 @@ app.get('/browse', async (req, res) => {
             border-bottom: 1px solid var(--border-color);
             position: sticky;
             top: 60px;
-            z-index: 999;
+            z-index: 998;
           }
 
           .mobile-search-wrapper {
@@ -5795,6 +5795,29 @@ app.get('/browse', async (req, res) => {
             pointer-events: none;
           }
 
+          .sidebar-clear-btn {
+            width: 100%;
+            background: transparent;
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+            font-size: 0.95rem;
+          }
+
+          .sidebar-clear-btn:hover {
+            background: var(--primary-color);
+            color: #000;
+          }
+
           /* Dropdown moderno */
           .dropdown-container { position: relative; display: inline-flex; }
           .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; }
@@ -5802,7 +5825,7 @@ app.get('/browse', async (req, res) => {
           .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
           .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
           .more-btn.active i { transform: rotate(180deg); }
-          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1100; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
           .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
           .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
           .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
@@ -6227,6 +6250,22 @@ app.get('/browse', async (req, res) => {
                 <option value="6">⭐ 6.0+</option>
               </select>
             </div>
+            <div class="filter-section">
+              <div class="filter-section-title">ORDENAR POR</div>
+              <select id="sort-filter-mobile" class="filter-select-mobile">
+                <option value="added-desc">Recientes</option>
+                <option value="added-asc">Antiguos</option>
+                <option value="title">Título A-Z</option>
+                <option value="title-desc">Título Z-A</option>
+                <option value="year-desc">Año ↓</option>
+                <option value="year-asc">Año ↑</option>
+                <option value="rating-desc">Valoración ↓</option>
+                <option value="rating-asc">Valoración ↑</option>
+              </select>
+            </div>
+            <button id="clear-filters-mobile" class="sidebar-clear-btn">
+              <i class="fas fa-broom"></i> Limpiar filtros
+            </button>
           </div>
         </aside>
         
@@ -6477,20 +6516,33 @@ app.get('/browse', async (req, res) => {
                 resizeTimeout = setTimeout(renderLibraries, 200);
               });
               
-              // Toggle dropdown
-              if (moreBtn) {
-                moreBtn.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  moreBtn.classList.toggle('active');
-                  dropdownMenu.classList.toggle('show');
-                });
+              // Toggle dropdown - usar setTimeout para asegurar que el DOM esté listo
+              setTimeout(() => {
+                const moreBtnCheck = document.getElementById('more-btn');
+                const dropdownMenuCheck = document.getElementById('dropdown-menu');
                 
-                // Cerrar dropdown al hacer click fuera
-                document.addEventListener('click', () => {
-                  moreBtn.classList.remove('active');
-                  dropdownMenu.classList.remove('show');
-                });
-              }
+                if (moreBtnCheck && dropdownMenuCheck) {
+                  moreBtnCheck.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    moreBtnCheck.classList.toggle('active');
+                    dropdownMenuCheck.classList.toggle('show');
+                  });
+                  
+                  // Cerrar dropdown al hacer click fuera
+                  document.addEventListener('click', (event) => {
+                    if (!moreBtnCheck.contains(event.target)) {
+                      moreBtnCheck.classList.remove('active');
+                      dropdownMenuCheck.classList.remove('show');
+                    }
+                  });
+                  
+                  // Prevenir que el dropdown se cierre al hacer click dentro
+                  dropdownMenuCheck.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                  });
+                }
+              }, 100);
             })
             .catch(e => console.error('Error loading libraries:', e));
           
@@ -6609,6 +6661,71 @@ app.get('/browse', async (req, res) => {
                 desktopRating.value = e.target.value;
                 desktopRating.dispatchEvent(new Event('change'));
               }
+            });
+          }
+          
+          const sortFilterMobile = document.getElementById('sort-filter-mobile');
+          if (sortFilterMobile) {
+            sortFilterMobile.addEventListener('change', (e) => {
+              const desktopSort = document.getElementById('sort-filter');
+              if (desktopSort) {
+                desktopSort.value = e.target.value;
+                desktopSort.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          // Limpiar filtros desde móvil
+          const clearFiltersMobile = document.getElementById('clear-filters-mobile');
+          if (clearFiltersMobile) {
+            clearFiltersMobile.addEventListener('click', () => {
+              // Limpiar búsqueda
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch) {
+                desktopSearch.value = '';
+                desktopSearch.dispatchEvent(new Event('input'));
+              }
+              if (searchInputSidebar) searchInputSidebar.value = '';
+              
+              // Limpiar filtros
+              const desktopGenre = document.getElementById('genre-filter');
+              const desktopYear = document.getElementById('year-filter');
+              const desktopCountry = document.getElementById('country-filter');
+              const desktopRating = document.getElementById('rating-filter');
+              const desktopSort = document.getElementById('sort-filter');
+              
+              if (desktopGenre) {
+                desktopGenre.value = '';
+                desktopGenre.dispatchEvent(new Event('change'));
+              }
+              if (desktopYear) {
+                desktopYear.value = '';
+                desktopYear.dispatchEvent(new Event('change'));
+              }
+              if (desktopCountry) {
+                desktopCountry.value = '';
+                desktopCountry.dispatchEvent(new Event('change'));
+              }
+              if (desktopRating) {
+                desktopRating.value = '';
+                desktopRating.dispatchEvent(new Event('change'));
+              }
+              if (desktopSort) {
+                desktopSort.value = 'added-desc';
+                desktopSort.dispatchEvent(new Event('change'));
+              }
+              
+              // Actualizar filtros móviles
+              if (genreFilterMobile) genreFilterMobile.value = '';
+              if (yearFilterMobile) yearFilterMobile.value = '';
+              if (countryFilterMobile) countryFilterMobile.value = '';
+              if (ratingFilterMobile) ratingFilterMobile.value = '';
+              if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
+              
+              // Cerrar sidebar después de limpiar
+              setTimeout(() => {
+                closeFiltersSidebar();
+              }, 300);
             });
           }
           
@@ -6956,7 +7073,12 @@ app.get('/browse', async (req, res) => {
           document.getElementById('genre-filter').addEventListener('change', applyFilters);
           document.getElementById('year-filter').addEventListener('change', applyFilters);
           document.getElementById('country-filter').addEventListener('change', applyFilters);
-          document.getElementById('sort-filter').addEventListener('change', applyFilters);
+          document.getElementById('sort-filter').addEventListener('change', (e) => {
+            // Sincronizar con móvil
+            const sortFilterMobile = document.getElementById('sort-filter-mobile');
+            if (sortFilterMobile) sortFilterMobile.value = e.target.value;
+            applyFilters();
+          });
           
           document.getElementById('clear-filters').addEventListener('click', () => {
             document.getElementById('search-input').value = '';
@@ -6964,6 +7086,17 @@ app.get('/browse', async (req, res) => {
             document.getElementById('year-filter').value = '';
             document.getElementById('country-filter').value = '';
             document.getElementById('sort-filter').value = 'added-desc';
+            
+            // Sincronizar con móvil
+            const genreFilterMobile = document.getElementById('genre-filter-mobile');
+            const yearFilterMobile = document.getElementById('year-filter-mobile');
+            const countryFilterMobile = document.getElementById('country-filter-mobile');
+            const sortFilterMobile = document.getElementById('sort-filter-mobile');
+            if (genreFilterMobile) genreFilterMobile.value = '';
+            if (yearFilterMobile) yearFilterMobile.value = '';
+            if (countryFilterMobile) countryFilterMobile.value = '';
+            if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
+            
             applyFilters();
           });
           
