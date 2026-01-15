@@ -5992,27 +5992,33 @@ app.get('/browse', async (req, res) => {
             .library-controls { display: none; }
             .search-container { display: none !important; }
             
-            .navbar .container { padding: 0.5rem 1rem; }
-            .nav-content { gap: 0.5rem; }
-            .logo-title { font-size: 1.2rem; }
+            .navbar .container { padding: 0.5rem 0.75rem; }
+            .nav-content { gap: 0.25rem; }
+            .logo-title { font-size: 0.95rem; }
             
             .navbar-links { 
-              gap: 0.35rem;
+              gap: 0.15rem;
               flex: 1;
               min-width: 0;
             }
+            .navbar-links #library-links {
+              gap: 0.15rem;
+            }
             .navbar-links a { 
-              font-size: 0.8rem; 
-              padding: 0.4rem 0.6rem;
-              flex-shrink: 0;
-            }
-            .navbar-links a i { font-size: 0.75rem; }
-            
-            .dropdown-container { margin-left: 0.25rem; }
-            .more-btn { 
               font-size: 0.75rem; 
-              padding: 0.4rem 0.6rem; 
+              padding: 0.35rem 0.45rem;
+              flex-shrink: 0;
+              gap: 0.35rem;
             }
+            .navbar-links a i { font-size: 0.7rem; }
+            
+            .dropdown-container { margin-left: 0.15rem; }
+            .more-btn { 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.45rem;
+              gap: 0.25rem;
+            }
+            .more-btn i { font-size: 0.65rem; }
             
             .search-container input { 
               width: 150px; 
@@ -6487,15 +6493,13 @@ app.get('/browse', async (req, res) => {
                 }
               });
               
-              // Calcular dinámicamente cuántas bibliotecas caben
+              // Renderizar bibliotecas con detección automática de overflow
               function renderLibraries() {
                 libraryLinksContainer.innerHTML = '';
                 dropdownMenu.innerHTML = '';
-                
-                // Ocultar el botón Más inicialmente
                 moreLibrariesContainer.style.display = 'none';
                 
-                // Renderizar todas las bibliotecas primero
+                // Renderizar TODAS las bibliotecas
                 allLibraries.forEach((lib) => {
                   const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
                   const a = document.createElement('a');
@@ -6505,120 +6509,35 @@ app.get('/browse', async (req, res) => {
                   libraryLinksContainer.appendChild(a);
                 });
                 
-                // Esperar un frame para que el DOM se actualice
+                // Detectar overflow y reorganizar
                 requestAnimationFrame(() => {
-                  const container = libraryLinksContainer;
-                  const moreContainer = moreLibrariesContainer;
+                  const navbarLinks = libraryLinksContainer.parentElement;
+                  if (!navbarLinks) return;
                   
-                  if (!container || !moreContainer) return;
+                  // Verificar si hay overflow
+                  const isOverflowing = navbarLinks.scrollWidth > navbarLinks.clientWidth;
                   
-                  // CALCULAR ESPACIO DISPONIBLE CORRECTAMENTE
-                  const navContent = container.closest('.nav-content');
-                  if (!navContent) return;
-                  
-                  // Usar el ancho REAL del navbar (viewport width menos padding del container)
-                  const navbar = container.closest('.navbar');
-                  const navbarContainer = navbar ? navbar.querySelector('.container') : null;
-                  
-                  // Ancho total disponible (considerar el padding del container)
-                  let totalWidth = 0;
-                  if (navbarContainer) {
-                    totalWidth = navbarContainer.offsetWidth;
-                    // Restar padding del container (0 1rem = 16px por lado)
-                    const containerPadding = 32; // 16px * 2
-                    totalWidth = totalWidth - containerPadding;
-                  } else {
-                    totalWidth = navContent.offsetWidth;
+                  if (!isOverflowing) {
+                    // No hay overflow, mostrar todas
+                    moreLibrariesContainer.style.display = 'none';
+                    console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ')');
+                    return;
                   }
                   
-                  // Restar elementos fijos (logo y controles)
-                  const logo = navContent.querySelector('.navbar-brand');
-                  const controls = navContent.querySelector('.navbar-controls');
-                  const logoWidth = logo ? logo.offsetWidth : 0;
-                  const controlsWidth = controls ? controls.offsetWidth : 0;
+                  // Hay overflow - necesitamos el botón "Más"
+                  // Mostrar el botón primero
+                  moreLibrariesContainer.style.display = 'inline-flex';
                   
-                  // Gap del nav-content (según CSS: gap: 1rem = 16px, pero en responsive puede ser 0.5rem = 8px)
-                  const navGap = window.innerWidth <= 768 ? 16 : 32; // 2 gaps
-                  
-                  // Espacio real disponible para las bibliotecas
-                  const availableSpace = totalWidth - logoWidth - controlsWidth - navGap;
-                  
-                  console.log('📐 Cálculo de espacio:', {
-                    viewport: window.innerWidth,
-                    containerWidth: navbarContainer ? navbarContainer.offsetWidth : 0,
-                    navContentWidth: navContent.offsetWidth,
-                    total: totalWidth,
-                    logo: logoWidth,
-                    controls: controlsWidth,
-                    gaps: navGap,
-                    disponible: availableSpace
-                  });
-                  
-                  const links = Array.from(container.children);
-                  
-                  // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
-                  let totalWidthLibs = 0;
-                  let allFit = true;
-                  
-                  // Verificar si caben todas las bibliotecas
-                  for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth;
-                    const gapWidth = i > 0 ? 4 : 0; // Gap de 0.25rem = 4px
-                    totalWidthLibs += linkWidth + gapWidth;
+                  // Ahora calcular cuántas caben con el botón visible
+                  requestAnimationFrame(() => {
+                    const links = Array.from(libraryLinksContainer.children);
+                    let visibleCount = allLibraries.length;
                     
-                    if (totalWidthLibs > availableSpace) {
-                      allFit = false;
-                      break;
-                    }
-                  }
-                  
-                  console.log('✓ Primera pasada - totalWidthLibs:', totalWidthLibs, 'allFit:', allFit);
-                  
-                  if (allFit) {
-                    // CASO 1: Caben todas las bibliotecas sin necesidad del botón Más
-                    moreContainer.style.display = 'none';
-                    
-                    // Asegurar que TODAS las bibliotecas están visibles
-                    libraryLinksContainer.innerHTML = '';
-                    dropdownMenu.innerHTML = '';
-                    
-                    allLibraries.forEach((lib) => {
-                      const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
-                      const a = document.createElement('a');
-                      a.href = browseUrl;
-                      a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
-                      if (lib.isActive) a.classList.add('active');
-                      libraryLinksContainer.appendChild(a);
-                    });
-                    
-                    console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ') - NO mostrar Más');
-                  } else {
-                    // CASO 2: No caben todas, necesitamos el botón Más
-                    // Recalcular CON el espacio del botón Más
-                    const moreBtnWidth = 70; // Ancho aproximado del botón "Más"
-                    const availableWithBtn = availableSpace - moreBtnWidth;
-                    
-                    totalWidthLibs = 0;
-                    let visibleCount = 0;
-                    
-                    // Calcular cuántas caben con el botón Más presente
-                    for (let i = 0; i < links.length; i++) {
-                      const linkWidth = links[i].offsetWidth;
-                      const gapWidth = i > 0 ? 4 : 0;
-                      const widthNeeded = linkWidth + gapWidth;
+                    // Ir quitando bibliotecas de atrás hacia adelante hasta que no haya overflow
+                    while (visibleCount > 1 && navbarLinks.scrollWidth > navbarLinks.clientWidth) {
+                      visibleCount--;
                       
-                      if (totalWidthLibs + widthNeeded <= availableWithBtn) {
-                        totalWidthLibs += widthNeeded;
-                        visibleCount++;
-                      } else {
-                        break;
-                      }
-                    }
-                    
-                    console.log('✓ Segunda pasada - visibleCount:', visibleCount, 'de', allLibraries.length);
-                    
-                    // Reorganizar: visibles vs dropdown
-                    if (visibleCount > 0 && visibleCount < allLibraries.length) {
+                      // Re-renderizar con menos bibliotecas
                       libraryLinksContainer.innerHTML = '';
                       dropdownMenu.innerHTML = '';
                       
@@ -6635,13 +6554,12 @@ app.get('/browse', async (req, res) => {
                           dropdownMenu.appendChild(a.cloneNode(true));
                         }
                       });
-                      
-                      moreContainer.style.display = 'inline-flex';
-                      console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length, '- Mostrar Más (' + (allLibraries.length - visibleCount) + ' ocultas)');
-                    } else if (visibleCount === 0) {
-                      // Error: no cabe ni una - mostrar al menos una
-                      console.log('⚠️ No cabe ninguna - forzar mostrar al menos 1');
-                      libraryLinksContainer.innerHTML = '';
+                    }
+                    
+                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length);
+                  });
+                });
+              }
                       dropdownMenu.innerHTML = '';
                       
                       allLibraries.forEach((lib, index) => {
