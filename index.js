@@ -5447,7 +5447,7 @@ app.get('/browse', async (req, res) => {
             border-bottom: 1px solid rgba(229, 160, 13, 0.2);
             position: sticky;
             top: 0;
-            z-index: 100;
+            z-index: 1000;
           }
           .container {
             max-width: 1400px;
@@ -5578,7 +5578,7 @@ app.get('/browse', async (req, res) => {
             color: #9ca3af;
           }
           /* Navbar styles */
-          .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }
+          .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(10px); }
           .navbar .container { padding: 0 1rem; }
           .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
           .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
@@ -6519,64 +6519,75 @@ app.get('/browse', async (req, res) => {
                   const navContentWidth = navContent.offsetWidth;
                   const logo = navContent.querySelector('.navbar-brand');
                   const logoWidth = logo ? logo.offsetWidth : 0;
-                  const moreBtnWidth = 55; // Reducido de 70 a 55
-                  const gaps = 20; // Reducido de 40 a 20
-                  const availableWidth = navContentWidth - logoWidth - moreBtnWidth - gaps;
+                  const gaps = 30; // Margen de seguridad
+                  
+                  // PRIMER CÁLCULO: Sin el botón Más (para ver si caben todas)
+                  const availableWidthWithoutBtn = navContentWidth - logoWidth - gaps;
                   
                   const links = Array.from(container.children);
                   let totalWidth = 0;
-                  let visibleCount = 0;
+                  let allFit = true;
                   
-                  // Calcular cuántas bibliotecas caben
+                  // Verificar si caben todas las bibliotecas
                   for (let i = 0; i < links.length; i++) {
-                    const linkWidth = links[i].offsetWidth + 4; // Reducido de 8 a 4 (gap real)
-                    if (totalWidth + linkWidth <= availableWidth) {
-                      totalWidth += linkWidth;
-                      visibleCount++;
-                    } else {
+                    const linkWidth = links[i].offsetWidth + 8; // +gap
+                    totalWidth += linkWidth;
+                    if (totalWidth > availableWidthWithoutBtn) {
+                      allFit = false;
                       break;
                     }
                   }
                   
-                  // Intentar agregar una más si el espacio sobrante es suficiente
-                  if (visibleCount < links.length) {
-                    const remainingSpace = availableWidth - totalWidth;
-                    const nextLink = links[visibleCount];
-                    if (nextLink && nextLink.offsetWidth + 4 <= remainingSpace + 15) {
-                      visibleCount++;
-                    }
-                  }
-                  
-                  // Si no caben todas, reorganizar
-                  // Solo mostrar "Más" si hay al menos 1 biblioteca que no cabe
-                  if (visibleCount < allLibraries.length && visibleCount > 0) {
-                    libraryLinksContainer.innerHTML = '';
-                    dropdownMenu.innerHTML = '';
-                    
-                    allLibraries.forEach((lib, index) => {
-                      const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
-                      const a = document.createElement('a');
-                      a.href = browseUrl;
-                      a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
-                      if (lib.isActive) a.classList.add('active');
-                      
-                      if (index < visibleCount) {
-                        libraryLinksContainer.appendChild(a);
-                      } else {
-                        dropdownMenu.appendChild(a.cloneNode(true));
-                      }
-                    });
-                    
-                    moreContainer.style.display = 'inline-flex';
-                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length, '- Mostrar Más');
-                  } else if (visibleCount >= allLibraries.length) {
-                    // Caben todas perfectamente, asegurar que Más esté oculto
+                  if (allFit) {
+                    // CASO 1: Caben todas las bibliotecas sin necesidad del botón Más
                     moreContainer.style.display = 'none';
-                    console.log('✅ Todas las bibliotecas caben:', allLibraries.length, '- NO mostrar Más');
+                    console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ') - NO mostrar Más');
                   } else {
-                    // Caso edge: visibleCount es 0, mostrar al menos una
-                    console.log('⚠️ Error en cálculo, visibleCount:', visibleCount);
-                    moreContainer.style.display = 'inline-flex';
+                    // CASO 2: No caben todas, necesitamos el botón Más
+                    // Recalcular CON el espacio del botón Más
+                    const moreBtnWidth = 60;
+                    const availableWidthWithBtn = navContentWidth - logoWidth - moreBtnWidth - gaps;
+                    
+                    totalWidth = 0;
+                    let visibleCount = 0;
+                    
+                    // Calcular cuántas caben con el botón Más presente
+                    for (let i = 0; i < links.length; i++) {
+                      const linkWidth = links[i].offsetWidth + 8;
+                      if (totalWidth + linkWidth <= availableWidthWithBtn) {
+                        totalWidth += linkWidth;
+                        visibleCount++;
+                      } else {
+                        break;
+                      }
+                    }
+                    
+                    // Reorganizar: visibles vs dropdown
+                    if (visibleCount > 0 && visibleCount < allLibraries.length) {
+                      libraryLinksContainer.innerHTML = '';
+                      dropdownMenu.innerHTML = '';
+                      
+                      allLibraries.forEach((lib, index) => {
+                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                        const a = document.createElement('a');
+                        a.href = browseUrl;
+                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                        if (lib.isActive) a.classList.add('active');
+                        
+                        if (index < visibleCount) {
+                          libraryLinksContainer.appendChild(a);
+                        } else {
+                          dropdownMenu.appendChild(a.cloneNode(true));
+                        }
+                      });
+                      
+                      moreContainer.style.display = 'inline-flex';
+                      console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length, '- Mostrar Más (' + (allLibraries.length - visibleCount) + ' ocultas)');
+                    } else {
+                      // Error: no cabe ni una
+                      console.log('⚠️ Error: no cabe ninguna biblioteca visible');
+                      moreContainer.style.display = 'none';
+                    }
                   }
                 });
               }
