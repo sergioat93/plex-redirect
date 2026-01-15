@@ -5819,13 +5819,13 @@ app.get('/browse', async (req, res) => {
           }
 
           /* Dropdown moderno */
-          .dropdown-container { position: relative; display: inline-flex; z-index: 1200; }
-          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 1200; }
+          .dropdown-container { position: relative; display: inline-flex; z-index: 2100; }
+          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 2100; }
           .more-btn:hover { color: var(--primary-color); border-color: var(--primary-color); background: rgba(229, 160, 13, 0.05); }
           .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
           .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
           .more-btn.active i { transform: rotate(180deg); }
-          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1300; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2100; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
           .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
           .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
           .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
@@ -6492,6 +6492,9 @@ app.get('/browse', async (req, res) => {
                 libraryLinksContainer.innerHTML = '';
                 dropdownMenu.innerHTML = '';
                 
+                // Ocultar el botón Más inicialmente
+                moreLibrariesContainer.style.display = 'none';
+                
                 // Renderizar todas las bibliotecas primero
                 allLibraries.forEach((lib) => {
                   const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
@@ -6545,6 +6548,7 @@ app.get('/browse', async (req, res) => {
                   }
                   
                   // Si no caben todas, reorganizar
+                  // Solo mostrar "Más" si hay al menos 1 biblioteca que no cabe
                   if (visibleCount < allLibraries.length && visibleCount > 0) {
                     libraryLinksContainer.innerHTML = '';
                     dropdownMenu.innerHTML = '';
@@ -6564,11 +6568,15 @@ app.get('/browse', async (req, res) => {
                     });
                     
                     moreContainer.style.display = 'inline-flex';
-                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length);
-                  } else {
-                    // Caben todas, ocultar botón Más
+                    console.log('📚 Bibliotecas:', visibleCount, 'visibles de', allLibraries.length, '- Mostrar Más');
+                  } else if (visibleCount >= allLibraries.length) {
+                    // Caben todas perfectamente, asegurar que Más esté oculto
                     moreContainer.style.display = 'none';
-                    console.log('✅ Todas las bibliotecas caben:', allLibraries.length);
+                    console.log('✅ Todas las bibliotecas caben:', allLibraries.length, '- NO mostrar Más');
+                  } else {
+                    // Caso edge: visibleCount es 0, mostrar al menos una
+                    console.log('⚠️ Error en cálculo, visibleCount:', visibleCount);
+                    moreContainer.style.display = 'inline-flex';
                   }
                 });
               }
