@@ -3998,6 +3998,28 @@ app.get('/movie', async (req, res) => {
   // Log final de libraryKey
   console.log('[/movie] libraryKey final:', libraryKey, 'libraryTitle:', libraryTitle);
   
+  // PASO 1: Intentar cargar desde MongoDB primero
+  let movieData = null;
+  let autoSearchedTmdbId = '';
+  let fromMongoDB = false;
+  
+  if (itemDetailsCollection && downloadURL) {
+    const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+    if (ratingKeyMatch) {
+      const ratingKey = ratingKeyMatch[1];
+      const cachedDetails = await getItemDetails(ratingKey);
+      
+      if (cachedDetails && cachedDetails.itemType === 'movie') {
+        console.log('[/movie] ⚡ Datos cargados desde MongoDB (cache)');
+        movieData = cachedDetails;
+        autoSearchedTmdbId = cachedDetails.tmdbId || '';
+        fromMongoDB = true;
+      } else {
+        console.log('[/movie] 🔄 No hay cache, consultando TMDB...');
+      }
+    }
+  }
+  
   // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
   let calculatedFileSize = fileSize;
   let videoCodec = '';
@@ -4087,11 +4109,9 @@ app.get('/movie', async (req, res) => {
     // console.log('[/movie] Usando año del parámetro como fallback:', movieYear);
   }
   
-  // Obtener datos completos de TMDB si tenemos el ID
-  let movieData = null;
-  let autoSearchedTmdbId = '';
+  // Obtener datos completos de TMDB si tenemos el ID (solo si no hay datos en MongoDB)
   
-  if (tmdbId && tmdbId.trim() !== '') {
+  if (!fromMongoDB && tmdbId && tmdbId.trim() !== '') {
     // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
     movieData = await fetchTMDBMovieData(tmdbId);
     // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
@@ -4100,7 +4120,7 @@ app.get('/movie', async (req, res) => {
       // console.log('[/movie] movieData.year:', movieData.year);
       // console.log('[/movie] movieData.genres:', movieData.genres);
     }
-  } else if (title && movieYear) {
+  } else if (!fromMongoDB && title && movieYear) {
     // Decodificar HTML entities en el título antes de buscar
     const decodedTitle = decodeHtmlEntities(title);
     
@@ -4860,15 +4880,31 @@ app.get('/series', async (req, res) => {
     }
   }
   
-  // Obtener datos de TMDB
+  // PASO 1: Intentar cargar desde MongoDB primero
   let seriesData = null;
   let autoSearchedTmdbId = '';
+  let fromMongoDB = false;
   
-  if (tmdbId && tmdbId.trim() !== '') {
+  if (itemDetailsCollection && seriesId) {
+    const cachedDetails = await getItemDetails(seriesId);
+    
+    if (cachedDetails && cachedDetails.itemType === 'series') {
+      console.log('[/series] ⚡ Datos cargados desde MongoDB (cache)');
+      seriesData = cachedDetails;
+      autoSearchedTmdbId = cachedDetails.tmdbId || '';
+      fromMongoDB = true;
+    } else {
+      console.log('[/series] 🔄 No hay cache, consultando TMDB...');
+    }
+  }
+  
+  // PASO 2: Obtener datos de TMDB solo si no hay en MongoDB
+  
+  if (!fromMongoDB && tmdbId && tmdbId.trim() !== '') {
     // console.log('[/series] Llamando a fetchTMDBSeriesData con tmdbId:', tmdbId);
     seriesData = await fetchTMDBSeriesData(tmdbId);
     // console.log('[/series] seriesData obtenido:', seriesData ? 'SI' : 'NO');
-  } else if (seriesTitle) {
+  } else if (!fromMongoDB && seriesTitle) {
     // Decodificar HTML entities en el título antes de buscar
     const decodedTitle = decodeHtmlEntities(seriesTitle);
     
@@ -6703,6 +6739,14 @@ app.get('/browse', async (req, res) => {
                 <option value="">Todos los años</option>
               </select>
             </div>
+            ${libraryType === 'movie' ? `
+            <div class="filter-section">
+              <div class="filter-section-title">COLECCIÓN</div>
+              <select id="collection-filter-mobile" class="filter-select-mobile">
+                <option value="">Todas las colecciones</option>
+              </select>
+            </div>
+            ` : ''}
             <div class="filter-section">
               <div class="filter-section-title">PAÍS</div>
               <select id="country-filter-mobile" class="filter-select-mobile">
@@ -6758,6 +6802,12 @@ app.get('/browse', async (req, res) => {
                   <option value="">Años</option>
                   ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
                 </select>
+                ${libraryType === 'movie' ? `
+                <select id="collection-filter" class="filter-select">
+                  <option value="">Colecciones</option>
+                  ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+                ` : ''}
                 <select id="country-filter" class="filter-select">
                   <option value="">Países</option>
                   ${uniqueCountries.map(co => `<option value="${co}">${co}</option>`).join('')}
@@ -7211,6 +7261,7 @@ app.get('/browse', async (req, res) => {
           // Sincronizar filtros móviles con desktop
           const genreFilterMobile = document.getElementById('genre-filter-mobile');
           const yearFilterMobile = document.getElementById('year-filter-mobile');
+          const collectionFilterMobile = document.getElementById('collection-filter-mobile');
           const countryFilterMobile = document.getElementById('country-filter-mobile');
           const ratingFilterMobile = document.getElementById('rating-filter-mobile');
           
@@ -7230,6 +7281,16 @@ app.get('/browse', async (req, res) => {
               if (desktopYear) {
                 desktopYear.value = e.target.value;
                 desktopYear.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (collectionFilterMobile) {
+            collectionFilterMobile.addEventListener('change', (e) => {
+              const desktopCollection = document.getElementById('collection-filter');
+              if (desktopCollection) {
+                desktopCollection.value = e.target.value;
+                desktopCollection.dispatchEvent(new Event('change'));
               }
             });
           }
@@ -7280,6 +7341,7 @@ app.get('/browse', async (req, res) => {
               // Limpiar filtros
               const desktopGenre = document.getElementById('genre-filter');
               const desktopYear = document.getElementById('year-filter');
+              const desktopCollection = document.getElementById('collection-filter');
               const desktopCountry = document.getElementById('country-filter');
               const desktopRating = document.getElementById('rating-filter');
               const desktopSort = document.getElementById('sort-filter');
@@ -7291,6 +7353,10 @@ app.get('/browse', async (req, res) => {
               if (desktopYear) {
                 desktopYear.value = '';
                 desktopYear.dispatchEvent(new Event('change'));
+              }
+              if (desktopCollection) {
+                desktopCollection.value = '';
+                desktopCollection.dispatchEvent(new Event('change'));
               }
               if (desktopCountry) {
                 desktopCountry.value = '';
@@ -7308,6 +7374,7 @@ app.get('/browse', async (req, res) => {
               // Actualizar filtros móviles
               if (genreFilterMobile) genreFilterMobile.value = '';
               if (yearFilterMobile) yearFilterMobile.value = '';
+              if (collectionFilterMobile) collectionFilterMobile.value = '';
               if (countryFilterMobile) countryFilterMobile.value = '';
               if (ratingFilterMobile) ratingFilterMobile.value = '';
               if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
@@ -7389,6 +7456,27 @@ app.get('/browse', async (req, res) => {
               yearFilterMobile.innerHTML = yearOptions;
             }
             
+            // Actualizar filtro de colección (solo películas y solo de MongoDB)
+            const collectionFilter = document.getElementById('collection-filter');
+            if (collectionFilter) {
+              const availableCollections = new Set();
+              itemsIndex.forEach(item => {
+                if (item.collections && item.collections.length > 0) {
+                  item.collections.forEach(col => availableCollections.add(col));
+                }
+              });
+              const collectionOptions = '<option value="">Colecciones</option>' + 
+                Array.from(availableCollections).sort().map(col => 
+                  \`<option value="\${col}">\${col}</option>\`
+                ).join('');
+              collectionFilter.innerHTML = collectionOptions;
+              
+              const collectionFilterMobile = document.getElementById('collection-filter-mobile');
+              if (collectionFilterMobile) {
+                collectionFilterMobile.innerHTML = collectionOptions;
+              }
+            }
+            
             // Actualizar filtro de país
             const countryFilter = document.getElementById('country-filter');
             const countryOptions = '<option value="">Países</option>' + 
@@ -7409,6 +7497,7 @@ app.get('/browse', async (req, res) => {
             const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
+            const collectionValue = document.getElementById('collection-filter')?.value || '';
             const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
@@ -7457,6 +7546,12 @@ app.get('/browse', async (req, res) => {
               // Filtro de año - comparación directa
               if (yearValue) {
                 if (item.year !== yearValue && item.year !== parseInt(yearValue)) return false;
+              }
+              
+              // Filtro de colección - solo de MongoDB (sin fallback)
+              if (collectionValue) {
+                const collections = Array.isArray(item.collections) ? item.collections : [];
+                if (!collections.includes(collectionValue)) return false;
               }
               
               // Filtro de país - comparación directa con array
@@ -7662,6 +7757,10 @@ app.get('/browse', async (req, res) => {
           document.getElementById('search-input').addEventListener('input', applyFilters);
           document.getElementById('genre-filter').addEventListener('change', applyFilters);
           document.getElementById('year-filter').addEventListener('change', applyFilters);
+          const collectionFilterDesktop = document.getElementById('collection-filter');
+          if (collectionFilterDesktop) {
+            collectionFilterDesktop.addEventListener('change', applyFilters);
+          }
           document.getElementById('country-filter').addEventListener('change', applyFilters);
           document.getElementById('sort-filter').addEventListener('change', (e) => {
             // Sincronizar con móvil
@@ -7674,16 +7773,20 @@ app.get('/browse', async (req, res) => {
             document.getElementById('search-input').value = '';
             document.getElementById('genre-filter').value = '';
             document.getElementById('year-filter').value = '';
+            const collectionFilterDesktop = document.getElementById('collection-filter');
+            if (collectionFilterDesktop) collectionFilterDesktop.value = '';
             document.getElementById('country-filter').value = '';
             document.getElementById('sort-filter').value = 'added-desc';
             
             // Sincronizar con móvil
             const genreFilterMobile = document.getElementById('genre-filter-mobile');
             const yearFilterMobile = document.getElementById('year-filter-mobile');
+            const collectionFilterMobile = document.getElementById('collection-filter-mobile');
             const countryFilterMobile = document.getElementById('country-filter-mobile');
             const sortFilterMobile = document.getElementById('sort-filter-mobile');
             if (genreFilterMobile) genreFilterMobile.value = '';
             if (yearFilterMobile) yearFilterMobile.value = '';
+            if (collectionFilterMobile) collectionFilterMobile.value = '';
             if (countryFilterMobile) countryFilterMobile.value = '';
             if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
             
