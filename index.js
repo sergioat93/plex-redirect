@@ -5890,16 +5890,22 @@ app.get('/browse', async (req, res) => {
     const ratingsDebug = items.slice(0, 5).map(i => `${i.title}: ${i.rating}`).join(' | ');
     console.log(`[/browse] 🔍 Ratings muestra: ${ratingsDebug}`);
     
-    // Normalizar géneros y eliminar duplicados (case-insensitive + normalizar acentos)
+    // Normalizar géneros y eliminar duplicados (agresivo: acentos, espacios, case)
     const genresMap = new Map();
     items.flatMap(i => i.genres || []).forEach(g => {
-      if (!g) return;
-      const normalized = g.trim();
-      // Normalizar acentos y convertir a lowercase para key
+      if (!g || typeof g !== 'string') return;
+      // Limpiar espacios extra, normalizar acentos, lowercase
+      const normalized = g
+        .trim()
+        .replace(/\s+/g, ' ') // Múltiples espacios → uno
+        .replace(/\u00A0/g, ' '); // Non-breaking space → espacio normal
+      
       const key = normalized
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+        .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+        .replace(/\s+/g, '-'); // Espacios → guiones para key único
+      
       if (!genresMap.has(key)) genresMap.set(key, normalized);
     });
     const uniqueGenres = [...genresMap.values()].sort();
@@ -5907,12 +5913,13 @@ app.get('/browse', async (req, res) => {
     // Normalizar colecciones y eliminar duplicados
     const collectionsMap = new Map();
     items.flatMap(i => i.collections || []).forEach(c => {
-      if (!c) return;
-      const normalized = c.trim();
+      if (!c || typeof c !== 'string') return;
+      const normalized = c.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
       const key = normalized
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '-');
       if (!collectionsMap.has(key)) collectionsMap.set(key, normalized);
     });
     const uniqueCollections = [...collectionsMap.values()].sort();
@@ -5921,12 +5928,13 @@ app.get('/browse', async (req, res) => {
     // Normalizar países y eliminar duplicados
     const countriesMap = new Map();
     items.flatMap(i => i.countries || []).forEach(c => {
-      if (!c) return;
-      const normalized = c.trim();
+      if (!c || typeof c !== 'string') return;
+      const normalized = c.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
       const key = normalized
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '-');
       if (!countriesMap.has(key)) countriesMap.set(key, normalized);
     });
     const uniqueCountries = [...countriesMap.values()].sort();
@@ -8064,18 +8072,31 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                 
                 // Validar que el rating sea un número válido
                 if (!isNaN(rating) && rating > 0 && rating <= 10) {
+                  // Guardar rating y géneros en items collection
                   await updateTMDBData(
                     item.ratingKey,
                     rating,
                     fullData.genres || [],
                     fullData.collections || []
                   );
+                  
+                  // Guardar datos completos en item_details collection
+                  await saveItemDetails(
+                    item.ratingKey,
+                    tmdbId.toString(),
+                    isMovie ? 'movie' : 'series',
+                    fullData
+                  );
+                  
                   foundBasic++;
+                  savedDetails++;
                   
                   // Log solo cada 10 encontrados
                   if (foundBasic % 10 === 0) {
                     console.log(`[Background] ✅ "${item.title}" (${item.year}) - Rating: ${rating} | Método: ${searchMethod}`);
                   }
+                  
+                  return { success: true, title: item.title };
                 } else {
                   console.log(`[Background] ⚠️ "${item.title}" - Rating inválido (${fullData.rating}), marcando como scrapeado sin rating`);
                   // Marcar como scrapeado pero sin rating
@@ -8084,18 +8105,8 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                     { $set: { tmdbScraped: true, updatedAt: new Date() } }
                   );
                   notFoundBasic++;
+                  return { success: false, title: item.title };
                 }
-                
-                // Guardar datos completos en item_details collection
-                await saveItemDetails(
-                  item.ratingKey,
-                  tmdbId.toString(),
-                  isMovie ? 'movie' : 'series',
-                  fullData
-                );
-                savedDetails++;
-                
-                return { success: true, title: item.title };
               }
             }
             
