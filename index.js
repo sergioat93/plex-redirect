@@ -5313,18 +5313,36 @@ app.get('/browse', async (req, res) => {
       const titleMatch = fullTag.match(/title="([^"]*)"/);
       const yearMatch = fullTag.match(/year="([^"]*)"/);
       const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
-      const guidMatch = fullTag.match(/guid="([^"]*)"/);
-      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:?\/\/(\d+)/i) || 
-                        fullTag.match(/guid="[^"]*themoviedb:?\/\/(\d+)/i) ||
-                        fullTag.match(/\[tmdb-(\d+)\]/i);
       
-      // Debug: mostrar los primeros 3 guids para entender el formato
-      if (debugCount < 3 && guidMatch) {
-        console.log(`[/browse] DEBUG Item ${debugCount + 1}: title="${titleMatch ? titleMatch[1] : 'N/A'}", guid="${guidMatch[1]}", tmdbId=${tmdbMatch ? tmdbMatch[1] : 'NO ENCONTRADO'}`);
+      // Extraer tmdbId: primero del guid, luego del title, luego del thumb
+      let tmdbId = '';
+      const guidMatch = fullTag.match(/guid="[^"]*tmdb:?\/\/(\d+)/i) || 
+                        fullTag.match(/guid="[^"]*themoviedb:?\/\/(\d+)/i);
+      if (guidMatch) {
+        tmdbId = guidMatch[1];
+      } else if (titleMatch) {
+        // Buscar [tmdb-XXXXX] en el título
+        const titleTmdbMatch = titleMatch[1].match(/\[tmdb-(\d+)\]/i);
+        if (titleTmdbMatch) {
+          tmdbId = titleTmdbMatch[1];
+        }
+      }
+      
+      // Si aún no tenemos tmdbId, buscar en el thumb (ruta del archivo)
+      if (!tmdbId && thumbMatch) {
+        const thumbTmdbMatch = thumbMatch[1].match(/\[tmdb-(\d+)\]/i);
+        if (thumbTmdbMatch) {
+          tmdbId = thumbTmdbMatch[1];
+        }
+      }
+      
+      // Debug: mostrar los primeros 3 items para verificar
+      if (debugCount < 3) {
+        console.log(`[/browse] DEBUG Item ${debugCount + 1}: title="${titleMatch ? titleMatch[1] : 'N/A'}", tmdbId=${tmdbId || 'NO ENCONTRADO'}`);
         debugCount++;
       }
       
-      const audienceRatingMatch = fullTag.match(/audienceRatingMatch="([^"]*)"/);
+      const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
       const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
       const summaryMatch = fullTag.match(/summary="([^"]*)"/);
       const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
@@ -5356,7 +5374,7 @@ app.get('/browse', async (req, res) => {
           title: titleMatch[1],
           year: yearMatch ? yearMatch[1] : '',
           thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
-          tmdbId: tmdbMatch ? tmdbMatch[1] : '',
+          tmdbId: tmdbId,
           rating: ratingMatch ? parseFloat(ratingMatch[1]).toFixed(1) : '0',
           summary: summaryMatch ? summaryMatch[1] : '',
           addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
