@@ -1574,7 +1574,7 @@ app.get('/episode', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              ${displayPoster ? `<img loading="lazy" src="${displayPoster}" alt="${episodeTitle}" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E';">` : `<img loading="lazy" src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E" alt="${episodeTitle}">`}
+              ${displayPoster ? `<img loading="lazy" src="${displayPoster}" alt="${episodeTitle}" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">` : `<img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg" alt="Sin poster">`}
             </div>
             <button class="btn btn-primary" style="width: 100%;" onclick="downloadEpisode()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -4381,7 +4381,7 @@ app.get('/movie', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img loading="lazy" src="${moviePoster}" alt="${movieTitle}">
+              <img loading="lazy" src="${moviePoster}" alt="${movieTitle}" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
             </div>
             <button class="download-button" onclick="window.location.href='${downloadURL}'">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -5114,7 +5114,7 @@ app.get('/series', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img loading="lazy" src="${seriesPoster}" alt="${seriesTitle}">
+              <img loading="lazy" src="${seriesPoster}" alt="${seriesTitle}" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
             </div>
           </div>
           
@@ -5152,7 +5152,7 @@ app.get('/series', async (req, res) => {
           <div class="seasons-grid">
             ${seasons.map(season => `
               <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', '${season.seasonNumber}', '${encodeURIComponent(seriesTitle)}', '${tmdbId || autoSearchedTmdbId}', '${seriesId}', '${libraryKey}', '${libraryTitle}')">
-                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
+                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="if(this.src !== '${posterUrl}') { this.src='${posterUrl}'; } else { this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'; this.onerror=null; }">
                 <div class="season-info">
                   <div class="season-name">${season.title}</div>
                   <div class="season-episodes">${season.episodeCount} episodios</div>
@@ -5856,6 +5856,39 @@ app.get('/browse', async (req, res) => {
             background: var(--primary-dark);
             transform: scale(1.02);
           }
+          
+          /* Botones de vista en sidebar móvil */
+          .sidebar-view-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+          }
+          .sidebar-view-btn {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+          }
+          .sidebar-view-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            background: rgba(229, 160, 13, 0.05);
+          }
+          .sidebar-view-btn.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #000;
+          }
 
           /* Dropdown moderno */
           .dropdown-container { position: relative; display: inline-flex; z-index: 2200; }
@@ -6320,6 +6353,16 @@ app.get('/browse', async (req, res) => {
                 <option value="rating-asc">Valoración ↑</option>
               </select>
             </div>
+            <div class="sidebar-view-buttons">
+              <button class="sidebar-view-btn active" id="grid-view-btn-mobile" onclick="toggleView('grid', true)">
+                <i class="fas fa-th"></i>
+                <span>Grid</span>
+              </button>
+              <button class="sidebar-view-btn" id="list-view-btn-mobile" onclick="toggleView('list', true)">
+                <i class="fas fa-list"></i>
+                <span>Lista</span>
+              </button>
+            </div>
             <button id="clear-filters-mobile" class="sidebar-clear-btn">
               <i class="fas fa-broom"></i> Limpiar filtros
             </button>
@@ -6394,6 +6437,9 @@ app.get('/browse', async (req, res) => {
         </main>
         
         <script>
+          // Imagen fallback para posters que fallan
+          const FALLBACK_POSTER = 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';
+          
           // ENFOQUE HÍBRIDO: Primer lote de 50 items completos + índice ligero de todos
           const itemsData = ${JSON.stringify(items.slice(0, 50))};
           const itemsIndex = ${JSON.stringify(items.map(item => ({
@@ -6446,7 +6492,7 @@ app.get('/browse', async (req, res) => {
                    data-added-at="\${addedAt}"
                    onclick="window.location.href='\${detailUrl}'">
                 <div class="movie-poster">
-                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" loading="lazy" />\` : '<div class="no-poster">Sin imagen</div>'}
+                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" onerror="this.onerror=null; this.src='\${FALLBACK_POSTER}';" />\` : \`<img loading="lazy" src="\${FALLBACK_POSTER}" alt="Sin poster" />\`}
                   <div class="movie-overlay">
                     <div class="movie-overlay-content">
                       <div class="overlay-title">\${itemTitle}</div>
@@ -7298,21 +7344,30 @@ app.get('/browse', async (req, res) => {
           // View mode toggle
           const gridViewBtn = document.getElementById('grid-view-btn');
           const listViewBtn = document.getElementById('list-view-btn');
+          const gridViewBtnMobile = document.getElementById('grid-view-btn-mobile');
+          const listViewBtnMobile = document.getElementById('list-view-btn-mobile');
           const gridSizeControl = document.getElementById('grid-size-control');
           
-          gridViewBtn.addEventListener('click', () => {
-            moviesGrid.classList.remove('list-view');
-            gridViewBtn.classList.add('active');
-            listViewBtn.classList.remove('active');
-            if (gridSizeControl) gridSizeControl.classList.remove('hidden');
-          });
+          function toggleView(mode, fromMobile = false) {
+            if (mode === 'grid') {
+              moviesGrid.classList.remove('list-view');
+              gridViewBtn.classList.add('active');
+              listViewBtn.classList.remove('active');
+              if (gridViewBtnMobile) gridViewBtnMobile.classList.add('active');
+              if (listViewBtnMobile) listViewBtnMobile.classList.remove('active');
+              if (gridSizeControl) gridSizeControl.classList.remove('hidden');
+            } else {
+              moviesGrid.classList.add('list-view');
+              listViewBtn.classList.add('active');
+              gridViewBtn.classList.remove('active');
+              if (listViewBtnMobile) listViewBtnMobile.classList.add('active');
+              if (gridViewBtnMobile) gridViewBtnMobile.classList.remove('active');
+              if (gridSizeControl) gridSizeControl.classList.add('hidden');
+            }
+          }
           
-          listViewBtn.addEventListener('click', () => {
-            moviesGrid.classList.add('list-view');
-            listViewBtn.classList.add('active');
-            gridViewBtn.classList.remove('active');
-            if (gridSizeControl) gridSizeControl.classList.add('hidden');
-          });
+          gridViewBtn.addEventListener('click', () => toggleView('grid'));
+          listViewBtn.addEventListener('click', () => toggleView('list'));
           
           // Los datos ya están en Plex (rating, géneros, sinopsis)
           // No necesitamos fetch de TMDB
