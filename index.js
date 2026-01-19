@@ -34,8 +34,9 @@ async function connectMongoDB() {
     serversCollection = db.collection('servers');
     
     // Crear índices
-    await serversCollection.createIndex({ serverId: 1 }, { unique: true });
+    await serversCollection.createIndex({ machineIdentifier: 1 }, { unique: true });
     await serversCollection.createIndex({ lastAccess: -1 });
+    await serversCollection.createIndex({ 'tokens.tokenHash': 1 });
     
     console.log('✅ Conectado a MongoDB Atlas');
     return mongoClient;
@@ -4495,48 +4496,67 @@ app.get('/movie', async (req, res) => {
           const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
           if (!tmdbIdUsed) return;
           
-          // Buscar en localStorage (prioridad)
+          // PRIORIDAD 1: Si Plex tiene rating, usar ese (ya se muestra en el HTML)
+          const plexHasRating = ${movieData && movieData.rating !== 'N/A' ? 'true' : 'false'};
+          if (plexHasRating) {
+            console.log('Rating de Plex disponible, no consultando TMDB');
+            return; // No hacer nada, usar el rating de Plex
+          }
+          
+          // PRIORIDAD 2: Si Plex NO tiene rating, buscar en localStorage
           const cacheKey = \`tmdb_rating_movie_\${tmdbIdUsed}\`;
           const cachedRating = localStorage.getItem(cacheKey);
           
           if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
-            // Actualizar el rating en el badge si existe
-            const ratingBadge = document.querySelector('.rating-badge');
-            if (ratingBadge) {
-              const svgIcon = ratingBadge.querySelector('svg');
-              ratingBadge.innerHTML = '';
-              if (svgIcon) ratingBadge.appendChild(svgIcon);
-              ratingBadge.insertAdjacentText('beforeend', cachedRating);
+            console.log('Rating encontrado en cache:', cachedRating);
+            // Crear o actualizar el rating badge
+            const badgesRow = document.querySelector('.modal-badges-row');
+            if (badgesRow) {
+              const existingRating = badgesRow.querySelector('.rating-badge');
+              if (!existingRating) {
+                const ratingBadge = document.createElement('span');
+                ratingBadge.className = 'rating-badge';
+                ratingBadge.innerHTML = \`
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                  </svg>
+                  \${cachedRating}
+                \`;
+                badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
+              }
             }
-          } else if (!${movieData && movieData.rating !== 'N/A' ? 'true' : 'false'}) {
-            // Si no hay rating en Plex ni en cache, consultar TMDB
-            fetch(\`https://api.themoviedb.org/3/movie/\${tmdbIdUsed}?api_key=e299a98a37554b4c7419c5257c248e75\`)
-              .then(res => res.json())
-              .then(data => {
-                if (data.vote_average) {
-                  const rating = data.vote_average.toFixed(1);
-                  localStorage.setItem(cacheKey, rating);
-                  
-                  // Crear o actualizar el rating badge
-                  const badgesRow = document.querySelector('.modal-badges-row');
-                  if (badgesRow) {
-                    const existingRating = badgesRow.querySelector('.rating-badge');
-                    if (!existingRating) {
-                      const ratingBadge = document.createElement('span');
-                      ratingBadge.className = 'rating-badge';
-                      ratingBadge.innerHTML = \`
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                        </svg>
-                        \${rating}
-                      \`;
-                      badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-                    }
+            return;
+          }
+          
+          // PRIORIDAD 3: Si no hay rating en Plex ni en cache, consultar TMDB
+          console.log('No hay rating, consultando TMDB...');
+          fetch(\`https://api.themoviedb.org/3/movie/\${tmdbIdUsed}?api_key=${TMDB_API_KEY}\`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.vote_average) {
+                const rating = data.vote_average.toFixed(1);
+                localStorage.setItem(cacheKey, rating);
+                console.log('Rating de TMDB guardado:', rating);
+                
+                // Crear el rating badge
+                const badgesRow = document.querySelector('.modal-badges-row');
+                if (badgesRow) {
+                  const existingRating = badgesRow.querySelector('.rating-badge');
+                  if (!existingRating) {
+                    const ratingBadge = document.createElement('span');
+                    ratingBadge.className = 'rating-badge';
+                    ratingBadge.innerHTML = \`
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                      </svg>
+                      \${rating}
+                    \`;
+                    badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
                   }
                 }
-              })
-              .catch(err => console.error('Error fetching TMDB rating:', err));
-          }
+              }
+            })
+            .catch(err => console.error('Error fetching TMDB rating:', err));
         })();
         
         function toggleSynopsis() {
@@ -5244,11 +5264,19 @@ app.get('/series', async (req, res) => {
           const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
           if (!tmdbIdUsed) return;
           
-          // Buscar en localStorage (prioridad)
+          // PRIORIDAD 1: Si Plex tiene rating, usar ese (ya está en el HTML)
+          const plexHasRating = ${seriesData && seriesData.rating !== 'N/A' ? 'true' : 'false'};
+          if (plexHasRating) {
+            console.log('Rating de Plex disponible, no consultando TMDB');
+            return; // No sobrescribir el rating de Plex
+          }
+          
+          // PRIORIDAD 2: Buscar en localStorage
           const cacheKey = \`tmdb_rating_tv_\${tmdbIdUsed}\`;
           const cachedRating = localStorage.getItem(cacheKey);
           
           if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
+            console.log('Usando rating de localStorage:', cachedRating);
             // Actualizar el rating en el badge si existe
             const ratingBadge = document.querySelector('.rating-badge');
             if (ratingBadge) {
@@ -5257,35 +5285,38 @@ app.get('/series', async (req, res) => {
               if (svgIcon) ratingBadge.appendChild(svgIcon);
               ratingBadge.insertAdjacentText('beforeend', cachedRating);
             }
-          } else if (!${seriesData && seriesData.rating !== 'N/A' ? 'true' : 'false'}) {
-            // Si no hay rating en Plex ni en cache, consultar TMDB
-            fetch(\`https://api.themoviedb.org/3/tv/\${tmdbIdUsed}?api_key=e299a98a37554b4c7419c5257c248e75\`)
-              .then(res => res.json())
-              .then(data => {
-                if (data.vote_average) {
-                  const rating = data.vote_average.toFixed(1);
-                  localStorage.setItem(cacheKey, rating);
-                  
-                  // Crear o actualizar el rating badge
-                  const badgesRow = document.querySelector('.modal-badges-row');
-                  if (badgesRow) {
-                    const existingRating = badgesRow.querySelector('.rating-badge');
-                    if (!existingRating) {
-                      const ratingBadge = document.createElement('span');
-                      ratingBadge.className = 'rating-badge';
-                      ratingBadge.innerHTML = \`
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                        </svg>
-                        \${rating}
-                      \`;
-                      badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-                    }
+            return;
+          }
+          
+          // PRIORIDAD 3: Consultar TMDB
+          console.log('Consultando rating de TMDB para serie:', tmdbIdUsed);
+          fetch(\`https://api.themoviedb.org/3/tv/\${tmdbIdUsed}?api_key=${TMDB_API_KEY}\`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.vote_average) {
+                const rating = data.vote_average.toFixed(1);
+                console.log('Rating TMDB obtenido:', rating);
+                localStorage.setItem(cacheKey, rating);
+                
+                // Crear o actualizar el rating badge
+                const badgesRow = document.querySelector('.modal-badges-row');
+                if (badgesRow) {
+                  const existingRating = badgesRow.querySelector('.rating-badge');
+                  if (!existingRating) {
+                    const ratingBadge = document.createElement('span');
+                    ratingBadge.className = 'rating-badge';
+                    ratingBadge.innerHTML = \`
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                      </svg>
+                      \${rating}
+                    \`;
+                    badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
                   }
                 }
-              })
-              .catch(err => console.error('Error fetching TMDB rating:', err));
-          }
+              }
+            })
+            .catch(err => console.error('Error fetching TMDB rating:', err));
         })();
         
         function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId, parentRatingKey, libraryKey, libraryTitle) {
@@ -6637,6 +6668,10 @@ app.get('/browse', async (req, res) => {
             const batch = itemsData.slice(startIndex, endIndex);
             const htmlArray = batch.map(item => createCardHTML(item));
             grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
+            
+            // Inicializar observer de ratings para las nuevas cards
+            setTimeout(() => initRatingLazyLoader(), 100);
+            
             return Array.from(grid.querySelectorAll('.movie-card'));
           }
           
@@ -7056,7 +7091,7 @@ app.get('/browse', async (req, res) => {
           }
           
           // **TMDB RATINGS API**: Configuración y funciones
-          const TMDB_API_KEY = 'e299a98a37554b4c7419c5257c248e75'; // Reemplaza con tu API key de TMDB
+          const TMDB_API_KEY = '${TMDB_API_KEY}'; // Inyectado desde el servidor
           const TMDB_API_BASE = 'https://api.themoviedb.org/3';
           
           // Función para obtener rating de TMDB
@@ -7099,33 +7134,43 @@ app.get('/browse', async (req, res) => {
           
           // Lazy loading de ratings con IntersectionObserver
           let loadedRatings = new Set();
+          let ratingObserver = null;
           
           function initRatingLazyLoader() {
-            const observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                  const card = entry.target;
-                  const tmdbId = card.dataset.tmdbId;
-                  const ratingKey = card.dataset.ratingKey;
-                  const currentRating = card.dataset.rating;
-                  
-                  // Solo procesar si no tiene rating (0) y tiene tmdbId
-                  if (currentRating === '0' && tmdbId && !loadedRatings.has(tmdbId)) {
-                    loadedRatings.add(tmdbId);
-                    loadRatingForCard(card, tmdbId, ratingKey);
+            // Crear observer solo una vez
+            if (!ratingObserver) {
+              ratingObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                    const card = entry.target;
+                    const tmdbId = card.dataset.tmdbId;
+                    const ratingKey = card.dataset.ratingKey;
+                    const currentRating = card.dataset.rating;
+                    
+                    // Solo procesar si no tiene rating (0) y tiene tmdbId
+                    if (currentRating === '0' && tmdbId && !loadedRatings.has(tmdbId)) {
+                      loadedRatings.add(tmdbId);
+                      loadRatingForCard(card, tmdbId, ratingKey);
+                    }
+                    
+                    // Dejar de observar esta card
+                    ratingObserver.unobserve(card);
                   }
-                  
-                  // Dejar de observar esta card
-                  observer.unobserve(card);
-                }
+                });
+              }, {
+                rootMargin: '200px' // Cargar con 200px de anticipación
               });
-            }, {
-              rootMargin: '200px' // Cargar con 200px de anticipación
-            });
+            }
             
-            // Observar todas las cards
+            // Observar todas las cards actuales
             document.querySelectorAll('.movie-card').forEach(card => {
-              observer.observe(card);
+              const currentRating = card.dataset.rating;
+              const tmdbId = card.dataset.tmdbId;
+              
+              // Solo observar si no tiene rating
+              if (currentRating === '0' && tmdbId) {
+                ratingObserver.observe(card);
+              }
             });
           }
           
@@ -7632,7 +7677,30 @@ app.get('/library', async (req, res) => {
         .sort({ lastAccess: -1 })
         .toArray();
       
-      return res.json({ servers });
+      // Transformar para el selector: un servidor = una entrada (no duplicados)
+      // Usar el token más reciente de cada servidor
+      const formattedServers = servers.map(server => {
+        // Ordenar tokens por lastAccess (más reciente primero)
+        const sortedTokens = server.tokens?.sort((a, b) => 
+          new Date(b.lastAccess) - new Date(a.lastAccess)
+        ) || [];
+        
+        // Usar el token más reciente como principal
+        const primaryToken = sortedTokens[0];
+        
+        return {
+          machineIdentifier: server.machineIdentifier,
+          serverName: server.serverName,
+          baseURI: server.baseURI,
+          accessToken: primaryToken?.accessToken || '',
+          lastAccess: server.lastAccess,
+          libraryCount: server.libraryCount,
+          libraryNames: server.libraryNames,
+          tokenCount: sortedTokens.length // Para debug
+        };
+      });
+      
+      return res.json({ servers: formattedServers });
     } catch (error) {
       console.error('Error obteniendo servidores:', error);
       return res.status(500).json({ error: 'Error al obtener servidores' });
@@ -7671,41 +7739,105 @@ app.get('/library', async (req, res) => {
       }
     }
     
-    // Auto-registrar servidor en MongoDB
+    // Auto-registrar servidor en MongoDB (con soporte multi-token)
     if (serversCollection || await connectMongoDB()) {
       try {
-        const serverId = crypto.createHash('md5')
-          .update(`${baseURI}-${accessToken}`)
-          .digest('hex');
-        
-        // Obtener nombre del servidor
+        // Obtener machineIdentifier y nombre del servidor desde el XML
+        let machineIdentifier = null;
         let serverName = 'Servidor Plex';
+        
         try {
           const serverUrl = `${baseURI}/?X-Plex-Token=${accessToken}`;
           const serverXml = await httpsGetXML(serverUrl);
           const nameMatch = serverXml.match(/friendlyName="([^"]*)"/);
+          const idMatch = serverXml.match(/machineIdentifier="([^"]*)"/);
+          
           if (nameMatch) serverName = nameMatch[1];
+          if (idMatch) machineIdentifier = idMatch[1];
         } catch (e) {
-          // Usar nombre por defecto
+          console.error('Error obteniendo info del servidor:', e);
         }
         
-        await serversCollection.updateOne(
-          { serverId },
-          {
-            $set: {
-              serverName,
+        // Si no obtuvimos machineIdentifier, generar uno basado en baseURI
+        if (!machineIdentifier) {
+          machineIdentifier = crypto.createHash('md5').update(baseURI).digest('hex');
+        }
+        
+        // Buscar si ya existe un servidor con este machineIdentifier
+        const existingServer = await serversCollection.findOne({ machineIdentifier });
+        
+        if (existingServer) {
+          // Servidor existe: agregar nuevo token a la lista de tokens
+          const tokenHash = crypto.createHash('md5').update(accessToken).digest('hex');
+          const tokenExists = existingServer.tokens?.some(t => t.tokenHash === tokenHash);
+          
+          if (!tokenExists) {
+            // Nuevo token: agregarlo a la lista
+            await serversCollection.updateOne(
+              { machineIdentifier },
+              {
+                $push: {
+                  tokens: {
+                    tokenHash,
+                    accessToken,
+                    addedAt: new Date(),
+                    lastAccess: new Date(),
+                    libraryCount: libraries.length,
+                    libraryNames: libraries.map(l => l.title)
+                  }
+                },
+                $set: { lastAccess: new Date() }
+              }
+            );
+            console.log(`🔑 Nuevo token agregado al servidor: ${serverName}`);
+          } else {
+            // Token ya existe: actualizar su información
+            await serversCollection.updateOne(
+              { machineIdentifier, 'tokens.tokenHash': tokenHash },
+              {
+                $set: {
+                  'tokens.$.lastAccess': new Date(),
+                  'tokens.$.libraryCount': libraries.length,
+                  'tokens.$.libraryNames': libraries.map(l => l.title),
+                  lastAccess: new Date()
+                }
+              }
+            );
+            console.log(`♻️ Token actualizado para: ${serverName}`);
+          }
+          
+          // Fusionar bibliotecas únicas (para el selector)
+          const allLibraries = new Set(existingServer.libraryNames || []);
+          libraries.forEach(l => allLibraries.add(l.title));
+          
+          await serversCollection.updateOne(
+            { machineIdentifier },
+            { $set: { libraryNames: Array.from(allLibraries) } }
+          );
+        } else {
+          // Servidor nuevo: crear entrada con primer token
+          const tokenHash = crypto.createHash('md5').update(accessToken).digest('hex');
+          
+          await serversCollection.insertOne({
+            machineIdentifier,
+            serverName,
+            baseURI,
+            createdAt: new Date(),
+            lastAccess: new Date(),
+            libraryCount: libraries.length,
+            libraryNames: libraries.map(l => l.title),
+            tokens: [{
+              tokenHash,
               accessToken,
-              baseURI,
+              addedAt: new Date(),
               lastAccess: new Date(),
               libraryCount: libraries.length,
               libraryNames: libraries.map(l => l.title)
-            },
-            $setOnInsert: { createdAt: new Date() }
-          },
-          { upsert: true }
-        );
-        
-        console.log(`📝 Servidor registrado: ${serverName}`);
+            }]
+          });
+          
+          console.log(`✨ Nuevo servidor registrado: ${serverName}`);
+        }
       } catch (error) {
         console.error('Error registrando servidor:', error);
       }
