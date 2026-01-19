@@ -5288,7 +5288,7 @@ app.get('/series', async (req, res) => {
           <div class="seasons-grid">
             ${seasons.map(season => `
               <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', '${season.seasonNumber}', '${encodeURIComponent(seriesTitle)}', '${tmdbId || autoSearchedTmdbId}', '${seriesId}', '${libraryKey}', '${libraryTitle}')">
-                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
+                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
                 <div class="season-info">
                   <div class="season-name">${season.title}</div>
                   <div class="season-episodes">${season.episodeCount} episodios</div>
@@ -5442,172 +5442,228 @@ app.get('/api/seasons', async (req, res) => {
 
 // Ruta para explorar contenido de una biblioteca
 app.get('/browse', async (req, res) => {
-  const { accessToken, baseURI, libraryKey, libraryTitle, libraryType } = req.query;
+  const { accessToken, baseURI, libraryKey, libraryTitle, libraryType, _refresh } = req.query;
   
   if (!accessToken || !baseURI || !libraryKey) {
     return res.status(400).send('Faltan parámetros requeridos');
   }
   
   try {
-    // Obtener contenido de la biblioteca
-    const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
-    const xmlData = await httpsGetXML(contentUrl);
+    let items = [];
+    let shouldFetchFromPlex = false;
+    let xmlData = null;
     
-    // Extraer items (películas o series) con todos sus metadatos, géneros, colecciones y países
-    const items = [];
-    const tagType = libraryType === 'movie' ? 'Video' : 'Directory';
-    const allGenres = new Set();
-    const allCollections = new Set();
-    const allCountries = new Set();
-    
-    // Extraer todos los géneros disponibles en la biblioteca
-    const genreMatches = xmlData.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
-    for (const match of genreMatches) {
-      allGenres.add(match[1]);
-    }
-    
-    // Extraer todas las colecciones
-    const collectionMatches = xmlData.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
-    for (const match of collectionMatches) {
-      allCollections.add(match[1]);
-    }
-    
-    // Extraer todos los países
-    const countryMatches = xmlData.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
-    for (const match of countryMatches) {
-      allCountries.add(match[1]);
-    }
-    
-    // Extraer items con géneros, colecciones y países
-    const videoSections = xmlData.split(`<${tagType}`).slice(1);
-    for (const section of videoSections) {
-      const fullTag = `<${tagType}${section.split('>')[0]}>`;
-      const contentUntilEnd = section.split(`</${tagType}>`)[0];
+    // PASO 1: Intentar cargar desde MongoDB
+    if (itemsCollection && !_refresh) {
+      const dbItems = await getItemsFromDB(baseURI, libraryKey);
       
-      const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
-      const titleMatch = fullTag.match(/title="([^"]*)"/);
-      const yearMatch = fullTag.match(/year="([^"]*)"/);
-      const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
-      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
-      const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
-      const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
-      const summaryMatch = fullTag.match(/summary="([^"]*)"/);
-      const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
+      if (dbItems && dbItems.length > 0) {
+        console.log(`[/browse] ✅ Cargando ${dbItems.length} items desde MongoDB`);
+        
+        // Convertir documentos de MongoDB a formato esperado por frontend
+        items = dbItems.map(doc => ({
+          ratingKey: doc.ratingKey,
+          title: doc.title,
+          year: doc.year || '',
+          thumb: doc.thumb || '',
+          tmdbId: doc.tmdbId || '',
+          rating: doc.ratingTMDB || doc.ratingPlex || '0',
+          summary: doc.summary || '',
+          addedAt: doc.addedAt || 0,
+          genres: doc.genresTMDB || doc.genresPlex || [],
+          collections: doc.collectionsTMDB || doc.collectionsPlex || [],
+          countries: doc.countriesPlex || []
+        }));
+        
+        // Verificar si hay items pendientes de scrapeo
+        const stats = await getScrapingStats(baseURI, libraryKey);
+        if (stats.pending > 0) {
+          console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items pendientes de scrapeo TMDB`);
+          // Iniciar scrapeo en background si no está corriendo
+          setImmediate(() => {
+            fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
+          });
+        } else {
+          console.log(`[/browse] ✅ Todos los items tienen datos de TMDB`);
+        }
+      } else {
+        shouldFetchFromPlex = true;
+        console.log('[/browse] 📡 No hay datos en MongoDB, consultando Plex...');
+      }
+    } else {
+      shouldFetchFromPlex = true;
+      if (_refresh) console.log('[/browse] 🔄 Refresh solicitado, consultando Plex...');
+      if (!itemsCollection) console.log('[/browse] ⚠️  MongoDB no configurada, modo legacy');
+    }
+    
+    // PASO 2: Obtener de Plex si es necesario
+    if (shouldFetchFromPlex) {
+      const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
+      xmlData = await httpsGetXML(contentUrl);
       
-      if (ratingKeyMatch && titleMatch) {
-        // Extraer géneros de este item
-        const itemGenres = [];
-        const genreItemMatches = contentUntilEnd.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
-        for (const gMatch of genreItemMatches) {
-          itemGenres.push(gMatch[1]);
+      const tagType = libraryType === 'movie' ? 'Video' : 'Directory';
+      const allGenres = new Set();
+      const allCollections = new Set();
+      const allCountries = new Set();
+      
+      // Extraer géneros, colecciones y países globales
+      const genreMatches = xmlData.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
+      for (const match of genreMatches) allGenres.add(match[1]);
+      
+      const collectionMatches = xmlData.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
+      for (const match of collectionMatches) allCollections.add(match[1]);
+      
+      const countryMatches = xmlData.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
+      for (const match of countryMatches) allCountries.add(match[1]);
+      
+      // Parsear items del XML
+      const videoSections = xmlData.split(`<${tagType}`).slice(1);
+      const itemsToSave = [];
+      
+      for (const section of videoSections) {
+        const fullTag = `<${tagType}${section.split('>')[0]}>`;
+        const contentUntilEnd = section.split(`</${tagType}>`)[0];
+        
+        // Extraer atributos principales
+        const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
+        const titleMatch = fullTag.match(/title="([^"]*)"/);
+        const yearMatch = fullTag.match(/year="([^"]*)"/);
+        const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
+        const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+        const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
+        const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
+        const summaryMatch = fullTag.match(/summary="([^"]*)"/);
+        const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
+        const childCountMatch = fullTag.match(/childCount="([^"]*)"/);
+        const leafCountMatch = fullTag.match(/leafCount="([^"]*)"/);
+        
+        if (ratingKeyMatch && titleMatch) {
+          // Extraer géneros del item
+          const itemGenres = [];
+          const genreItemMatches = contentUntilEnd.matchAll(/<Genre[^>]*tag="([^"]*)"[^>]*>/g);
+          for (const gMatch of genreItemMatches) itemGenres.push(gMatch[1]);
+          
+          // Extraer colecciones
+          const itemCollections = [];
+          const collectionItemMatches = contentUntilEnd.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
+          for (const cMatch of collectionItemMatches) itemCollections.push(cMatch[1]);
+          
+          // Extraer países
+          const itemCountries = [];
+          const countryItemMatches = contentUntilEnd.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
+          for (const coMatch of countryItemMatches) itemCountries.push(coMatch[1]);
+          
+          const itemRatingPlex = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+          
+          // Preparar para frontend
+          items.push({
+            ratingKey: ratingKeyMatch[1],
+            title: titleMatch[1],
+            year: yearMatch ? yearMatch[1] : '',
+            thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
+            tmdbId: tmdbMatch ? tmdbMatch[1] : '',
+            rating: itemRatingPlex ? itemRatingPlex.toFixed(1) : '0',
+            summary: summaryMatch ? summaryMatch[1] : '',
+            addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
+            genres: itemGenres,
+            collections: itemCollections,
+            countries: itemCountries
+          });
+          
+          // Preparar para guardar en MongoDB
+          if (itemsCollection) {
+            itemsToSave.push({
+              ratingKey: ratingKeyMatch[1],
+              baseURI,
+              libraryKey,
+              libraryType,
+              tmdbId: tmdbMatch ? tmdbMatch[1] : null,
+              title: titleMatch[1],
+              year: yearMatch ? yearMatch[1] : null,
+              summary: summaryMatch ? summaryMatch[1] : null,
+              thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : null,
+              addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : null,
+              ratingPlex: itemRatingPlex,
+              genres: itemGenres,
+              collections: itemCollections,
+              countries: itemCountries,
+              childCount: childCountMatch ? parseInt(childCountMatch[1]) : null,
+              leafCount: leafCountMatch ? parseInt(leafCountMatch[1]) : null
+            });
+          }
         }
-        
-        // Extraer colecciones de este item
-        const itemCollections = [];
-        const collectionItemMatches = contentUntilEnd.matchAll(/<Collection[^>]*tag="([^"]*)"[^>]*>/g);
-        for (const cMatch of collectionItemMatches) {
-          itemCollections.push(cMatch[1]);
-        }
-        
-        // Extraer países de este item
-        const itemCountries = [];
-        const countryItemMatches = contentUntilEnd.matchAll(/<Country[^>]*tag="([^"]*)"[^>]*>/g);
-        for (const coMatch of countryItemMatches) {
-          itemCountries.push(coMatch[1]);
-        }
-        
-        // Obtener rating: primero del cache de TMDB, luego de Plex
-        let itemRating = '0';
-        const ratingCacheKey = `plex_rating_${ratingKeyMatch[1]}`;
-        const cachedRating = tmdbCache.get(ratingCacheKey);
-        
-        if (cachedRating) {
-          // Usar rating de TMDB del cache
-          itemRating = cachedRating;
-        } else if (ratingMatch) {
-          // Usar rating de Plex
-          itemRating = parseFloat(ratingMatch[1]).toFixed(1);
-        }
-        
-        items.push({
-          ratingKey: ratingKeyMatch[1],
-          title: titleMatch[1],
-          year: yearMatch ? yearMatch[1] : '',
-          thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
-          tmdbId: tmdbMatch ? tmdbMatch[1] : '',
-          rating: itemRating,
-          summary: summaryMatch ? summaryMatch[1] : '',
-          addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
-          genres: itemGenres,
-          collections: itemCollections,
-          countries: itemCountries
+      }
+      
+      // Guardar en MongoDB en background
+      if (itemsCollection && itemsToSave.length > 0) {
+        console.log(`[/browse] 💾 Guardando ${itemsToSave.length} items en MongoDB...`);
+        setImmediate(async () => {
+          for (const item of itemsToSave) {
+            await saveItemToDB(item);
+          }
+          console.log(`[/browse] ✅ Items guardados en MongoDB`);
+          
+          // Iniciar scrapeo de TMDB
+          fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
         });
       }
     }
-
-    // Identificar items sin rating para procesamiento background
-    const itemsWithoutRating = items.filter(i => !i.rating || i.rating === '0' || parseFloat(i.rating) === 0);
-    const itemsWithValidRating = items.filter(i => i.rating && i.rating !== '0' && parseFloat(i.rating) > 0);
     
-    console.log(`[/browse] Items: ${items.length} total, ${itemsWithValidRating.length} con rating, ${itemsWithoutRating.length} sin rating`);
-
-    // Obtener listas únicas para filtros
+    // PASO 3: Preparar datos para el frontend
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
-    const uniqueGenres = Array.from(allGenres).sort();
-    const uniqueCollections = Array.from(allCollections).sort();
-    const uniqueCountries = Array.from(allCountries).sort();
+    const uniqueGenres = [...new Set(items.flatMap(i => i.genres))].sort();
+    const uniqueCollections = [...new Set(items.flatMap(i => i.collections))].sort();
+    const uniqueCountries = [...new Set(items.flatMap(i => i.countries))].sort();
     
-    // Extraer estadísticas del XML
-    let totalSizeBytes = 0;
-    // Extraer size solo de archivos dentro de Video tags (no thumbnails)
-    const videoTags = xmlData.split('<Video').slice(1);
-    for (const videoSection of videoTags) {
-      const videoEnd = videoSection.indexOf('</Video>');
-      if (videoEnd === -1) continue;
-      const videoContent = videoSection.substring(0, videoEnd);
-      const sizeMatches = videoContent.matchAll(/<Part[^>]*size="([^"]*)"[^>]*>/g);
-      for (const match of sizeMatches) {
-        totalSizeBytes += parseInt(match[1]) || 0;
-      }
-    }
-    const totalSizeGB = (totalSizeBytes / (1024 * 1024 * 1024)).toFixed(2);
-    const totalSizeTB = (totalSizeBytes / (1024 * 1024 * 1024 * 1024)).toFixed(2);
-    const totalSizeFormatted = totalSizeBytes >= 1024 * 1024 * 1024 * 1024 
-      ? `${totalSizeTB} TB` 
-      : `${totalSizeGB} GB`;
-    
-    // Calcular duración total
-    let totalDurationMs = 0;
-    const durationMatches = xmlData.matchAll(/duration="([^"]*)"/g);
-    for (const match of durationMatches) {
-      totalDurationMs += parseInt(match[1]) || 0;
-    }
-    const totalHours = Math.floor(totalDurationMs / (1000 * 60 * 60));
-    const totalDays = Math.floor(totalHours / 24);
-    const remainingHours = totalHours % 24;
-    const durationFormatted = totalDays > 0 
-      ? `${totalDays}d ${remainingHours}h` 
-      : `${totalHours}h`;
-    
-    // Para series: contar temporadas (childCount tiene el número de temporadas por serie)
+    // Estadísticas (solo si vino de Plex)
+    let totalSizeFormatted = '0 GB';
+    let durationFormatted = '0h';
     let totalSeasons = 0;
     let totalEpisodes = 0;
-    if (libraryType === 'show') {
-      const childCountMatches = xmlData.matchAll(/childCount="([^"]*)"/g);
-      const leafCountMatches = xmlData.matchAll(/leafCount="([^"]*)"/g);
-      for (const match of childCountMatches) {
-        totalSeasons += parseInt(match[1]) || 0;
-      }
-      for (const match of leafCountMatches) {
-        totalEpisodes += parseInt(match[1]) || 0;
-      }
-    }
     
-    // Iniciar procesamiento background de ratings faltantes
-    if (itemsWithoutRating.length > 0) {
-      setImmediate(() => {
-        fetchMissingRatingsBackground(itemsWithoutRating, libraryType, accessToken, baseURI);
-      });
+    if (xmlData) {
+      // Calcular tamaño total
+      let totalSizeBytes = 0;
+      const videoTags = xmlData.split('<Video').slice(1);
+      for (const videoSection of videoTags) {
+        const videoEnd = videoSection.indexOf('</Video>');
+        if (videoEnd === -1) continue;
+        const videoContent = videoSection.substring(0, videoEnd);
+        const sizeMatches = videoContent.matchAll(/<Part[^>]*size="([^"]*)"[^>]*>/g);
+        for (const match of sizeMatches) {
+          totalSizeBytes += parseInt(match[1]) || 0;
+        }
+      }
+      const totalSizeGB = (totalSizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+      const totalSizeTB = (totalSizeBytes / (1024 * 1024 * 1024 * 1024)).toFixed(2);
+      totalSizeFormatted = totalSizeBytes >= 1024 * 1024 * 1024 * 1024 
+        ? `${totalSizeTB} TB` 
+        : `${totalSizeGB} GB`;
+      
+      // Calcular duración total
+      let totalDurationMs = 0;
+      const durationMatches = xmlData.matchAll(/duration="([^"]*)"/g);
+      for (const match of durationMatches) {
+        totalDurationMs += parseInt(match[1]) || 0;
+      }
+      const totalHours = Math.floor(totalDurationMs / (1000 * 60 * 60));
+      const totalDays = Math.floor(totalHours / 24);
+      const remainingHours = totalHours % 24;
+      durationFormatted = totalDays > 0 
+        ? `${totalDays}d ${remainingHours}h` 
+        : `${totalHours}h`;
+      
+      // Para series
+      if (libraryType === 'show') {
+        const childCountMatches = xmlData.matchAll(/childCount="([^"]*)"/g);
+        const leafCountMatches = xmlData.matchAll(/leafCount="([^"]*)"/g);
+        for (const match of childCountMatches) {
+          totalSeasons += parseInt(match[1]) || 0;
+        }
+        for (const match of leafCountMatches) {
+          totalEpisodes += parseInt(match[1]) || 0;
+        }
+      }
     }
     
     res.send(`
@@ -6608,7 +6664,7 @@ app.get('/browse', async (req, res) => {
                    data-added-at="\${addedAt}"
                    onclick="window.location.href='\${detailUrl}'">
                 <div class="movie-poster">
-                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" loading="lazy" />\` : '<div class="no-poster">Sin imagen</div>'}
+                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';" />\` : '<img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg" alt="No disponible" />'}
                   <div class="movie-overlay">
                     <div class="movie-overlay-content">
                       <div class="overlay-title">\${itemTitle}</div>
