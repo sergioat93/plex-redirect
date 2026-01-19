@@ -5309,12 +5309,20 @@ app.get('/browse', async (req, res) => {
       const fullTag = `<${tagType}${section.split('>')[0]}>`;
       const contentUntilEnd = section.split(`</${tagType}>`)[0];
       
+      // Debug: mostrar el XML completo del primer item para ver qué campos tiene
+      if (debugCount === 0) {
+        console.log('[/browse] DEBUG XML del primer item (primeros 1000 chars):');
+        console.log(fullTag.substring(0, 1000));
+        console.log('[/browse] DEBUG Contenido hasta </Video> (primeros 500 chars):');
+        console.log(contentUntilEnd.substring(0, 500));
+      }
+      
       const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
       const titleMatch = fullTag.match(/title="([^"]*)"/);
       const yearMatch = fullTag.match(/year="([^"]*)"/);
       const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
       
-      // Extraer tmdbId: primero del guid, luego del title, luego del thumb
+      // Extraer tmdbId: primero del guid, luego del title, luego del thumb, luego buscar en Media/Part
       let tmdbId = '';
       const guidMatch = fullTag.match(/guid="[^"]*tmdb:?\/\/(\d+)/i) || 
                         fullTag.match(/guid="[^"]*themoviedb:?\/\/(\d+)/i);
@@ -5333,6 +5341,14 @@ app.get('/browse', async (req, res) => {
         const thumbTmdbMatch = thumbMatch[1].match(/\[tmdb-(\d+)\]/i);
         if (thumbTmdbMatch) {
           tmdbId = thumbTmdbMatch[1];
+        }
+      }
+      
+      // Si aún no tenemos tmdbId, buscar en tags Media y Part dentro del contenido
+      if (!tmdbId) {
+        const mediaPartMatch = contentUntilEnd.match(/\[tmdb-(\d+)\]/i);
+        if (mediaPartMatch) {
+          tmdbId = mediaPartMatch[1];
         }
       }
       
@@ -5386,26 +5402,43 @@ app.get('/browse', async (req, res) => {
     }
 
     // Actualizar ratings desde TMDB para todos los items con tmdbId
-    console.log('[/browse] Actualizando ratings desde TMDB para', items.filter(i => i.tmdbId).length, 'items...');
-    const ratingPromises = items.map(async (item, index) => {
-      if (item.tmdbId) {
-        try {
+    // Como el XML de lista no contiene tmdbId, debemos obtenerlo del XML individual de cada item
+    console.log('[/browse] Obteniendo tmdbIds individuales y actualizando ratings...');
+    const ratingPromises = items.slice(0, 50).map(async (item, index) => {
+      try {
+        // Obtener XML individual para extraer tmdbId del fileName
+        const metadataUrl = `${baseURI}/library/metadata/${item.ratingKey}?X-Plex-Token=${accessToken}`;
+        const xmlText = await httpsGetXML(metadataUrl, true);
+        
+        // Extraer tmdbId del fileName que viene en el atributo file
+        let tmdbId = '';
+        const fileMatch = xmlText.match(/\sfile="([^"]+)"/);
+        if (fileMatch) {
+          const tmdbFileMatch = fileMatch[1].match(/\[tmdb-(\d+)\]/i);
+          if (tmdbFileMatch) {
+            tmdbId = tmdbFileMatch[1];
+            item.tmdbId = tmdbId;
+          }
+        }
+        
+        // Si tenemos tmdbId, obtener rating de TMDB
+        if (tmdbId) {
           const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-          const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${item.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-          const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${item.tmdbId}`);
+          const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+          const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${tmdbId}`);
           if (tmdbData && tmdbData.vote_average) {
             const newRating = tmdbData.vote_average.toFixed(1);
             item.rating = newRating;
-            if (index < 3) console.log(`[/browse] Item "${item.title}" rating actualizado: ${newRating}`);
+            if (index < 3) console.log(`[/browse] "${item.title}" - tmdbId: ${tmdbId}, rating: ${newRating}`);
           }
-        } catch (error) {
-          console.error(`[/browse] Error obteniendo rating TMDB para ${item.title}:`, error.message);
         }
+      } catch (error) {
+        console.error(`[/browse] Error procesando ${item.title}:`, error.message);
       }
     });
     
     await Promise.all(ratingPromises);
-    console.log('[/browse] Ratings actualizados desde TMDB completado');
+    console.log('[/browse] Primeros 50 items procesados con ratings de TMDB');
 
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
