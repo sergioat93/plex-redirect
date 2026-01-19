@@ -5744,7 +5744,7 @@ app.get('/browse', async (req, res) => {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.25rem 1.5rem;
+            padding: 1rem 1.25rem;
             border-bottom: 1px solid var(--border-color);
             position: sticky;
             top: 0;
@@ -5754,7 +5754,7 @@ app.get('/browse', async (req, res) => {
 
           .filters-sidebar-header h3 {
             color: var(--text-primary);
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             margin: 0;
             display: flex;
             align-items: center;
@@ -5776,22 +5776,22 @@ app.get('/browse', async (req, res) => {
           }
 
           .filters-sidebar-content {
-            padding: 1.5rem;
+            padding: 1rem 1.25rem;
             overflow-y: auto;
             flex: 1;
             -webkit-overflow-scrolling: touch;
           }
 
           .filter-section {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
           }
 
           .filter-section-title {
             color: var(--text-secondary);
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 0.75rem;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
             font-weight: 600;
           }
 
@@ -5800,9 +5800,9 @@ app.get('/browse', async (req, res) => {
             background: var(--bg-dark);
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 0.75rem 1rem;
+            padding: 0.65rem 0.85rem;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
           }
 
           .filter-section select:focus {
@@ -5820,9 +5820,9 @@ app.get('/browse', async (req, res) => {
             background: var(--bg-dark);
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            padding: 0.65rem 2.5rem 0.65rem 0.85rem;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
           }
 
           .sidebar-search-box input:focus {
@@ -5844,7 +5844,7 @@ app.get('/browse', async (req, res) => {
             background: var(--primary-color);
             border: none;
             color: #000;
-            padding: 0.75rem;
+            padding: 0.65rem;
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
@@ -5853,8 +5853,8 @@ app.get('/browse', async (req, res) => {
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            margin-top: 1.5rem;
-            font-size: 0.95rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
           }
 
           .sidebar-clear-btn:hover {
@@ -5866,14 +5866,14 @@ app.get('/browse', async (req, res) => {
           .sidebar-view-buttons {
             display: flex;
             gap: 0.5rem;
-            margin-top: 1.5rem;
+            margin-top: 1rem;
           }
           .sidebar-view-btn {
             flex: 1;
             background: var(--bg-dark);
             border: 2px solid var(--border-color);
             color: var(--text-secondary);
-            padding: 0.75rem;
+            padding: 0.65rem;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s;
@@ -5882,7 +5882,7 @@ app.get('/browse', async (req, res) => {
             justify-content: center;
             gap: 0.5rem;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
           }
           .sidebar-view-btn:hover {
             border-color: var(--primary-color);
