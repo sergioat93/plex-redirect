@@ -5890,11 +5890,16 @@ app.get('/browse', async (req, res) => {
     const ratingsDebug = items.slice(0, 5).map(i => `${i.title}: ${i.rating}`).join(' | ');
     console.log(`[/browse] 🔍 Ratings muestra: ${ratingsDebug}`);
     
-    // Normalizar géneros y eliminar duplicados (case-insensitive)
+    // Normalizar géneros y eliminar duplicados (case-insensitive + normalizar acentos)
     const genresMap = new Map();
     items.flatMap(i => i.genres || []).forEach(g => {
+      if (!g) return;
       const normalized = g.trim();
-      const key = normalized.toLowerCase();
+      // Normalizar acentos y convertir a lowercase para key
+      const key = normalized
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
       if (!genresMap.has(key)) genresMap.set(key, normalized);
     });
     const uniqueGenres = [...genresMap.values()].sort();
@@ -5902,18 +5907,26 @@ app.get('/browse', async (req, res) => {
     // Normalizar colecciones y eliminar duplicados
     const collectionsMap = new Map();
     items.flatMap(i => i.collections || []).forEach(c => {
+      if (!c) return;
       const normalized = c.trim();
-      const key = normalized.toLowerCase();
+      const key = normalized
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
       if (!collectionsMap.has(key)) collectionsMap.set(key, normalized);
     });
     const uniqueCollections = [...collectionsMap.values()].sort();
-    console.log(`[/browse] 📚 ${uniqueCollections.length} colecciones únicas encontradas`);
+    console.log(`[/browse] 📚 ${uniqueCollections.length} colecciones únicas encontradas:`, uniqueCollections.slice(0, 5));
     
     // Normalizar países y eliminar duplicados
     const countriesMap = new Map();
     items.flatMap(i => i.countries || []).forEach(c => {
+      if (!c) return;
       const normalized = c.trim();
-      const key = normalized.toLowerCase();
+      const key = normalized
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
       if (!countriesMap.has(key)) countriesMap.set(key, normalized);
     });
     const uniqueCountries = [...countriesMap.values()].sort();
@@ -6936,11 +6949,13 @@ app.get('/browse', async (req, res) => {
             title: item.title,
             year: item.year || '',
             genres: item.genres || [],
+            collections: item.collections || [],
             rating: item.rating || 0,
             thumb: item.thumb || '',
             ratingKey: item.ratingKey,
             tmdbId: item.tmdbId || '',
             countries: item.countries || [],
+            summary: item.summary || '',
             addedAt: item.addedAt || 0
           })))};
           const accessToken = '${accessToken}';
@@ -8046,7 +8061,9 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
               if (fullData) {
                 // Guardar rating básico en items collection
                 const rating = parseFloat(fullData.rating);
-                if (!isNaN(rating)) {
+                
+                // Validar que el rating sea un número válido
+                if (!isNaN(rating) && rating > 0 && rating <= 10) {
                   await updateTMDBData(
                     item.ratingKey,
                     rating,
@@ -8060,7 +8077,13 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                     console.log(`[Background] ✅ "${item.title}" (${item.year}) - Rating: ${rating} | Método: ${searchMethod}`);
                   }
                 } else {
-                  console.log(`[Background] ⚠️ "${item.title}" - Rating inválido: ${fullData.rating}`);
+                  console.log(`[Background] ⚠️ "${item.title}" - Rating inválido (${fullData.rating}), marcando como scrapeado sin rating`);
+                  // Marcar como scrapeado pero sin rating
+                  await itemsCollection.updateOne(
+                    { ratingKey: item.ratingKey },
+                    { $set: { tmdbScraped: true, updatedAt: new Date() } }
+                  );
+                  notFoundBasic++;
                 }
                 
                 // Guardar datos completos en item_details collection
