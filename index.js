@@ -5761,17 +5761,76 @@ app.get('/browse', async (req, res) => {
       
       if (dbItems && dbItems.length > 0) {
         console.log(`[/browse] 📦 ${dbItems.length} items en MongoDB`);
-        dbItems.forEach(doc => {
-          dbItemsMap.set(doc.ratingKey, doc);
-        });
         
-        // Verificar si tenemos un número razonable de items (indicador de DB completa)
-        // y si el scraping está completo o avanzado
-        const stats = await getScrapingStats(baseURI, libraryKey);
-        const scrapingProgress = stats.total > 0 ? ((stats.total - stats.pending) / stats.total) : 0;
+        // PROTECCIÓN OOM: Si hay >5000 items, usar solo índice ligero
+        if (dbItems.length > 5000) {
+          console.log(`[/browse] ⚡ Biblioteca grande - Cargando índice optimizado`);
+          shouldFetchPlex = false;
+          
+          // Cargar ratings solo de los primeros 50 para mostrar
+          if (itemDetailsCollection) {
+            const first50Keys = dbItems.slice(0, 50).map(i => i.ratingKey);
+            const details = await itemDetailsCollection
+              .find({ ratingKey: { $in: first50Keys } })
+              .project({ ratingKey: 1, vote_average: 1 })
+              .toArray();
+            details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
+          }
+          
+          // Crear índice ligero para TODOS (filtros/búsqueda frontend)
+          items = dbItems.map(doc => {
+            const itemDetails = dbItemDetailsMap.get(doc.ratingKey);
+            let finalRating = '0';
+            
+            if (itemDetails?.vote_average && !isNaN(itemDetails.vote_average)) {
+              finalRating = itemDetails.vote_average.toFixed(1);
+            } else if (doc.ratingTMDB) {
+              finalRating = doc.ratingTMDB.toFixed(1);
+            } else if (doc.ratingPlex) {
+              finalRating = doc.ratingPlex.toFixed(1);
+            }
+            
+            // Deduplicar géneros inline
+            let genresArray = (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [];
+            
+            return {
+              ratingKey: doc.ratingKey,
+              title: doc.title,
+              year: doc.year || '',
+              thumb: doc.thumb || '',
+              tmdbId: doc.tmdbId || '',
+              rating: finalRating,
+              summary: doc.summary || '',
+              addedAt: doc.addedAt || 0,
+              genres: deduplicateGenres(genresArray),
+              collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
+              countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
+            };
+          });
+          
+          // Continuar scraping en background
+          const stats = await getScrapingStats(baseURI, libraryKey);
+          if (stats.pending > 0) {
+            console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items pendientes de TMDB`);
+            setImmediate(() => {
+              fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
+            });
+          }
+          
+          // Saltar al render HTML
+        } else {
+          // Biblioteca pequeña (<5000) - usar lógica normal
+          dbItems.forEach(doc => {
+            dbItemsMap.set(doc.ratingKey, doc);
+          });
         
-        // Si tenemos >1000 items Y el scraping está >80% completo, verificar si hay contenido nuevo
-        if (dbItems.length > 1000 && scrapingProgress > 0.8) {
+          // Verificar si tenemos un número razonable de items (indicador de DB completa)
+          // y si el scraping está completo o avanzado
+          const stats = await getScrapingStats(baseURI, libraryKey);
+          const scrapingProgress = stats.total > 0 ? ((stats.total - stats.pending) / stats.total) : 0;
+        
+          // Si tenemos >1000 items Y el scraping está >80% completo, verificar si hay contenido nuevo
+          if (dbItems.length > 1000 && scrapingProgress > 0.8) {
           // Consulta rápida a Plex para ver el count total (solo headers, sin parsear XML completo)
           try {
             const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
@@ -5885,6 +5944,7 @@ app.get('/browse', async (req, res) => {
         } else {
           console.log(`[/browse] 🔄 Merge mode: DB incompleta o scraping inicial (${(scrapingProgress*100).toFixed(1)}%)`);
         }
+        } // Cierre del else de bibliotecas pequeñas
       }
     }
     
