@@ -7384,13 +7384,20 @@ async function fetchMissingRatingsBackground(itemsWithoutRating, libraryType, ac
 
 // Ruta para mostrar las bibliotecas disponibles
 app.get('/library', async (req, res) => {
-  const { accessToken, baseURI } = req.query;
+  const { accessToken, baseURI, _refresh } = req.query;
   
   if (!accessToken || !baseURI) {
     return res.status(400).send('Faltan parámetros requeridos: accessToken, baseURI');
   }
   
   try {
+    // Si viene el parámetro _refresh, limpiar cache de Plex
+    if (_refresh) {
+      const cacheKey = `${baseURI}/library/sections?X-Plex-Token=${accessToken}`;
+      plexCache.delete(cacheKey);
+      console.log('[/library] Cache limpiado, obteniendo datos frescos de Plex...');
+    }
+    
     // Obtener todas las bibliotecas de Plex
     const librariesUrl = `${baseURI}/library/sections?X-Plex-Token=${accessToken}`;
     const xmlData = await httpsGetXML(librariesUrl);
@@ -7515,9 +7522,118 @@ app.get('/library', async (req, res) => {
             text-transform: uppercase;
             letter-spacing: 0.05em;
           }
+          .refresh-button {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border: none;
+            color: #000;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 8px 24px rgba(229, 160, 13, 0.4);
+            z-index: 1000;
+          }
+          .refresh-button:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 12px 32px rgba(229, 160, 13, 0.6);
+          }
+          .refresh-button:active {
+            transform: translateY(-2px) scale(1.02);
+          }
+          .refresh-icon {
+            font-size: 1.5rem;
+            animation: rotate 2s linear infinite;
+            animation-play-state: paused;
+          }
+          .refresh-button:hover .refresh-icon {
+            animation-play-state: running;
+          }
+          @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+          }
+          .loading-overlay.active {
+            display: flex;
+          }
+          .loading-content {
+            background: rgba(31, 41, 55, 0.95);
+            border: 2px solid rgba(229, 160, 13, 0.5);
+            border-radius: 24px;
+            padding: 3rem;
+            text-align: center;
+            max-width: 400px;
+          }
+          .spinner {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1.5rem;
+            border: 4px solid rgba(229, 160, 13, 0.2);
+            border-top-color: #e5a00d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          .loading-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+          }
+          .loading-subtext {
+            font-size: 0.875rem;
+            color: #9ca3af;
+          }
+          @media (max-width: 768px) {
+            .refresh-button {
+              bottom: 1rem;
+              right: 1rem;
+              padding: 0.875rem 1.5rem;
+              font-size: 0.875rem;
+            }
+            .refresh-icon {
+              font-size: 1.25rem;
+            }
+            body {
+              padding: 1rem;
+            }
+            .libraries-grid {
+              grid-template-columns: 1fr;
+              gap: 1rem;
+            }
+          }
         </style>
       </head>
       <body>
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="loading-content">
+            <div class="spinner"></div>
+            <div class="loading-text">Actualizando bibliotecas</div>
+            <div class="loading-subtext">Obteniendo datos desde Plex...</div>
+          </div>
+        </div>
+        
         <div class="container">
           <div class="header">
             <div class="logo">
@@ -7537,7 +7653,27 @@ app.get('/library', async (req, res) => {
               </div>
             `).join('')}
           </div>
+          
+          <button class="refresh-button" onclick="refreshLibraries()">
+            <span class="refresh-icon">🔄</span>
+            <span>Actualizar Cambios</span>
+          </button>
         </div>
+        
+        <script>
+          function refreshLibraries() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.classList.add('active');
+            
+            // Forzar recarga limpiando cache del navegador
+            const currentUrl = window.location.href;
+            const url = new URL(currentUrl);
+            url.searchParams.set('_refresh', Date.now());
+            
+            // Recargar la página con parámetro único para evitar cache
+            window.location.href = url.toString();
+          }
+        </script>
       </body>
       </html>
     `);
