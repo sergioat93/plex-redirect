@@ -5318,18 +5318,6 @@ app.get('/browse', async (req, res) => {
       const summaryMatch = fullTag.match(/summary="([^"]*)"/);
       const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
       
-      // Debug temporal: mostrar ratings de los primeros 5 items
-      if (items.length < 5) {
-        console.log(`[/browse] Item "${titleMatch ? titleMatch[1] : 'N/A'}": audienceRating="${audienceRatingMatch ? audienceRatingMatch[1] : 'NO EXISTE'}", rating="${ratingMatch ? ratingMatch[1] : 'NO EXISTE'}"`);
-      }
-      
-      // Debug: mostrar XML completo del primer item SIN rating
-      if (!ratingMatch && items.length === 0) {
-        console.log('[/browse] ========== XML COMPLETO DEL PRIMER ITEM SIN RATING ==========');
-        console.log(fullTag);
-        console.log('[/browse] ====================================================');
-      }
-      
       if (ratingKeyMatch && titleMatch) {
         // Extraer géneros de este item
         const itemGenres = [];
@@ -5352,13 +5340,26 @@ app.get('/browse', async (req, res) => {
           itemCountries.push(coMatch[1]);
         }
         
+        // Obtener rating: primero del cache de TMDB, luego de Plex
+        let itemRating = '0';
+        const ratingCacheKey = `plex_rating_${ratingKeyMatch[1]}`;
+        const cachedRating = tmdbCache.get(ratingCacheKey);
+        
+        if (cachedRating) {
+          // Usar rating de TMDB del cache
+          itemRating = cachedRating;
+        } else if (ratingMatch) {
+          // Usar rating de Plex
+          itemRating = parseFloat(ratingMatch[1]).toFixed(1);
+        }
+        
         items.push({
           ratingKey: ratingKeyMatch[1],
           title: titleMatch[1],
           year: yearMatch ? yearMatch[1] : '',
           thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
           tmdbId: tmdbMatch ? tmdbMatch[1] : '',
-          rating: ratingMatch ? parseFloat(ratingMatch[1]).toFixed(1) : '0',
+          rating: itemRating,
           summary: summaryMatch ? summaryMatch[1] : '',
           addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
           genres: itemGenres,
@@ -5368,24 +5369,11 @@ app.get('/browse', async (req, res) => {
       }
     }
 
-    // Debug: Contar cuántos items tienen rating válido
-    const itemsWithRating = items.filter(i => i.rating && i.rating !== '0' && parseFloat(i.rating) > 0);
+    // Identificar items sin rating para procesamiento background
     const itemsWithoutRating = items.filter(i => !i.rating || i.rating === '0' || parseFloat(i.rating) === 0);
-    console.log(`[/browse] Total items: ${items.length}, Con rating: ${itemsWithRating.length}, Sin rating: ${itemsWithoutRating.length}`);
-    if (itemsWithoutRating.length > 0) {
-      console.log(`[/browse] Primeros 3 sin rating:`, itemsWithoutRating.slice(0, 3).map(i => `"${i.title}" (rating=${i.rating})`));
-      
-      // Mostrar XML completo del primero sin rating
-      console.log('[/browse] ========== BUSCANDO XML DEL PRIMER ITEM SIN RATING ==========');
-      const firstWithoutRating = itemsWithoutRating[0];
-      const firstIndex = xmlData.indexOf(`ratingKey="${firstWithoutRating.ratingKey}"`);
-      if (firstIndex !== -1) {
-        const xmlStart = xmlData.lastIndexOf('<', firstIndex);
-        const xmlEnd = xmlData.indexOf('>', firstIndex + 200);
-        console.log(xmlData.substring(xmlStart, xmlEnd + 1));
-      }
-      console.log('[/browse] ====================================================');
-    }
+    const itemsWithValidRating = items.filter(i => i.rating && i.rating !== '0' && parseFloat(i.rating) > 0);
+    
+    console.log(`[/browse] Items: ${items.length} total, ${itemsWithValidRating.length} con rating, ${itemsWithoutRating.length} sin rating`);
 
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
@@ -5437,6 +5425,13 @@ app.get('/browse', async (req, res) => {
       for (const match of leafCountMatches) {
         totalEpisodes += parseInt(match[1]) || 0;
       }
+    }
+    
+    // Iniciar procesamiento background de ratings faltantes
+    if (itemsWithoutRating.length > 0) {
+      setImmediate(() => {
+        fetchMissingRatingsBackground(itemsWithoutRating, libraryType, accessToken, baseURI);
+      });
     }
     
     res.send(`
@@ -7319,6 +7314,73 @@ app.get('/browse', async (req, res) => {
     res.status(500).send('Error al obtener el contenido de la biblioteca');
   }
 });
+
+// Función para obtener ratings faltantes en background
+async function fetchMissingRatingsBackground(itemsWithoutRating, libraryType, accessToken, baseURI) {
+  const startTime = Date.now();
+  console.log(`[Background] Iniciando búsqueda de ${itemsWithoutRating.length} ratings faltantes...`);
+  
+  const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
+  const batchSize = 40; // Límite de TMDB: 40 req/10s
+  const delayMs = 10000; // 10 segundos
+  let processed = 0;
+  let found = 0;
+  let notFound = 0;
+  
+  // Procesar en lotes
+  for (let i = 0; i < itemsWithoutRating.length; i += batchSize) {
+    const batch = itemsWithoutRating.slice(i, i + batchSize);
+    const promises = batch.map(async (item) => {
+      try {
+        // Buscar por título y año en TMDB
+        const searchUrl = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(item.title)}&year=${item.year}`;
+        const cacheKey = `tmdb_search_${endpoint}_${item.title}_${item.year}`;
+        
+        let searchData = tmdbCache.get(cacheKey);
+        if (!searchData) {
+          searchData = await httpsGet(searchUrl);
+          if (searchData) {
+            tmdbCache.set(cacheKey, searchData);
+          }
+        }
+        
+        if (searchData?.results && searchData.results.length > 0) {
+          const result = searchData.results[0];
+          const rating = result.vote_average;
+          if (rating && rating > 0) {
+            // Guardar rating en cache asociado al item
+            const ratingCacheKey = `plex_rating_${item.ratingKey}`;
+            tmdbCache.set(ratingCacheKey, rating.toFixed(1));
+            found++;
+            return { title: item.title, rating: rating.toFixed(1) };
+          }
+        }
+        notFound++;
+        return null;
+      } catch (error) {
+        notFound++;
+        return null;
+      }
+    });
+    
+    await Promise.all(promises);
+    processed += batch.length;
+    
+    // Log de progreso cada 100 items
+    if (processed % 100 === 0 || processed === itemsWithoutRating.length) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[Background] Progreso: ${processed}/${itemsWithoutRating.length} (${found} encontrados, ${notFound} no encontrados) - ${elapsed}s`);
+    }
+    
+    // Esperar antes del siguiente lote (excepto en el último)
+    if (i + batchSize < itemsWithoutRating.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[Background] ✅ Completado: ${found} ratings encontrados de ${itemsWithoutRating.length} items en ${totalTime}s`);
+}
 
 // Ruta para mostrar las bibliotecas disponibles
 app.get('/library', async (req, res) => {
