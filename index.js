@@ -5994,10 +5994,10 @@ app.get('/browse', async (req, res) => {
           .movie-grid.list-view .movie-title { font-size: 1.25rem; font-weight: 700; order: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .movie-grid.list-view .movie-year.list-only { display: inline; color: var(--text-secondary); font-weight: 400; font-size: 1.25rem; }
           .movie-grid.list-view .movie-year.grid-only { display: none; }
-          .movie-grid.list-view .movie-meta { display: flex; flex-direction: row; align-items: center; gap: 1rem; font-size: 0.875rem; order: 2; flex-wrap: wrap; }
-          .movie-grid.list-view .movie-rating { color: var(--primary-color); display: flex; align-items: center; gap: 0.35rem; font-weight: 600; }
-          .movie-grid.list-view .movie-genres { color: var(--text-secondary); font-size: 0.875rem; font-weight: 400; display: inline !important; }
-          .movie-grid.list-view .movie-overview { display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; order: 3; opacity: 0.8; }
+          .movie-grid.list-view .movie-meta { display: flex; flex-direction: row; align-items: center; gap: 1rem; font-size: 0.875rem; order: 2; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 100%; }
+          .movie-grid.list-view .movie-rating { color: var(--primary-color); display: flex; align-items: center; gap: 0.35rem; font-weight: 600; flex-shrink: 0; }
+          .movie-grid.list-view .movie-genres { color: var(--text-secondary); font-size: 0.875rem; font-weight: 400; display: inline !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+          .movie-grid.list-view .movie-overview { display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; order: 3; opacity: 0.8; text-overflow: ellipsis; }
           .movie-grid.list-view .movie-overlay { display: none; }
           
           /* Responsive */
