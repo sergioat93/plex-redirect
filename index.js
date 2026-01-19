@@ -5356,6 +5356,23 @@ app.get('/browse', async (req, res) => {
       }
     }
 
+    // Actualizar ratings desde TMDB para películas con tmdbId
+    if (libraryType === 'movie') {
+      await Promise.all(items.map(async (item) => {
+        if (item.tmdbId) {
+          try {
+            const tmdbUrl = `https://api.themoviedb.org/3/movie/${item.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+            const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${item.tmdbId}`);
+            if (tmdbData && tmdbData.vote_average) {
+              item.rating = tmdbData.vote_average.toFixed(1);
+            }
+          } catch (error) {
+            // Mantener rating de Plex si falla TMDB
+          }
+        }
+      }));
+    }
+
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
     const uniqueGenres = Array.from(allGenres).sort();
