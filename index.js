@@ -5450,54 +5450,22 @@ app.get('/browse', async (req, res) => {
   
   try {
     let items = [];
-    let shouldFetchFromPlex = false;
     let xmlData = null;
     
-    // PASO 1: Intentar cargar desde MongoDB
-    if (itemsCollection && !_refresh) {
+    // PASO 1: Cargar datos de MongoDB en paralelo (para merge posterior)
+    let dbItemsMap = new Map();
+    if (itemsCollection) {
       const dbItems = await getItemsFromDB(baseURI, libraryKey);
-      
       if (dbItems && dbItems.length > 0) {
-        console.log(`[/browse] ✅ Cargando ${dbItems.length} items desde MongoDB`);
-        
-        // Convertir documentos de MongoDB a formato esperado por frontend
-        items = dbItems.map(doc => ({
-          ratingKey: doc.ratingKey,
-          title: doc.title,
-          year: doc.year || '',
-          thumb: doc.thumb || '',
-          tmdbId: doc.tmdbId || '',
-          rating: doc.ratingTMDB || doc.ratingPlex || '0',
-          summary: doc.summary || '',
-          addedAt: doc.addedAt || 0,
-          genres: doc.genresTMDB || doc.genresPlex || [],
-          collections: doc.collectionsTMDB || doc.collectionsPlex || [],
-          countries: doc.countriesPlex || []
-        }));
-        
-        // Verificar si hay items pendientes de scrapeo
-        const stats = await getScrapingStats(baseURI, libraryKey);
-        if (stats.pending > 0) {
-          console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items pendientes de scrapeo TMDB`);
-          // Iniciar scrapeo en background si no está corriendo
-          setImmediate(() => {
-            fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
-          });
-        } else {
-          console.log(`[/browse] ✅ Todos los items tienen datos de TMDB`);
-        }
-      } else {
-        shouldFetchFromPlex = true;
-        console.log('[/browse] 📡 No hay datos en MongoDB, consultando Plex...');
+        console.log(`[/browse] 📦 ${dbItems.length} items en MongoDB (para merge con Plex)`);
+        dbItems.forEach(doc => {
+          dbItemsMap.set(doc.ratingKey, doc);
+        });
       }
-    } else {
-      shouldFetchFromPlex = true;
-      if (_refresh) console.log('[/browse] 🔄 Refresh solicitado, consultando Plex...');
-      if (!itemsCollection) console.log('[/browse] ⚠️  MongoDB no configurada, modo legacy');
     }
     
-    // PASO 2: Obtener de Plex si es necesario
-    if (shouldFetchFromPlex) {
+    // PASO 2: SIEMPRE obtener de Plex para tener lista completa
+    {
       const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
       xmlData = await httpsGetXML(contentUrl);
       
@@ -5555,14 +5523,20 @@ app.get('/browse', async (req, res) => {
           
           const itemRatingPlex = ratingMatch ? parseFloat(ratingMatch[1]) : null;
           
-          // Preparar para frontend
+          // MERGE: Verificar si hay datos de MongoDB para este item
+          const dbItem = dbItemsMap.get(ratingKeyMatch[1]);
+          const finalRating = dbItem?.ratingTMDB 
+            ? dbItem.ratingTMDB.toFixed(1) 
+            : (itemRatingPlex ? itemRatingPlex.toFixed(1) : '0');
+          
+          // Preparar para frontend (priorizar TMDB si existe en MongoDB)
           items.push({
             ratingKey: ratingKeyMatch[1],
             title: titleMatch[1],
             year: yearMatch ? yearMatch[1] : '',
             thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
             tmdbId: tmdbMatch ? tmdbMatch[1] : '',
-            rating: itemRatingPlex ? itemRatingPlex.toFixed(1) : '0',
+            rating: finalRating,
             summary: summaryMatch ? summaryMatch[1] : '',
             addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
             genres: itemGenres,
@@ -5594,17 +5568,30 @@ app.get('/browse', async (req, res) => {
         }
       }
       
-      // Guardar en MongoDB en background
+      // Guardar/actualizar en MongoDB en background
       if (itemsCollection && itemsToSave.length > 0) {
-        console.log(`[/browse] 💾 Guardando ${itemsToSave.length} items en MongoDB...`);
+        const existingCount = dbItemsMap.size;
+        const newCount = itemsToSave.length - existingCount;
+        
+        if (newCount > 0) {
+          console.log(`[/browse] 💾 Guardando ${newCount} items nuevos en MongoDB...`);
+        } else {
+          console.log(`[/browse] ✅ ${itemsToSave.length} items ya en MongoDB`);
+        }
+        
         setImmediate(async () => {
           for (const item of itemsToSave) {
             await saveItemToDB(item);
           }
-          console.log(`[/browse] ✅ Items guardados en MongoDB`);
           
-          // Iniciar scrapeo de TMDB
-          fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
+          // Verificar cuántos necesitan scrapeo
+          const stats = await getScrapingStats(baseURI, libraryKey);
+          console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items pendientes de scrapeo TMDB`);
+          
+          if (stats.pending > 0) {
+            // Iniciar scrapeo de TMDB
+            fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
+          }
         });
       }
     }
