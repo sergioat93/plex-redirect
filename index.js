@@ -5318,6 +5318,11 @@ app.get('/browse', async (req, res) => {
       const summaryMatch = fullTag.match(/summary="([^"]*)"/);
       const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
       
+      // Debug temporal: mostrar ratings de los primeros 5 items
+      if (items.length < 5) {
+        console.log(`[/browse] Item "${titleMatch ? titleMatch[1] : 'N/A'}": audienceRating="${audienceRatingMatch ? audienceRatingMatch[1] : 'NO EXISTE'}", rating="${ratingMatch ? ratingMatch[1] : 'NO EXISTE'}"`);
+      }
+      
       if (ratingKeyMatch && titleMatch) {
         // Extraer géneros de este item
         const itemGenres = [];
@@ -5351,7 +5356,15 @@ app.get('/browse', async (req, res) => {
           addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
           genres: itemGenres,
           collections: itemCollections,
-          countries: itemCountries
+       Debug: Contar cuántos items tienen rating válido
+    const itemsWithRating = items.filter(i => i.rating && i.rating !== '0' && parseFloat(i.rating) > 0);
+    const itemsWithoutRating = items.filter(i => !i.rating || i.rating === '0' || parseFloat(i.rating) === 0);
+    console.log(`[/browse] Total items: ${items.length}, Con rating: ${itemsWithRating.length}, Sin rating: ${itemsWithoutRating.length}`);
+    if (itemsWithoutRating.length > 0) {
+      console.log(`[/browse] Primeros 3 sin rating:`, itemsWithoutRating.slice(0, 3).map(i => `"${i.title}" (rating=${i.rating})`));
+    }
+
+    //    countries: itemCountries
         });
       }
     }
