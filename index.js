@@ -1,5 +1,6 @@
 const express = require('express');
 const https = require('https');
+const { MongoClient } = require('mongodb');
 // const compression = require('compression');
 // const NodeCache = require('node-cache');
 const app = express();
@@ -7,6 +8,39 @@ const app = express();
 // ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
 // Obtén una gratis en: https://www.themoviedb.org/settings/api
 const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
+
+// ========================================
+// CONEXIÓN A MONGODB ATLAS
+// ========================================
+
+let db;
+let itemsCollection;
+let itemDetailsCollection;
+
+if (process.env.MONGODB_URI) {
+  const client = new MongoClient(process.env.MONGODB_URI);
+  
+  (async () => {
+    try {
+      await client.connect();
+      db = client.db('plex-redirect');
+      itemsCollection = db.collection('items');
+      itemDetailsCollection = db.collection('item_details');
+      
+      // Crear índices para optimizar queries
+      await itemsCollection.createIndex({ baseURI: 1, libraryKey: 1 });
+      await itemsCollection.createIndex({ ratingKey: 1 }, { unique: true });
+      await itemsCollection.createIndex({ baseURI: 1, libraryKey: 1, tmdbScraped: 1 });
+      await itemsCollection.createIndex({ baseURI: 1, libraryKey: 1, addedAt: -1 });
+      
+      console.log('✅ Conectado a MongoDB Atlas');
+    } catch (error) {
+      console.error('❌ Error conectando a MongoDB:', error);
+    }
+  })();
+} else {
+  console.warn('⚠️  MONGODB_URI no configurada, funcionando sin persistencia');
+}
 
 // ========================================
 // OPTIMIZACIONES DE RENDIMIENTO
@@ -240,6 +274,148 @@ async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
         console.error('Error fetching TMDB season data:', error);
         return null;
     }
+}
+
+// ========================================
+// FUNCIONES HELPER PARA MONGODB
+// ========================================
+
+// Guardar/actualizar item en MongoDB
+async function saveItemToDB(item) {
+  if (!itemsCollection) return;
+  
+  try {
+    await itemsCollection.updateOne(
+      { ratingKey: item.ratingKey },
+      {
+        $set: {
+          baseURI: item.baseURI,
+          libraryKey: item.libraryKey,
+          libraryType: item.libraryType,
+          tmdbId: item.tmdbId || null,
+          title: item.title,
+          year: item.year || null,
+          summary: item.summary || null,
+          thumb: item.thumb || null,
+          addedAt: item.addedAt || null,
+          ratingPlex: item.ratingPlex || null,
+          genresPlex: item.genres || [],
+          countriesPlex: item.countries || [],
+          collectionsPlex: item.collections || [],
+          childCount: item.childCount || null,
+          leafCount: item.leafCount || null,
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          ratingKey: item.ratingKey,
+          tmdbScraped: false,
+          createdAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    console.error('Error guardando item en MongoDB:', error);
+  }
+}
+
+// Actualizar datos de TMDB de un item
+async function updateTMDBData(ratingKey, tmdbRating, tmdbGenres = null, tmdbCollections = null) {
+  if (!itemsCollection) return;
+  
+  try {
+    const updateData = {
+      ratingTMDB: tmdbRating,
+      tmdbScraped: true,
+      updatedAt: new Date()
+    };
+    
+    if (tmdbGenres) updateData.genresTMDB = tmdbGenres;
+    if (tmdbCollections) updateData.collectionsTMDB = tmdbCollections;
+    
+    await itemsCollection.updateOne(
+      { ratingKey },
+      { $set: updateData }
+    );
+  } catch (error) {
+    console.error('Error actualizando datos TMDB:', error);
+  }
+}
+
+// Obtener items de MongoDB
+async function getItemsFromDB(baseURI, libraryKey) {
+  if (!itemsCollection) return null;
+  
+  try {
+    const items = await itemsCollection
+      .find({ baseURI, libraryKey })
+      .sort({ addedAt: -1 })
+      .toArray();
+    
+    return items.length > 0 ? items : null;
+  } catch (error) {
+    console.error('Error obteniendo items de MongoDB:', error);
+    return null;
+  }
+}
+
+// Obtener items pendientes de scrapeo TMDB
+async function getItemsPendingTMDB(baseURI, libraryKey, limit = 2500) {
+  if (!itemsCollection) return [];
+  
+  try {
+    const items = await itemsCollection
+      .find({ 
+        baseURI, 
+        libraryKey, 
+        tmdbScraped: false 
+      })
+      .sort({ addedAt: -1 })
+      .limit(limit)
+      .toArray();
+    
+    return items;
+  } catch (error) {
+    console.error('Error obteniendo items pendientes:', error);
+    return [];
+  }
+}
+
+// Obtener fecha de última actualización
+async function getLastUpdate(baseURI, libraryKey) {
+  if (!itemsCollection) return null;
+  
+  try {
+    const result = await itemsCollection
+      .find({ baseURI, libraryKey })
+      .sort({ addedAt: -1 })
+      .limit(1)
+      .toArray();
+    
+    return result[0]?.addedAt || null;
+  } catch (error) {
+    console.error('Error obteniendo última actualización:', error);
+    return null;
+  }
+}
+
+// Contar items scrapeados vs pendientes
+async function getScrapingStats(baseURI, libraryKey) {
+  if (!itemsCollection) return { total: 0, scraped: 0, pending: 0 };
+  
+  try {
+    const total = await itemsCollection.countDocuments({ baseURI, libraryKey });
+    const scraped = await itemsCollection.countDocuments({ baseURI, libraryKey, tmdbScraped: true });
+    
+    return {
+      total,
+      scraped,
+      pending: total - scraped
+    };
+  } catch (error) {
+    console.error('Error obteniendo estadísticas:', error);
+    return { total: 0, scraped: 0, pending: 0 };
+  }
 }
 
 // Función para obtener datos completos de película desde TMDB
@@ -7380,6 +7556,116 @@ async function fetchMissingRatingsBackground(itemsWithoutRating, libraryType, ac
   
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[Background] ✅ Completado: ${found} ratings encontrados de ${itemsWithoutRating.length} items en ${totalTime}s`);
+}
+
+// Función para obtener ratings faltantes en background usando MongoDB
+async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType) {
+  if (!itemsCollection) {
+    console.log('[Background] MongoDB no configurada, usando método legacy');
+    return;
+  }
+  
+  const startTime = Date.now();
+  const itemsPending = await getItemsPendingTMDB(baseURI, libraryKey);
+  
+  if (itemsPending.length === 0) {
+    console.log('[Background] ✅ No hay items pendientes de scrapeo');
+    return;
+  }
+  
+  console.log(`[Background] 🚀 Iniciando búsqueda de ${itemsPending.length} ratings faltantes...`);
+  
+  const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
+  const batchSize = 40; // Límite de TMDB: 40 req/10s
+  const delayMs = 10000; // 10 segundos
+  let processed = 0;
+  let found = 0;
+  let notFound = 0;
+  
+  // Procesar en lotes
+  for (let i = 0; i < itemsPending.length; i += batchSize) {
+    const batch = itemsPending.slice(i, i + batchSize);
+    const promises = batch.map(async (item) => {
+      try {
+        // Buscar por título y año en TMDB
+        const searchUrl = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(item.title)}&year=${item.year}`;
+        const searchData = await httpsGet(searchUrl, true, searchUrl);
+        
+        if (searchData?.results && searchData.results.length > 0) {
+          const result = searchData.results[0];
+          const rating = result.vote_average;
+          
+          if (rating && rating > 0) {
+            // Extraer géneros de TMDB
+            const tmdbGenres = result.genre_ids ? 
+              result.genre_ids.map(id => getGenreName(id, libraryType)) : 
+              [];
+            
+            // Actualizar en MongoDB
+            await updateTMDBData(
+              item.ratingKey,
+              parseFloat(rating.toFixed(1)),
+              tmdbGenres.length > 0 ? tmdbGenres : null,
+              null // Colecciones se obtienen en endpoint /movie individual
+            );
+            
+            found++;
+            return { title: item.title, rating: rating.toFixed(1) };
+          }
+        }
+        
+        // Marcar como scrapeado aunque no tenga rating
+        await itemsCollection.updateOne(
+          { ratingKey: item.ratingKey },
+          { $set: { tmdbScraped: true, updatedAt: new Date() } }
+        );
+        notFound++;
+        return null;
+      } catch (error) {
+        console.error(`[Background] Error procesando "${item.title}":`, error.message);
+        notFound++;
+        return null;
+      }
+    });
+    
+    await Promise.all(promises);
+    processed += batch.length;
+    
+    // Log de progreso cada 100 items
+    if (processed % 100 === 0 || processed === itemsPending.length) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[Background] 📊 Progreso: ${processed}/${itemsPending.length} (${found} encontrados, ${notFound} no encontrados) - ${elapsed}s`);
+    }
+    
+    // Esperar antes del siguiente lote (excepto en el último)
+    if (i + batchSize < itemsPending.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[Background] ✅ Completado: ${found} ratings encontrados de ${itemsPending.length} items en ${totalTime}s`);
+}
+
+// Helper para convertir genre_ids de TMDB a nombres
+function getGenreName(genreId, type) {
+  const movieGenres = {
+    28: 'Acción', 12: 'Aventura', 16: 'Animación', 35: 'Comedia',
+    80: 'Crimen', 99: 'Documental', 18: 'Drama', 10751: 'Familia',
+    14: 'Fantasía', 36: 'Historia', 27: 'Terror', 10402: 'Música',
+    9648: 'Misterio', 10749: 'Romance', 878: 'Ciencia ficción',
+    10770: 'Película de TV', 53: 'Suspense', 10752: 'Bélica', 37: 'Western'
+  };
+  
+  const tvGenres = {
+    10759: 'Acción y Aventura', 16: 'Animación', 35: 'Comedia', 80: 'Crimen',
+    99: 'Documental', 18: 'Drama', 10751: 'Familia', 10762: 'Infantil',
+    9648: 'Misterio', 10763: 'Noticias', 10764: 'Reality', 10765: 'Sci-Fi y Fantasía',
+    10766: 'Telenovela', 10767: 'Talk Show', 10768: 'Guerra y Política', 37: 'Western'
+  };
+  
+  const genres = type === 'movie' ? movieGenres : tvGenres;
+  return genres[genreId] || 'Desconocido';
 }
 
 // Ruta para mostrar las bibliotecas disponibles
