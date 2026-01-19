@@ -1,20 +1,60 @@
 const express = require('express');
 const https = require('https');
+// const compression = require('compression');
+// const NodeCache = require('node-cache');
 const app = express();
 
 // ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
 // Obtén una gratis en: https://www.themoviedb.org/settings/api
 const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
 
-// Función helper para hacer requests HTTPS que devuelve JSON
-function httpsGet(url) {
+// ========================================
+// OPTIMIZACIONES DE RENDIMIENTO
+// ========================================
+
+// 1. Compresión gzip/brotli para todas las respuestas
+// app.use(compression());
+
+// 2. Cache en memoria (node-cache)
+// TTL: 24 horas para TMDB, 1 hora para XML de Plex
+// const tmdbCache = new NodeCache({ stdTTL: 86400, checkperiod: 3600 }); // 24h
+// const plexCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 }); // 1h
+
+// Cache simple en memoria sin dependencias
+const tmdbCache = new Map();
+const plexCache = new Map();
+
+// 3. Connection pooling - reutilizar conexiones HTTPS
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 60000,
+  keepAliveMsecs: 30000
+});
+
+// Función helper para hacer requests HTTPS que devuelve JSON (con cache)
+function httpsGet(url, useCache = true, cacheKey = null) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
+        // Intentar obtener del cache si está habilitado
+        const key = cacheKey || url;
+        if (useCache) {
+            const cached = tmdbCache.get(key);
+            if (cached) return resolve(cached);
+        }
+        
+        https.get(url, { agent: httpsAgent }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
-                    resolve(JSON.parse(data));
+                    const parsed = JSON.parse(data);
+                    if (useCache) {
+                        tmdbCache.set(key, parsed);
+                        // Limpiar cache después de 24 horas
+                        setTimeout(() => tmdbCache.delete(key), 86400000);
+                    }
+                    resolve(parsed);
                 } catch (e) {
                     reject(e);
                 }
@@ -23,15 +63,65 @@ function httpsGet(url) {
     });
 }
 
-// Función helper para hacer requests HTTPS que devuelve texto plano (XML)
-function httpsGetXML(url) {
+// Función helper para hacer requests HTTPS que devuelve texto plano (XML) (con cache)
+function httpsGetXML(url, useCache = true) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
+        // Intentar obtener del cache Plex si está habilitado
+        if (useCache) {
+            const cached = plexCache.get(url);
+            if (cached) return resolve(cached);
+        }
+        
+        https.get(url, { agent: httpsAgent }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
-            res.on('end', () => resolve(data));
+            res.on('end', () => {
+                if (useCache) {
+                    plexCache.set(url, data);
+                    // Limpiar cache después de 1 hora
+                    setTimeout(() => plexCache.delete(url), 3600000);
+                }
+                resolve(data);
+            });
         }).on('error', reject);
     });
+}
+
+// Función para decodificar HTML entities
+function decodeHtmlEntities(text) {
+    if (!text) return text;
+    const entities = {
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#39;': "'",
+        '&#225;': 'á',
+        '&#233;': 'é',
+        '&#237;': 'í',
+        '&#243;': 'ó',
+        '&#250;': 'ú',
+        '&#193;': 'Á',
+        '&#201;': 'É',
+        '&#205;': 'Í',
+        '&#211;': 'Ó',
+        '&#218;': 'Ú',
+        '&#241;': 'ñ',
+        '&#209;': 'Ñ',
+        '&#191;': '¿',
+        '&#161;': '¡'
+    };
+    
+    // Reemplazar entidades nombradas
+    let decoded = text;
+    for (const [entity, char] of Object.entries(entities)) {
+        decoded = decoded.replace(new RegExp(entity, 'g'), char);
+    }
+    
+    // Reemplazar entidades numéricas generales &#XXXX;
+    decoded = decoded.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec));
+    
+    return decoded;
 }
 
 // Función simple para parsear XML de Plex (sin dependencias externas)
@@ -41,6 +131,18 @@ function parseXML(xmlString) {
             Metadata: []
         }
     };
+    
+    // Extraer atributos del MediaContainer
+    const mediaContainerMatch = xmlString.match(/<MediaContainer\s+([^>]*?)>/);
+    if (mediaContainerMatch) {
+        const containerAttrs = mediaContainerMatch[1];
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(containerAttrs)) !== null) {
+            const [, key, value] = attrMatch;
+            result.MediaContainer[key] = value;
+        }
+    }
     
     // Extraer tag Video principal (solo el primer nivel, no los anidados)
     const videoTagRegex = /<Video\s+([^>]*?)(?:>[\s\S]*?<\/Video>|\/?>)/g;
@@ -311,7 +413,7 @@ app.get('/', (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>Iniciando descarga - Plex</title>
+      <title>Iniciando descarga - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -644,7 +746,7 @@ app.get('/', (req, res) => {
                 <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H9.5v-2h-2v2H6V7h1.5v2.5h2V7H11v10zm5 0h-1.75l-1.75-2.25V17H13V7h1.5v2.25L16.25 7H18l-2.25 3L18 13v4z"/>
               </svg>
             </div>
-            <span class="logo-text">Plex</span>
+            <span class="logo-text">Infinity Scrap</span>
           </div>
         </div>
         
@@ -688,6 +790,8 @@ app.get('/episode', async (req, res) => {
   const tmdbId = req.query.tmdbId;
   const imdbId = req.query.imdbId;
   const parentRatingKey = req.query.parentRatingKey;
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
 
   if (!episodeRatingKey || !accessToken || !baseURI) {
     return res.status(400).send('Faltan parámetros requeridos: episodeRatingKey, accessToken, baseURI');
@@ -698,30 +802,23 @@ app.get('/episode', async (req, res) => {
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
     
-    // DEBUG: Log de parámetros recibidos
-    console.log('=== DEBUG EPISODE - INICIO ===');
-    console.log('Parámetros recibidos:');
-    console.log('  episodeRatingKey:', episodeRatingKey);
-    console.log('  seasonRatingKey:', seasonRatingKey);
-    console.log('  seasonNumber:', seasonNumber);
-    console.log('  episodeNumber:', episodeNumber);
-    console.log('  seriesTitle:', seriesTitle);
-    console.log('  baseURI:', baseURI);
-    console.log('  accessToken:', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
-    
     // Obtener metadata del episodio desde Plex
     const episodeUrl = `${baseURI}/library/metadata/${episodeRatingKey}?X-Plex-Token=${accessToken}`;
-    console.log('URL de Plex:', episodeUrl);
-    
     const xmlData = await httpsGetXML(episodeUrl);
-    console.log('XML recibido (primeros 500 chars):', xmlData.substring(0, 500));
-    
     const episodeData = parseXML(xmlData);
-    console.log('Datos parseados - Metadata count:', episodeData?.MediaContainer?.Metadata?.length || 0);
 
     if (!episodeData || !episodeData.MediaContainer || !episodeData.MediaContainer.Metadata || episodeData.MediaContainer.Metadata.length === 0) {
-      console.log('ERROR: No se encontró información del episodio en el XML');
       return res.status(404).send('No se encontró información del episodio');
+    }
+
+    // Extraer libraryKey y libraryTitle del MediaContainer si no se proporcionaron
+    if (!libraryKey && episodeData.MediaContainer.librarySectionID) {
+      libraryKey = episodeData.MediaContainer.librarySectionID;
+      console.log('[/episode] libraryKey extraído del XML:', libraryKey);
+    }
+    if (!libraryTitle && episodeData.MediaContainer.librarySectionTitle) {
+      libraryTitle = episodeData.MediaContainer.librarySectionTitle;
+      console.log('[/episode] libraryTitle extraído del XML:', libraryTitle);
     }
 
     const metadataEntries = episodeData.MediaContainer.Metadata;
@@ -731,22 +828,8 @@ app.get('/episode', async (req, res) => {
     const episode = metadataEntries[0];
     
     if (!episode) {
-      console.log('ERROR: episode es undefined después de tomar el primer elemento');
       return res.status(404).send('No se encontró información del episodio solicitado');
     }
-    
-    // DEBUG: Log detallado para verificar qué datos está devolviendo Plex
-    console.log('=== DATOS DEL EPISODIO ===');
-    console.log('episodeRatingKey solicitado:', episodeRatingKey);
-    console.log('ratingKey recibido en XML:', episode.ratingKey);
-    console.log('Título del episodio:', episode.title);
-    console.log('Descripción:', episode.summary?.substring(0, 100));
-    console.log('Temporada:', episode.parentIndex, 'Episodio:', episode.index);
-    console.log('Serie:', episode.grandparentTitle);
-    console.log('Thumb:', episode.thumb);
-    console.log('parentRatingKey:', episode.parentRatingKey);
-    console.log('grandparentRatingKey:', episode.grandparentRatingKey);
-    console.log('====================');
     
     // Extraer información del episodio
     const episodeTitle = episode.title || 'Sin título';
@@ -873,7 +956,7 @@ app.get('/episode', async (req, res) => {
     const displayPoster = tmdbEpisodeImage || episodeThumb;
 
     const tmdbUrl = tmdbId ? `https://www.themoviedb.org/tv/${tmdbId}/season/${finalSeasonNumber}/episode/${finalEpisodeNumber}` : '';
-    const backToSeasonUrl = seasonRatingKey ? `/list?seasonRatingKey=${seasonRatingKey}&accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seasonNumber=${finalSeasonNumber}&seriesTitle=${encodeURIComponent(finalSeriesTitle)}${tmdbId ? '&tmdbId=' + tmdbId : ''}${parentRatingKey ? '&parentRatingKey=' + parentRatingKey : ''}` : '';
+    const backToSeasonUrl = seasonRatingKey ? `/list?seasonRatingKey=${seasonRatingKey}&accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seasonNumber=${finalSeasonNumber}&seriesTitle=${encodeURIComponent(finalSeriesTitle)}${tmdbId ? '&tmdbId=' + tmdbId : ''}${parentRatingKey ? '&parentRatingKey=' + parentRatingKey : ''}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}` : '';
 
     // Obtener backdrop de la serie desde TMDB
     let seriesBackdrop = '';
@@ -895,7 +978,7 @@ app.get('/episode', async (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${finalSeriesTitle} - S${finalSeasonNumber}E${finalEpisodeNumber} - PlexDL</title>
+      <title>${finalSeriesTitle} - S${finalSeasonNumber}E${finalEpisodeNumber} - Infinity Scrap</title>
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <style>
         * {
@@ -915,6 +998,14 @@ app.get('/episode', async (req, res) => {
           padding: 2rem;
         }
         
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          z-index: 998;
+          cursor: pointer;
+        }
+        
         .episode-container {
           background: #282828;
           border-radius: 16px;
@@ -926,6 +1017,7 @@ app.get('/episode', async (req, res) => {
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
           scrollbar-width: thin;
           scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+          z-index: 999;
         }
         
         .episode-container::-webkit-scrollbar {
@@ -1402,6 +1494,7 @@ app.get('/episode', async (req, res) => {
       </style>
     </head>
     <body>
+      <div class="modal-overlay" onclick="window.location.href='${backToSeasonUrl}'"></div>
       <div class="episode-container">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
@@ -1419,17 +1512,17 @@ app.get('/episode', async (req, res) => {
               <div class="modal-icons-row">
                 ${tmdbUrl ? `
                   <a href="${tmdbUrl}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
                   </a>
                 ` : ''}
                 ${imdbUrl ? `
                   <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
                   </a>
                 ` : ''}
                 ${youtubeTrailerUrl ? `
                   <a href="${youtubeTrailerUrl}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
                   </a>
                 ` : ''}
               </div>
@@ -1441,7 +1534,7 @@ app.get('/episode', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              ${displayPoster ? `<img src="${displayPoster}" alt="${episodeTitle}" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E';">` : `<img src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E" alt="${episodeTitle}">`}
+              ${displayPoster ? `<img loading="lazy" src="${displayPoster}" alt="${episodeTitle}" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E';">` : `<img loading="lazy" src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ESin imagen%3C/text%3E%3C/svg%3E" alt="${episodeTitle}">`}
             </div>
             <button class="btn btn-primary" style="width: 100%;" onclick="downloadEpisode()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -1550,8 +1643,13 @@ app.get('/list', async (req, res) => {
   const seriesTitleParam = req.query.seriesTitle;
   const tmdbId = req.query.tmdbId;
   const parentRatingKey = req.query.parentRatingKey;
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 10;
+  
+  // console.log('[/list] libraryKey recibido:', libraryKey);
+  // console.log('[/list] libraryTitle recibido:', libraryTitle);
   
   let downloads = [];
   
@@ -1561,6 +1659,16 @@ app.get('/list', async (req, res) => {
       const seasonUrl = `${baseURI}/library/metadata/${seasonRatingKey}/children?X-Plex-Token=${accessToken}`;
       const xmlData = await httpsGetXML(seasonUrl);
       const seasonData = parseXML(xmlData);
+      
+      // Extraer libraryKey y libraryTitle del MediaContainer si no se proporcionaron
+      if (!libraryKey && seasonData.MediaContainer.librarySectionID) {
+        libraryKey = seasonData.MediaContainer.librarySectionID;
+        console.log('[/list] libraryKey extraído del XML:', libraryKey);
+      }
+      if (!libraryTitle && seasonData.MediaContainer.librarySectionTitle) {
+        libraryTitle = seasonData.MediaContainer.librarySectionTitle;
+        console.log('[/list] libraryTitle extraído del XML:', libraryTitle);
+      }
       
       if (seasonData && seasonData.MediaContainer && seasonData.MediaContainer.Metadata) {
         const episodes = seasonData.MediaContainer.Metadata;
@@ -1704,14 +1812,33 @@ app.get('/list', async (req, res) => {
   let imdbId = null;
   let trailerKey = null;
   
-  // Intentar mejorar datos con TMDB si disponible
-  if (seasonInfo && seasonInfo.tmdbId) {
+  // Intentar mejorar datos con TMDB
+  let tmdbIdToUse = (seasonInfo && seasonInfo.tmdbId) || tmdbId || null;
+  
+  // Si no hay tmdbId pero hay título de serie, buscar en TMDB
+  if (!tmdbIdToUse && seriesTitle) {
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(seriesTitle)}&language=es-ES`;
+      const searchResponse = await fetch(searchUrl);
+      const searchData = await searchResponse.json();
+      
+      if (searchData.results && searchData.results.length > 0) {
+        tmdbIdToUse = searchData.results[0].id;
+        console.log(`✅ TMDB ID encontrado para "${seriesTitle}": ${tmdbIdToUse}`);
+      }
+    } catch (error) {
+      console.error('Error buscando serie en TMDB:', error);
+    }
+  }
+  
+  // Obtener datos de TMDB si disponible
+  if (tmdbIdToUse) {
     try {
       // Obtener datos completos de la serie
-      const seriesData = await fetchTMDBSeriesData(seasonInfo.tmdbId);
+      const seriesData = await fetchTMDBSeriesData(tmdbIdToUse);
       
       // Obtener datos específicos de la temporada
-      const seasonData = await fetchTMDBSeasonData(seasonInfo.tmdbId, seasonNumberFromEpisode);
+      const seasonData = await fetchTMDBSeasonData(tmdbIdToUse, seasonNumberFromEpisode);
       
       if (seasonData && seasonData.overview) {
         seasonSummary = seasonData.overview;
@@ -1735,6 +1862,11 @@ app.get('/list', async (req, res) => {
         imdbId = seriesData.imdbId;
         trailerKey = seriesData.trailerKey;
       }
+      
+      // Actualizar el tmdbId en seasonInfo para uso posterior
+      if (seasonInfo) {
+        seasonInfo.tmdbId = tmdbIdToUse;
+      }
     } catch (error) {
       console.error('Error fetching TMDB data:', error);
     }
@@ -1745,7 +1877,7 @@ app.get('/list', async (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Lista de Descargas</title>
+      <title>${seriesTitle}${seasonNumberFromEpisode ? ` - Temporada ${seasonNumberFromEpisode}` : ''} - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1819,57 +1951,146 @@ app.get('/list', async (req, res) => {
         }
         
         .series-header {
-          background: rgba(30, 30, 30, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 16px;
-          padding: 40px;
+          position: relative;
+          width: 100%;
+          min-height: 480px;
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          background-color: #000;
+          display: flex;
+          flex-direction: column;
+          flex-shrink: 0;
           margin-bottom: 32px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 32px;
-          align-items: flex-start;
+          border-radius: 0;
+        }
+        
+        .series-header::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.75) 30%, rgba(0,0,0,0.95) 70%, rgba(0,0,0,0.98) 100%);
+          z-index: 1;
+        }
+        
+        .series-header-overlay {
+          position: relative;
+          z-index: 5;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          padding: 2rem;
+          padding-bottom: 0;
+        }
+        
+        .series-titles {
+          margin-bottom: 2rem;
         }
         
         .series-poster {
           width: 100%;
-          aspect-ratio: 3/4;
+          aspect-ratio: 2/3;
           border-radius: 12px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
           object-fit: cover;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+          align-self: start;
         }
         
-        .series-info h1 {
+        .series-titles h1 {
           font-size: 2.5rem;
-          font-weight: 700;
+          font-weight: 800;
+          margin: 0;
           color: #fff;
-          margin-bottom: 16px;
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+        
+        .series-titles h2 {
+          font-size: 1.5rem;
+          font-weight: 400;
+          font-style: italic;
+          margin: 0.5rem 0 0 0;
+          color: rgba(255, 255, 255, 0.9);
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+        
+        .series-content {
+          display: grid;
+          grid-template-columns: 200px 1fr;
+          gap: 2rem;
+          flex: 1;
+        }
+        
+        .series-info {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
         }
         
         .series-meta {
           display: flex;
-          gap: 16px;
-          margin-bottom: 20px;
+          gap: 0.75rem;
+          align-items: center;
           flex-wrap: wrap;
         }
         
         .meta-badge {
           background: rgba(229, 160, 13, 0.15);
           border: 1px solid rgba(229, 160, 13, 0.3);
-          padding: 8px 16px;
+          padding: 0.5rem 1rem;
           border-radius: 20px;
           font-size: 0.9rem;
           font-weight: 600;
           color: #e5a00d;
         }
         
+        .episodes-count-badge {
+          background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
+          color: #000;
+          padding: 0.5rem 1.25rem;
+          border-radius: 25px;
+          font-size: 0.95rem;
+          font-weight: 700;
+          box-shadow: 0 2px 8px rgba(229, 160, 13, 0.3);
+        }
+        
+        .series-genres {
+          display: flex;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+          margin-bottom: 1rem;
+        }
+        
+        .genre-tag {
+          background: rgba(229, 160, 13, 0.15);
+          border: 1px solid rgba(229, 160, 13, 0.3);
+          padding: 0.4rem 1rem;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #e5a00d;
+          transition: all 0.2s ease;
+        }
+        
+        .genre-tag:hover {
+          background: rgba(229, 160, 13, 0.25);
+          border-color: rgba(229, 160, 13, 0.5);
+        }
+        
         .series-description {
           color: #bbb;
           font-size: 1rem;
           line-height: 1.6;
-          margin-bottom: 24px;
-          position: relative;
+          transition: max-height 0.3s ease;
+        }
+        
+        .series-description.collapsed {
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
         
         .description-text {
@@ -1878,53 +2099,44 @@ app.get('/list', async (req, res) => {
         
         .expand-description-btn {
           background: transparent;
-          border: 1px solid rgba(229, 160, 13, 0.3);
+          border: none;
           color: #e5a00d;
-          padding: 6px 12px;
-          border-radius: 6px;
+          font-size: 0.9rem;
+          font-weight: 600;
           cursor: pointer;
-          font-size: 0.85rem;
-          transition: all 0.2s;
-          margin-top: 8px;
-          display: flex;
-          align-items: center;
-          gap: 6px;
+          padding: 0;
+          align-self: flex-start;
+          transition: opacity 0.2s;
+          margin-top: 0.5rem;
         }
         
         .expand-description-btn:hover {
-          background: rgba(229, 160, 13, 0.1);
-          border-color: rgba(229, 160, 13, 0.5);
-        }
-        
-        .expand-description-btn svg {
-          transition: transform 0.3s ease;
-        }
-        
-        .expand-description-btn.expanded svg {
-          transform: rotate(180deg);
+          opacity: 0.8;
         }
         
         .action-buttons {
           display: flex;
-          gap: 16px;
+          gap: 12px;
           flex-wrap: wrap;
+          margin-top: auto;
         }
         
         .download-season-btn, .download-page-btn {
-          padding: 14px 28px;
           background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);
           color: #000;
           border: none;
           border-radius: 12px;
+          padding: 0.75rem 1.5rem;
           font-weight: 700;
-          font-size: 1.1rem;
+          font-size: 1rem;
           cursor: pointer;
           transition: all 0.3s ease;
           display: flex;
           align-items: center;
-          gap: 10px;
-          white-space: nowrap;
+          justify-content: center;
+          gap: 0.75rem;
           box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3);
+          width: 100%;
         }
         
         .download-page-btn {
@@ -1943,6 +2155,10 @@ app.get('/list', async (req, res) => {
         
         .download-page-btn:hover {
           box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
+        }
+        
+        .download-season-btn i, .download-page-btn i {
+          font-size: 1.25rem;
         }
         
         .download-season-btn:disabled, .download-page-btn:disabled {
@@ -2307,9 +2523,24 @@ app.get('/list', async (req, res) => {
         
         @media (max-width: 968px) {
           .series-header {
+            min-height: 400px;
+          }
+          
+          .series-header-overlay {
+            padding: 1.5rem;
+          }
+          
+          .series-titles h1 {
+            font-size: 2rem;
+          }
+          
+          .series-titles h2 {
+            font-size: 1.2rem;
+          }
+          
+          .series-content {
             grid-template-columns: 1fr;
             text-align: center;
-            padding: 24px;
           }
           
           .series-poster {
@@ -2317,20 +2548,9 @@ app.get('/list', async (req, res) => {
             margin: 0 auto;
           }
           
-          .series-meta, .action-buttons {
+          .series-meta, .action-buttons, .series-genres {
             justify-content: center;
             flex-wrap: wrap;
-          }
-          
-          .action-buttons {
-            flex-direction: column;
-            align-items: center;
-          }
-          
-          .download-season-btn, .download-page-btn {
-            width: 100%;
-            max-width: 300px;
-            justify-content: center;
           }
           
           .pagination-controls {
@@ -2391,11 +2611,19 @@ app.get('/list', async (req, res) => {
           }
           
           .series-header {
-            padding: 16px;
+            min-height: 350px;
           }
           
-          .series-info h1 {
-            font-size: 1.8rem;
+          .series-header-overlay {
+            padding: 1rem;
+          }
+          
+          .series-titles h1 {
+            font-size: 1.5rem;
+          }
+          
+          .series-titles h2 {
+            font-size: 1rem;
           }
           
           .pagination-nav {
@@ -2415,9 +2643,14 @@ app.get('/list', async (req, res) => {
             font-size: 1.1rem;
           }
           
-          .meta-badge {
+          .meta-badge, .episodes-count-badge {
             font-size: 0.8rem;
-            padding: 6px 12px;
+            padding: 0.4rem 0.8rem;
+          }
+          
+          .download-season-btn, .download-page-btn {
+            font-size: 0.9rem;
+            padding: 0.65rem 1.25rem;
           }
         }
       </style>
@@ -2427,36 +2660,39 @@ app.get('/list', async (req, res) => {
         let currentIndex = 0;
         const episodesPerLoad = 20;
         const totalEpisodes = allEpisodes.length;
+        const libraryKey = '${libraryKey}';
+        const libraryTitle = '${libraryTitle}';
         
-        // Función para volver a la página de serie
-        async function goBackToSeries() {
-          try {
-            // Hacer petición a la API para obtener datos de temporadas
-            const apiParams = new URLSearchParams();
-            apiParams.set('accessToken', '${accessToken}');
-            apiParams.set('baseURI', '${baseURI}');
-            apiParams.set('seriesId', '${parentRatingKey}');
-            
-            const response = await fetch(\`/api/seasons?\${apiParams.toString()}\`);
-            const data = await response.json();
-            
-            // Construir URL para la página de series con todos los datos
-            const params = new URLSearchParams();
-            params.set('accessToken', '${accessToken}');
-            params.set('baseURI', '${baseURI}');
-            params.set('seriesId', '${parentRatingKey}');
-            params.set('title', data.title || '${seriesTitleParam.replace(/'/g, "\\'")}');
-            params.set('posterUrl', data.posterUrl || '');
-            params.set('totalSize', data.totalSize || '');
-            params.set('seasons', JSON.stringify(data.seasons || []));
-            ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
-            
-            window.location.href = \`/series?\${params.toString()}\`;
-          } catch (error) {
-            console.error('Error fetching series data:', error);
-            // Si falla, intentar volver con history.back()
-            window.history.back();
-          }
+        // Función para cerrar el modal y volver a la serie
+        function closeModal() {
+          // Redirigir a /series-redirect para obtener todos los datos de la serie
+          const params = new URLSearchParams();
+          params.set('accessToken', '${accessToken}');
+          params.set('baseURI', '${baseURI}');
+          params.set('ratingKey', '${parentRatingKey}');
+          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
+          params.set('posterUrl', '');
+          ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
+          
+          window.location.href = \`/series-redirect?\${params.toString()}\`;
+        }
+        
+        // Función para volver a la página de serie (mantener por compatibilidad)
+        function goBackToSeries() {
+          // Redirigir a /series-redirect para obtener todos los datos de la serie
+          const params = new URLSearchParams();
+          params.set('accessToken', '${accessToken}');
+          params.set('baseURI', '${baseURI}');
+          params.set('ratingKey', '${parentRatingKey}');
+          params.set('title', '${seriesTitleParam.replace(/'/g, "\\'")}');
+          params.set('posterUrl', '');
+          ${tmdbId ? `params.set('tmdbId', '${tmdbId}');` : ''}
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
+          
+          window.location.href = \`/series-redirect?\${params.toString()}\`;
         }
         
         // Función para formatear tamaño de archivo
@@ -2799,12 +3035,12 @@ app.get('/list', async (req, res) => {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
           if (synopsis && button) {
-            if (synopsis.style.maxHeight === 'none' || synopsis.style.maxHeight === '') {
-              synopsis.style.maxHeight = '10.2em';
-              button.textContent = 'Ver más';
-            } else {
-              synopsis.style.maxHeight = 'none';
+            if (synopsis.classList.contains('collapsed')) {
+              synopsis.classList.remove('collapsed');
               button.textContent = 'Ver menos';
+            } else {
+              synopsis.classList.add('collapsed');
+              button.textContent = 'Ver más';
             }
           }
         }
@@ -2822,93 +3058,92 @@ app.get('/list', async (req, res) => {
         });
       </script>
     </head>
-    <body>
-      <!-- Header con backdrop y poster -->
-      <div style="background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(26,26,26,1) 100%), ${backdropPath ? `url('${backdropPath}')` : 'linear-gradient(135deg, #e5a00d 0%, #cc8800 100%)'}; background-size: cover; background-position: center; padding: 3rem; position: relative;">
-        <div style="max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 280px 1fr; gap: 2rem; align-items: flex-start;">
-          <!-- Poster de la temporada -->
-          ${seasonPoster ? `<img src="${seasonPoster}" alt="${seriesTitle}" style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); object-fit: cover;">` : '<div style="width: 100%; aspect-ratio: 2/3; border-radius: 12px; background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
-          
-          <!-- Información -->
-          <div style="position: relative; z-index: 2;">
-            <h1 style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9); line-height: 1.1; color: white;">${seriesTitle}</h1>
-            <div style="color: rgba(255, 255, 255, 0.9); font-size: 1.1rem; font-style: italic; text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8); margin-bottom: 1rem;">Temporada ${seasonNumberFromEpisode}</div>
+    <body style="margin: 0; padding: 0; overflow: hidden; background: #0f0f0f;">
+      <!-- Modal Overlay -->
+      <div id="modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 999; cursor: pointer;" onclick="closeModal()"></div>
+      
+      <!-- Modal Content -->
+      <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow-y: auto; z-index: 1000; pointer-events: none;">
+        <div class="container" style="pointer-events: auto; max-width: 1400px; margin: 2rem auto; background: transparent;">
+          <!-- Series Header (Banner estilo modal de Nueva carpeta) -->
+          <div class="series-header" style="${backdropPath ? `background-image: url('${backdropPath}');` : 'background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%);'} border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);">
+            <!-- Botón cerrar -->
+            <button onclick="closeModal()" style="position: absolute; top: 1rem; right: 1rem; background: rgba(0, 0, 0, 0.7); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; width: 40px; height: 40px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; transition: all 0.2s; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1;" onmouseover="this.style.background='rgba(229, 160, 13, 0.9)'; this.style.color='#000'; this.style.transform='scale(1.1)';" onmouseout="this.style.background='rgba(0, 0, 0, 0.7)'; this.style.color='#fff'; this.style.transform='scale(1)';">&times;</button>
             
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-              <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-                ${totalSizeFormatted ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${totalSizeFormatted}</span>` : ''}
-                ${seasonYear ? `<span style="background: #e5a00d; color: #000; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem;">${seasonYear}</span>` : ''}
-                <span style="background: rgba(249, 168, 37, 0.2); border: 2px solid #f9a825; padding: 0.3rem 0.8rem; border-radius: 20px; color: #f9a825; font-weight: 600;">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
-              </div>
-              
-              <div style="display: flex; gap: 0.75rem; align-items: center;">
-                ${seasonInfo && seasonInfo.tmdbId ? `
-                  <a href="https://www.themoviedb.org/tv/${seasonInfo.tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                  </a>
-                ` : ''}
-                ${imdbId ? `
-                  <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                  </a>
-                ` : ''}
-                ${trailerKey ? `
-                  <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-block;">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
-                  </a>
-                ` : ''}
-              </div>
+            <div class="series-header-overlay">
+            <!-- Títulos -->
+            <div class="series-titles">
+              <h1>${seriesTitle}</h1>
+              <h2>Temporada ${seasonNumberFromEpisode}</h2>
             </div>
             
-            ${seasonSummary ? `
-              <div style="position: relative; margin-bottom: 1.5rem;">
-                <div id="synopsis-text" style="line-height: 1.7; font-size: 1.08rem; text-align: justify; margin-bottom: 0.5rem; color: #cccccc; max-height: 10.2em; overflow: hidden; transition: max-height 0.3s ease;">
-                  ${seasonSummary}
-                </div>
-                <div style="text-align: left;">
-                  <button id="synopsis-toggle" onclick="toggleSynopsis()" style="display: none; background: transparent; border: none; color: #e5a00d; font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0; transition: all 0.2s ease; text-decoration: underline;" onmouseover="this.style.color='#f0b825';" onmouseout="this.style.color='#e5a00d';">Ver más</button>
-                </div>
-              </div>
-            ` : ''}
-            
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-              <button class="download-season-btn" id="download-season-btn" onclick="openDownloadModal()" style="background: linear-gradient(135deg, #e5a00d 0%, #cc8800 100%); color: #000; border: none; padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease; box-shadow: 0 4px 16px rgba(229, 160, 13, 0.3); flex: 1;justify-content: center;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(229, 160, 13, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(229, 160, 13, 0.3)';">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-                </svg>
-                Descargar Temporada Completa
-              </button>
+            <!-- Content: Poster + Info -->
+            <div class="series-content">
+              <!-- Poster -->
+              ${seasonPoster ? `<img loading="lazy" src="${seasonPoster}" alt="${seriesTitle}" class="series-poster">` : '<div class="series-poster" style="background: linear-gradient(135deg, #333 0%, #222 100%);"></div>'}
               
-              ${parentRatingKey ? `
-              <button onclick="goBackToSeries()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-                </svg>
-                Volver a Serie
-              </button>
-              ` : `
-              <button onclick="window.history.back()" style="background: rgba(255, 255, 255, 0.1); color: #e5e5e5; border: 1px solid rgba(255, 255, 255, 0.2); padding: 1rem 2rem; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.transform='translateY(0)';">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-                </svg>
-                Volver a Serie
-              </button>
-              `}
-            </div>
-            
-            <div class="progress-indicator" id="progress-indicator" style="margin-top: 1.5rem; display: none;">
-              <div class="progress-text" id="progress-text" style="color: #e5a00d; font-weight: 600; margin-bottom: 0.5rem;"></div>
-              <div class="progress-bar" style="background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden;">
-                <div class="progress-fill" id="progress-fill" style="background: linear-gradient(90deg, #e5a00d 0%, #f0b825 100%); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+              <!-- Info -->
+              <div class="series-info">
+                <!-- Meta badges e iconos: badges a la izquierda, iconos a la derecha -->
+                <div class="series-meta" style="align-items: center; justify-content: space-between; width: 100%;">
+                  <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                    <span class="episodes-count-badge">${totalEpisodes} Episodio${totalEpisodes !== 1 ? 's' : ''}</span>
+                    ${totalSizeFormatted ? `<span class="meta-badge">${totalSizeFormatted}</span>` : ''}
+                    ${seasonYear ? `<span class="meta-badge">${seasonYear}</span>` : ''}
+                  </div>
+                  
+                  <div style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
+                    ${tmdbIdToUse ? `
+                      <a href="https://www.themoviedb.org/tv/${tmdbIdToUse}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                    ${imdbId ? `
+                      <a href="https://www.imdb.com/title/${imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                    ${trailerKey ? `
+                      <a href="https://www.youtube.com/watch?v=${trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" style="display: inline-flex; align-items: center;">
+                        <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" style="width: 32px; height: 32px; transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.9);" onmouseover="this.style.transform='scale(1.1)'; this.style.filter='brightness(1.1)';" onmouseout="this.style.transform='scale(1)'; this.style.filter='brightness(0.9)';">
+                      </a>
+                    ` : ''}
+                  </div>
+                </div>
+                
+                <!-- Synopsis -->
+                ${seasonSummary ? `
+                <div style="margin-bottom: 1rem;">
+                  <div id="synopsis-text" class="series-description collapsed">
+                    ${seasonSummary}
+                  </div>
+                  <button id="synopsis-toggle" onclick="toggleSynopsis()" class="expand-description-btn" style="display: none;">Ver más</button>
+                </div>
+                ` : ''}
+                
+                <!-- Action buttons -->
+                <div class="action-buttons">
+                  <button class="download-season-btn" id="download-season-btn" onclick="openDownloadModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
+                    </svg>
+                    Descargar Temporada Completa
+                  </button>
+                </div>
+                
+                <!-- Progress indicator -->
+                <div class="progress-indicator" id="progress-indicator">
+                  <div class="progress-text" id="progress-text"></div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-      
-      <!-- Lista de episodios -->
-      <div style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
+          </div>
         
+        <!-- Lista de episodios -->
         <div class="episodes-grid" id="episodes-container">
           <!-- Los episodios se cargarán dinámicamente -->
         </div>
@@ -3110,7 +3345,7 @@ app.get('/list', async (req, res) => {
         function renderEpisode(download, index) {
           // Construir URL para ver detalles del episodio
           const episodePageUrl = download.ratingKey 
-            ? \`/episode?episodeRatingKey=\${download.ratingKey}&accessToken=\${encodeURIComponent(download.accessToken)}&baseURI=\${encodeURIComponent(download.baseURI)}&seasonRatingKey=\${download.parentRatingKey || ''}&seasonNumber=\${download.seasonNumber || ''}&episodeNumber=\${download.episodeNumber || ''}&seriesTitle=\${encodeURIComponent('${seriesTitleParam}')}\${download.grandparentRatingKey ? '&parentRatingKey=' + download.grandparentRatingKey : ''}\${'${tmdbId}' ? '&tmdbId=${tmdbId}' : ''}\${'${imdbId}' ? '&imdbId=${imdbId}' : ''}\`
+            ? \`/episode?episodeRatingKey=\${download.ratingKey}&accessToken=\${encodeURIComponent(download.accessToken)}&baseURI=\${encodeURIComponent(download.baseURI)}&seasonRatingKey=\${download.parentRatingKey || ''}&seasonNumber=\${download.seasonNumber || ''}&episodeNumber=\${download.episodeNumber || ''}&seriesTitle=\${encodeURIComponent('${seriesTitleParam}')}\${download.grandparentRatingKey ? '&parentRatingKey=' + download.grandparentRatingKey : ''}\${'${tmdbId}' ? '&tmdbId=${tmdbId}' : ''}\${'${imdbId}' ? '&imdbId=${imdbId}' : ''}\${'${libraryKey}' ? '&libraryKey=${encodeURIComponent(libraryKey)}' : ''}\${'${libraryTitle}' ? '&libraryTitle=${encodeURIComponent(libraryTitle)}' : ''}\`
             : null;
           
           return \`
@@ -3225,6 +3460,197 @@ app.get('/list', async (req, res) => {
   `);
 });
 
+// Ruta redirectora para películas desde /browse
+app.get('/movie-redirect', async (req, res) => {
+  const {
+    accessToken = '',
+    baseURI = '',
+    ratingKey = '',
+    title = '',
+    posterUrl = '',
+    tmdbId = '',
+    libraryKey = '',
+    libraryTitle = ''
+  } = req.query;
+  
+  // console.log('[/movie-redirect] Obteniendo datos de película desde ratingKey:', ratingKey);
+  
+  try {
+    // Obtener XML de Plex para extraer fileName, fileSize, partKey y year
+    const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+    const xmlText = await httpsGetXML(metadataUrl);
+    
+    // Extraer partKey
+    let partKey = '';
+    const partKeyMatch = xmlText.match(/<Part[^>]*key="([^"]*)"[^>]*>/);
+    if (partKeyMatch) {
+      const fullPartKey = partKeyMatch[1];
+      // console.log('[/movie-redirect] fullPartKey:', fullPartKey);
+      
+      // Crear partKey sin el fileName (termina en /)
+      partKey = fullPartKey.replace(/\/[^\/]+$/, '/');
+      // console.log('[/movie-redirect] partKey extraído:', partKey);
+    } else {
+      // console.log('[/movie-redirect] ❌ No se pudo extraer partKey del XML');
+    }
+    
+    // Debug: Mostrar un fragmento del XML para ver qué contiene
+    const partSection = xmlText.substring(xmlText.indexOf('<Part'), xmlText.indexOf('</Part>') + 7);
+    // console.log('[/movie-redirect] XML Part section:', partSection);
+    
+    // Extraer fileName del atributo file (contiene la ruta completa)
+    let fileName = '';
+    // Usar un regex más específico que busque " file=" para evitar capturar otros atributos
+    const fileMatch = xmlText.match(/\sfile="([^"]+)"/);
+    if (fileMatch) {
+      const fullFilePath = fileMatch[1];
+      // console.log('[/movie-redirect] fullFilePath extraído:', fullFilePath);
+      
+      // Extraer solo el nombre del archivo (último segmento después de /)
+      const segments = fullFilePath.split('/');
+      fileName = segments[segments.length - 1];
+      // console.log('[/movie-redirect] fileName extraído del atributo file:', fileName);
+    } else {
+      // console.log('[/movie-redirect] ⚠️ No se encontró atributo file, usando fileName del partKey');
+      // Fallback: extraer del partKey
+      if (partKeyMatch) {
+        const segments = partKeyMatch[1].split('/');
+        fileName = segments[segments.length - 1];
+        // console.log('[/movie-redirect] fileName extraído del partKey (fallback):', fileName);
+      }
+    }
+    
+    // Extraer fileSize
+    let fileSize = '';
+    const sizeMatch = xmlText.match(/<Part[^>]*size="([^"]*)"[^>]*>/);
+    if (sizeMatch) {
+      const bytes = parseInt(sizeMatch[1]);
+      const gb = bytes / (1024 * 1024 * 1024);
+      fileSize = gb >= 1 ? gb.toFixed(2) + ' GBs' : (gb * 1024).toFixed(2) + ' MBs';
+      // console.log('[/movie-redirect] fileSize extraído:', fileSize);
+    }
+    
+    // Extraer año
+    let year = '';
+    const yearMatch = xmlText.match(/<Video[^>]*year="([^"]*)"[^>]*>/);
+    if (yearMatch) {
+      year = yearMatch[1];
+      // console.log('[/movie-redirect] year extraído:', year);
+    }
+    
+    // Extraer tmdbId del guid si no viene en los parámetros
+    let extractedTmdbId = tmdbId;
+    if (!extractedTmdbId || extractedTmdbId.trim() === '') {
+      // Buscar el atributo guid en cualquier lugar del tag Video
+      const guidMatch = xmlText.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+      if (guidMatch) {
+        extractedTmdbId = guidMatch[1];
+        // console.log('[/movie-redirect] ✅ tmdbId extraído del XML:', extractedTmdbId);
+      } else {
+        // Intentar extraer del nombre del archivo si contiene [tmdb-XXXXX]
+        const fileNameMatch = fileName.match(/\[tmdb-(\d+)\]/i);
+        if (fileNameMatch) {
+          extractedTmdbId = fileNameMatch[1];
+          // console.log('[/movie-redirect] ✅ tmdbId extraído del nombre del archivo:', extractedTmdbId);
+        } else {
+          // console.log('[/movie-redirect] ⚠️ No se encontró tmdbId en el XML ni en el nombre del archivo, se usará búsqueda automática');
+        }
+      }
+    }
+    
+    // Construir downloadURL correcto con download=0
+    const downloadURL = partKey && fileName 
+      ? `${baseURI}${partKey}${fileName}?download=0&X-Plex-Token=${accessToken}`
+      : `${baseURI}/library/metadata/${ratingKey}?download=0&X-Plex-Token=${accessToken}`;
+    
+    // Redirigir a /movie con todos los parámetros incluyendo tmdbId extraído
+    const redirectUrl = `/movie?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&downloadURL=${encodeURIComponent(downloadURL)}&partKey=${encodeURIComponent(partKey)}&title=${encodeURIComponent(title)}&year=${year}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${extractedTmdbId}&fileName=${encodeURIComponent(fileName)}&fileSize=${encodeURIComponent(fileSize)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}`;
+    
+    // console.log('[/movie-redirect] Redirigiendo a /movie con todos los parámetros (tmdbId:', extractedTmdbId, ')');
+    res.redirect(redirectUrl);
+    
+  } catch (error) {
+    console.error('[/movie-redirect] Error al obtener datos:', error);
+    // Si falla, redirigir sin los datos extras
+    res.redirect(`/movie?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${tmdbId}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}`);
+  }
+});
+
+// Ruta redirectora para series desde /browse
+app.get('/series-redirect', async (req, res) => {
+  const {
+    accessToken = '',
+    baseURI = '',
+    ratingKey = '',
+    title = '',
+    posterUrl = '',
+    tmdbId = '',
+    libraryKey = '',
+    libraryTitle = ''
+  } = req.query;
+  
+  // console.log('[/series-redirect] Obteniendo datos de serie desde ratingKey:', ratingKey);
+  // console.log('[/series-redirect] libraryKey recibido:', libraryKey);
+  // console.log('[/series-redirect] libraryTitle recibido:', libraryTitle);
+  
+  try {
+    // Obtener XML de Plex para extraer datos de la serie
+    const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+    const xmlText = await httpsGetXML(metadataUrl);
+    
+    // Extraer tmdbId del guid si no viene en los parámetros
+    let extractedTmdbId = tmdbId;
+    if (!extractedTmdbId || extractedTmdbId.trim() === '') {
+      const guidMatch = xmlText.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+      if (guidMatch) {
+        extractedTmdbId = guidMatch[1];
+        // console.log('[/series-redirect] ✅ tmdbId extraído del XML:', extractedTmdbId);
+      } else {
+        // console.log('[/series-redirect] ⚠️ No se encontró tmdbId en el XML, se usará búsqueda automática');
+      }
+    }
+    
+    // Obtener las temporadas
+    const seasonsUrl = `${baseURI}/library/metadata/${ratingKey}/children?X-Plex-Token=${accessToken}`;
+    const seasonsXml = await httpsGetXML(seasonsUrl);
+    
+    const seasons = [];
+    const seasonMatches = seasonsXml.matchAll(/<Directory[^>]*>/g);
+    
+    for (const match of seasonMatches) {
+      const seasonTag = match[0];
+      const seasonRatingKey = seasonTag.match(/ratingKey="([^"]*)"/)?.[1];
+      const seasonTitle = seasonTag.match(/title="([^"]*)"/)?.[1];
+      const seasonIndex = seasonTag.match(/index="([^"]*)"/)?.[1];
+      const seasonThumb = seasonTag.match(/thumb="([^"]*)"/)?.[1];
+      const leafCount = seasonTag.match(/leafCount="([^"]*)"/)?.[1] || '0';
+      
+      if (seasonRatingKey && seasonTitle) {
+        seasons.push({
+          ratingKey: seasonRatingKey,
+          title: seasonTitle,
+          seasonNumber: seasonIndex || '',
+          thumb: seasonThumb ? `${baseURI}${seasonThumb}?X-Plex-Token=${accessToken}` : '',
+          episodeCount: leafCount
+        });
+      }
+    }
+    
+    // console.log('[/series-redirect] Temporadas encontradas:', seasons.length);
+    
+    // Redirigir a /series con todos los parámetros incluyendo seasons
+    const redirectUrl = `/series?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seriesId=${ratingKey}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${extractedTmdbId}&seasons=${encodeURIComponent(JSON.stringify(seasons))}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}`;
+    
+    // console.log('[/series-redirect] Redirigiendo a /series con', seasons.length, 'temporadas (tmdbId:', extractedTmdbId, ')');
+    res.redirect(redirectUrl);
+    
+  } catch (error) {
+    console.error('[/series-redirect] Error al obtener datos:', error);
+    // Si falla, redirigir sin los datos extras
+    res.redirect(`/series?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&seriesId=${ratingKey}&title=${encodeURIComponent(title)}&posterUrl=${encodeURIComponent(posterUrl)}&tmdbId=${tmdbId}${libraryKey ? '&libraryKey=' + encodeURIComponent(libraryKey) : ''}${libraryTitle ? '&libraryTitle=' + encodeURIComponent(libraryTitle) : ''}`);
+  }
+});
+
 // Ruta para películas individuales
 app.get('/movie', async (req, res) => {
   const {
@@ -3237,21 +3663,29 @@ app.get('/movie', async (req, res) => {
     title = '',
     year = '',
     posterUrl = '',
-    tmdbId = '',
-    libraryKey = '',
-    libraryTitle = ''
+    tmdbId = ''
   } = req.query;
+  
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
 
   let partKey = decodeURIComponent(encodedPartKey);
   
   // Log para debug
-  console.log('[/movie] tmdbId recibido:', tmdbId);
-  console.log('[/movie] year recibido:', year);
-  console.log('[/movie] fileSize recibido:', fileSize);
-  console.log('[/movie] title recibido:', title);
-  console.log('[/movie] downloadURL:', downloadURL);
-  console.log('[/movie] partKey recibido:', partKey);
-  console.log('[/movie] fileName recibido:', fileName);
+  console.log('[/movie] Parámetros recibidos:', {
+    tmdbId,
+    year,
+    fileSize,
+    title,
+    downloadURL,
+    partKey: encodedPartKey,
+    fileName,
+    libraryKey,
+    libraryTitle
+  });
+  
+  // Log final de libraryKey
+  console.log('[/movie] libraryKey final:', libraryKey, 'libraryTitle:', libraryTitle);
   
   // Si no hay fileSize, intentar extraerlo del XML de Plex junto con detalles técnicos
   let calculatedFileSize = fileSize;
@@ -3270,7 +3704,7 @@ app.get('/movie', async (req, res) => {
       if (ratingKeyMatch) {
         const ratingKey = ratingKeyMatch[1];
         const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
-        console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
+        // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
         const xmlText = await httpsGetXML(metadataUrl);
         
         // Extraer partKey si no viene en parámetros
@@ -3280,7 +3714,7 @@ app.get('/movie', async (req, res) => {
             const fullPartKey = partKeyMatch[1];
             // Extraer solo la base del partKey (sin el filename)
             partKey = fullPartKey.replace(/\/[^\/]+$/, '/');
-            console.log('[/movie] partKey extraído del XML:', partKey);
+            // console.log('[/movie] partKey extraído del XML:', partKey);
           }
         }
         
@@ -3290,20 +3724,20 @@ app.get('/movie', async (req, res) => {
           const bytes = parseInt(sizeMatch[1]);
           const gb = bytes / (1024 * 1024 * 1024);
           calculatedFileSize = gb >= 1 ? gb.toFixed(2) + ' GBs' : (gb * 1024).toFixed(2) + ' MBs';
-          console.log('[/movie] fileSize extraído del XML:', calculatedFileSize);
+          // console.log('[/movie] fileSize extraído del XML:', calculatedFileSize);
         }
         
         // Extraer año y título original
         const yearMatch = xmlText.match(/<Video[^>]*year="([^"]*)"[^>]*>/);
         if (yearMatch) {
           movieYear = yearMatch[1];
-          console.log('[/movie] Año extraído del XML:', movieYear);
+          // console.log('[/movie] Año extraído del XML:', movieYear);
         }
         
         const originalTitleMatch = xmlText.match(/<Video[^>]*originalTitle="([^"]*)"[^>]*>/);
         if (originalTitleMatch) {
           originalTitle = originalTitleMatch[1];
-          console.log('[/movie] Título original extraído:', originalTitle);
+          // console.log('[/movie] Título original extraído:', originalTitle);
         }
         
         // Extraer detalles técnicos del Media
@@ -3329,7 +3763,7 @@ app.get('/movie', async (req, res) => {
         const containerMatch = xmlText.match(/<Media[^>]*container="([^"]*)"[^>]*>/);
         if (containerMatch) container = containerMatch[1].toUpperCase();
         
-        console.log('[/movie] Detalles técnicos:', { videoCodec, audioCodec, resolution, bitrate, container, quality });
+        // console.log('[/movie] Detalles técnicos:', { videoCodec, audioCodec, resolution, bitrate, container, quality });
       }
     } catch (error) {
       console.error('[/movie] Error al extraer datos del XML:', error);
@@ -3339,7 +3773,7 @@ app.get('/movie', async (req, res) => {
   // Usar año del parámetro como fallback si no viene en el XML
   if (!movieYear && year) {
     movieYear = year;
-    console.log('[/movie] Usando año del parámetro como fallback:', movieYear);
+    // console.log('[/movie] Usando año del parámetro como fallback:', movieYear);
   }
   
   // Obtener datos completos de TMDB si tenemos el ID
@@ -3347,38 +3781,41 @@ app.get('/movie', async (req, res) => {
   let autoSearchedTmdbId = '';
   
   if (tmdbId && tmdbId.trim() !== '') {
-    console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
+    // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
     movieData = await fetchTMDBMovieData(tmdbId);
-    console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
+    // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
     if (movieData) {
-      console.log('[/movie] movieData.title:', movieData.title);
-      console.log('[/movie] movieData.year:', movieData.year);
-      console.log('[/movie] movieData.genres:', movieData.genres);
+      // console.log('[/movie] movieData.title:', movieData.title);
+      // console.log('[/movie] movieData.year:', movieData.year);
+      // console.log('[/movie] movieData.genres:', movieData.genres);
     }
   } else if (title && movieYear) {
+    // Decodificar HTML entities en el título antes de buscar
+    const decodedTitle = decodeHtmlEntities(title);
+    
     // Búsqueda automática en TMDB por título + año
-    console.log('[/movie] NO hay tmdbId - buscando automáticamente en TMDB:', title, movieYear);
+    // console.log('[/movie] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle, movieYear);
     try {
-      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}&year=${movieYear}`;
+      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}&year=${movieYear}`;
       const searchResults = await httpsGet(searchUrl);
       
       if (searchResults && searchResults.results && searchResults.results.length > 0) {
         // Tomar el primer resultado que coincida con el año
         const firstResult = searchResults.results[0];
         autoSearchedTmdbId = firstResult.id.toString();
-        console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
+        // console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
         
         // Obtener datos completos con el ID encontrado
         movieData = await fetchTMDBMovieData(autoSearchedTmdbId);
-        console.log('[/movie] movieData obtenido por búsqueda automática');
+        // console.log('[/movie] movieData obtenido por búsqueda automática');
       } else {
-        console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
+        // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
       }
     } catch (error) {
       console.error('[/movie] Error en búsqueda automática de TMDB:', error);
     }
   } else {
-    console.log('[/movie] NO SE RECIBIÓ tmdbId ni título+año válidos');
+    // console.log('[/movie] NO SE RECIBIÓ tmdbId ni título+año válidos');
   }
   
   // Usar datos de TMDB o fallback a los datos de Plex
@@ -3391,7 +3828,7 @@ app.get('/movie', async (req, res) => {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>${movieTitle} - Descarga</title>
+      <title>${movieTitle} - Infinity Scrap</title>
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -3850,11 +4287,11 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
-      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'"></div>
+      <div class="modal-overlay" onclick="closeMovieModal()"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
-          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${libraryKey}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=movie'" title="Cerrar">&times;</button>
+          <button class="close-button" onclick="closeMovieModal()" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${movieTitle}</h1>
@@ -3882,17 +4319,17 @@ app.get('/movie', async (req, res) => {
               <div class="modal-icons-row">
                 ${(tmdbId || autoSearchedTmdbId) ? `
                   <a href="https://www.themoviedb.org/movie/${tmdbId || autoSearchedTmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
                   </a>
                 ` : ''}
                 ${movieData && movieData.imdbId ? `
                   <a href="https://www.imdb.com/title/${movieData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
                   </a>
                 ` : ''}
                 ${movieData && movieData.trailerKey ? `
                   <a href="https://www.youtube.com/watch?v=${movieData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
                   </a>
                 ` : ''}
               </div>
@@ -3904,9 +4341,9 @@ app.get('/movie', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img src="${moviePoster}" alt="${movieTitle}">
+              <img loading="lazy" src="${moviePoster}" alt="${movieTitle}">
             </div>
-            <button class="download-button" onclick="window.location.href='${partKey && fileName ? `${baseURI}${partKey}${fileName}?download=1&X-Plex-Token=${accessToken}` : downloadURL}'">
+            <button class="download-button" onclick="window.location.href='${downloadURL}'">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
               </svg>
@@ -3982,6 +4419,28 @@ app.get('/movie', async (req, res) => {
       </div>
       
       <script>
+        function closeMovieModal() {
+          const libraryKey = '${libraryKey}';
+          const libraryTitle = '${libraryTitle.replace(/'/g, "\\'")}';
+          const accessToken = '${accessToken}';
+          const baseURI = '${baseURI}';
+          
+          if (libraryKey && accessToken && baseURI) {
+            const libraryTitleParam = libraryTitle || 'Movies';
+            window.location.href = '/browse?accessToken=' + encodeURIComponent(accessToken) + 
+                                   '&baseURI=' + encodeURIComponent(baseURI) + 
+                                   '&libraryKey=' + encodeURIComponent(libraryKey) + 
+                                   '&libraryTitle=' + encodeURIComponent(libraryTitleParam) + 
+                                   '&libraryType=movie';
+          } else if (accessToken && baseURI) {
+            // Si no hay libraryKey, ir a la página de selección de bibliotecas
+            window.location.href = '/library?accessToken=' + encodeURIComponent(accessToken) + 
+                                   '&baseURI=' + encodeURIComponent(baseURI);
+          } else {
+            window.history.back();
+          }
+        }
+        
         function toggleTechnical() {
           const content = document.getElementById('technical-content');
           const button = document.getElementById('technical-toggle');
@@ -4034,6 +4493,12 @@ app.get('/series', async (req, res) => {
     seasons: seasonsParam = '[]'
   } = req.query;
   
+  let libraryKey = req.query.libraryKey || '';
+  let libraryTitle = req.query.libraryTitle || '';
+  
+  // console.log('[/series] libraryKey recibido:', libraryKey);
+  // console.log('[/series] libraryTitle recibido:', libraryTitle);
+  
   // Parsear temporadas
   let seasons = [];
   try {
@@ -4042,10 +4507,83 @@ app.get('/series', async (req, res) => {
     console.error('Error parsing seasons:', e);
   }
   
-  // Obtener datos de TMDB si está disponible
+  // Calcular tamaño total de todas las temporadas
+  let calculatedTotalSize = totalSize;
+  if ((!totalSize || totalSize === '') && seasons.length > 0 && accessToken && baseURI) {
+    // console.log('[/series] Calculando tamaño total de la serie...');
+    let totalBytes = 0;
+    
+    for (const season of seasons) {
+      try {
+        const seasonUrl = `${baseURI}/library/metadata/${season.ratingKey}/children?X-Plex-Token=${accessToken}`;
+        const seasonXml = await httpsGetXML(seasonUrl);
+        const parsedSeasonData = parseXML(seasonXml);
+        
+        // Extraer libraryKey y libraryTitle del primer resultado si no se proporcionaron
+        if (!libraryKey && parsedSeasonData.MediaContainer.librarySectionID) {
+          libraryKey = parsedSeasonData.MediaContainer.librarySectionID;
+          console.log('[/series] libraryKey extraído del XML:', libraryKey);
+        }
+        if (!libraryTitle && parsedSeasonData.MediaContainer.librarySectionTitle) {
+          libraryTitle = parsedSeasonData.MediaContainer.librarySectionTitle;
+          console.log('[/series] libraryTitle extraído del XML:', libraryTitle);
+        }
+        
+        // Extraer todos los tamaños de los episodios
+        const sizeMatches = seasonXml.match(/size="(\d+)"/g);
+        if (sizeMatches) {
+          for (const sizeMatch of sizeMatches) {
+            const bytes = parseInt(sizeMatch.match(/\d+/)[0]);
+            totalBytes += bytes;
+          }
+        }
+      } catch (error) {
+        console.error(`[/series] Error calculando tamaño de temporada ${season.title}:`, error);
+      }
+    }
+    
+    if (totalBytes > 0) {
+      const gb = totalBytes / (1024 * 1024 * 1024);
+      calculatedTotalSize = gb >= 1 ? gb.toFixed(2) + ' GB' : (gb * 1024).toFixed(2) + ' MB';
+      // console.log('[/series] Tamaño total calculado:', calculatedTotalSize);
+    }
+  }
+  
+  // Obtener datos de TMDB
   let seriesData = null;
-  if (tmdbId) {
+  let autoSearchedTmdbId = '';
+  
+  if (tmdbId && tmdbId.trim() !== '') {
+    // console.log('[/series] Llamando a fetchTMDBSeriesData con tmdbId:', tmdbId);
     seriesData = await fetchTMDBSeriesData(tmdbId);
+    // console.log('[/series] seriesData obtenido:', seriesData ? 'SI' : 'NO');
+  } else if (seriesTitle) {
+    // Decodificar HTML entities en el título antes de buscar
+    const decodedTitle = decodeHtmlEntities(seriesTitle);
+    
+    // Búsqueda automática en TMDB por título
+    // console.log('[/series] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle);
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}`;
+      const searchResults = await httpsGet(searchUrl);
+      
+      if (searchResults && searchResults.results && searchResults.results.length > 0) {
+        // Tomar el primer resultado
+        const firstResult = searchResults.results[0];
+        autoSearchedTmdbId = firstResult.id.toString();
+        // console.log('[/series] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.name);
+        
+        // Obtener datos completos con el ID encontrado
+        seriesData = await fetchTMDBSeriesData(autoSearchedTmdbId);
+        // console.log('[/series] seriesData obtenido por búsqueda automática');
+      } else {
+        // console.log('[/series] ⚠️ No se encontraron resultados en TMDB para:', decodedTitle);
+      }
+    } catch (error) {
+      console.error('[/series] Error en búsqueda automática de TMDB:', error);
+    }
+  } else {
+    // console.log('[/series] NO SE RECIBIÓ tmdbId ni título válido');
   }
   
   // Usar poster y backdrop de TMDB si están disponibles
@@ -4058,7 +4596,7 @@ app.get('/series', async (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${seriesTitle} - PlexDL</title>
+      <title>${seriesTitle} - Infinity Scrap</title>
       <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
       <style>
         * {
@@ -4086,6 +4624,7 @@ app.get('/series', async (req, res) => {
           max-height: 90vh;
           overflow-y: auto;
           position: relative;
+          z-index: 999;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
           scrollbar-width: thin;
           scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -4127,12 +4666,49 @@ app.get('/series', async (req, res) => {
             #282828 100%
           );
           border-radius: 12px 12px 0 0;
+          z-index: 1;
         }
         
         .modal-header-content {
           position: relative;
-          z-index: 1;
+          z-index: 2;
           width: 100%;
+        }
+        
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.75);
+          z-index: 998;
+          cursor: pointer;
+          backdrop-filter: blur(4px);
+        }
+        
+        .close-button {
+          position: absolute;
+          top: 1.5rem;
+          right: 2rem;
+          z-index: 3;
+          background: rgba(0, 0, 0, 0.6);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-size: 2rem;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          line-height: 1;
+          padding: 0;
+        }
+        
+        .close-button:hover {
+          background: rgba(229, 160, 13, 0.9);
+          border-color: #e5a00d;
+          transform: scale(1.1);
         }
         
         .modal-title {
@@ -4445,16 +5021,18 @@ app.get('/series', async (req, res) => {
       </style>
     </head>
     <body>
+      <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=show'"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
         <div class="modal-backdrop-header">
+          <button class="close-button" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=show'" title="Cerrar">&times;</button>
           <div class="modal-backdrop-overlay"></div>
           <div class="modal-header-content">
             <h1 class="modal-title">${seriesTitle}</h1>
             ${seriesData && seriesData.tagline ? `<div class="modal-tagline">${seriesData.tagline}</div>` : ''}
             <div class="modal-badges-container">
               <div class="modal-badges-row">
-                ${totalSize ? `<span class="filesize-badge">${totalSize}</span>` : ''}
+                ${calculatedTotalSize ? `<span class="filesize-badge">${calculatedTotalSize}</span>` : ''}
                 ${seriesData && seriesData.year ? `<span class="year-badge">${seriesData.year}</span>` : ''}
                 ${seriesData && seriesData.status ? `<span class="status-badge">${seriesData.status}</span>` : ''}
                 ${seriesData && seriesData.rating !== 'N/A' ? `
@@ -4472,19 +5050,19 @@ app.get('/series', async (req, res) => {
                 ` : ''}
               </div>
               <div class="modal-icons-row">
-                ${tmdbId ? `
-                  <a href="https://www.themoviedb.org/tv/${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
+                ${tmdbId || autoSearchedTmdbId ? `
+                  <a href="https://www.themoviedb.org/tv/${tmdbId || autoSearchedTmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon">
                   </a>
                 ` : ''}
                 ${seriesData && seriesData.imdbId ? `
                   <a href="https://www.imdb.com/title/${seriesData.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon">
                   </a>
                 ` : ''}
                 ${seriesData && seriesData.trailerKey ? `
                   <a href="https://www.youtube.com/watch?v=${seriesData.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link">
-                    <img src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
+                    <img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon">
                   </a>
                 ` : ''}
               </div>
@@ -4496,7 +5074,7 @@ app.get('/series', async (req, res) => {
         <div class="modal-hero">
           <div class="modal-poster-container">
             <div class="modal-poster-hero">
-              <img src="${seriesPoster}" alt="${seriesTitle}">
+              <img loading="lazy" src="${seriesPoster}" alt="${seriesTitle}">
             </div>
           </div>
           
@@ -4533,8 +5111,8 @@ app.get('/series', async (req, res) => {
           <h2 class="seasons-title">Temporadas</h2>
           <div class="seasons-grid">
             ${seasons.map(season => `
-              <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', ${season.index}, '${seriesTitle}', '${tmdbId}')">
-                <img src="${season.poster}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
+              <div class="season-card" onclick="goToSeason('${season.ratingKey}', '${accessToken}', '${baseURI}', '${season.seasonNumber}', '${encodeURIComponent(seriesTitle)}', '${tmdbId || autoSearchedTmdbId}', '${seriesId}', '${libraryKey}', '${libraryTitle}')">
+                <img loading="lazy" src="${season.thumb || posterUrl}" alt="${season.title}" class="season-poster" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27300%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3ENo image%3C/text%3E%3C/svg%3E'">
                 <div class="season-info">
                   <div class="season-name">${season.title}</div>
                   <div class="season-episodes">${season.episodeCount} episodios</div>
@@ -4572,15 +5150,18 @@ app.get('/series', async (req, res) => {
           }
         });
         
-        function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId) {
+        function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId, parentRatingKey, libraryKey, libraryTitle) {
           // Redirigir a la página /list con los datos de la temporada
           const params = new URLSearchParams();
           params.set('accessToken', accessToken);
           params.set('baseURI', baseURI);
           params.set('seasonRatingKey', seasonRatingKey);
           params.set('seasonNumber', seasonNumber);
-          params.set('seriesTitle', seriesTitle);
+          params.set('seriesTitle', decodeURIComponent(seriesTitle));
+          params.set('parentRatingKey', parentRatingKey || seasonRatingKey);
           if (tmdbId) params.set('tmdbId', tmdbId);
+          if (libraryKey) params.set('libraryKey', libraryKey);
+          if (libraryTitle) params.set('libraryTitle', libraryTitle);
           
           window.location.href = '/list?' + params.toString();
         }
@@ -4866,7 +5447,7 @@ app.get('/browse', async (req, res) => {
             border-bottom: 1px solid rgba(229, 160, 13, 0.2);
             position: sticky;
             top: 0;
-            z-index: 100;
+            z-index: 1000;
           }
           .container {
             max-width: 1400px;
@@ -4997,28 +5578,284 @@ app.get('/browse', async (req, res) => {
             color: #9ca3af;
           }
           /* Navbar styles */
-          .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }
-          .navbar-brand { text-decoration: none; color: var(--text-primary); font-size: 1.5rem; font-weight: 700; }
-          .logo-title { color: var(--primary-color); }
-          .navbar-links { display: flex; gap: 1.5rem; align-items: center; flex-direction: row; }
-          .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: color 0.2s; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
-          .navbar-links a:hover, .navbar-links a.active { color: var(--primary-color); }
+          .navbar { background: #000; padding: 0.5rem 0; border-bottom: 1px solid rgba(229, 160, 13, 0.2); position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(10px); }
+          .navbar .container { padding: 0 1rem; }
+          .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+          .navbar-brand { text-decoration: none; color: var(--text-primary); display: flex; align-items: center; }
+          .logo-title { color: var(--primary-color); font-size: 1.5rem; font-weight: 700; white-space: nowrap; }
+          .navbar-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; flex: 1; justify-content: center; }
+          .navbar-links #library-links { display: flex; gap: 0.25rem; align-items: center; flex-wrap: nowrap; }
+          .navbar-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; padding: 0.5rem 0.65rem; border-radius: 6px; font-size: 0.875rem; }
+          .navbar-links a:hover { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); }
+          .navbar-links a.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.15); font-weight: 600; }
           .navbar-controls { display: flex; gap: 1rem; align-items: center; }
+          
+          /* Mobile Search Bar */
+          .mobile-search-bar {
+            display: none;
+            background: var(--bg-secondary);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
+            z-index: 998;
+          }
+
+          .mobile-search-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+
+          .mobile-search-wrapper input {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.875rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.9375rem;
+            text-align: center;
+            font-weight: 500;
+            transition: text-align 0.2s ease;
+            cursor: pointer;
+          }
+
+          .mobile-search-wrapper input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            text-align: left;
+            cursor: text;
+          }
+
+          .mobile-search-wrapper input::placeholder {
+            color: var(--primary-color);
+            opacity: 1;
+            font-weight: 600;
+            text-align: center;
+          }
+
+          .mobile-search-wrapper input:focus::placeholder {
+            opacity: 0;
+          }
+
+          .mobile-search-btn,
+          .mobile-filter-btn {
+            background: var(--primary-color);
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            color: #000;
+            font-size: 1.125rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+          }
+
+          .mobile-search-btn:hover,
+          .mobile-filter-btn:hover {
+            background: var(--primary-dark);
+          }
+
+          /* Filters Overlay */
+          .filters-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+          }
+
+          .filters-overlay.active {
+            display: block;
+            opacity: 1;
+          }
+
+          /* Mobile Filters Sidebar */
+          .filters-sidebar {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 85%;
+            max-width: 350px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            z-index: 2000;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+            box-shadow: -4px 0 12px rgba(0, 0, 0, 0.5);
+          }
+
+          .filters-sidebar.active {
+            right: 0;
+          }
+
+          .filters-sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 10;
+          }
+
+          .filters-sidebar-header h3 {
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          }
+
+          .filters-sidebar-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            transition: color 0.2s;
+          }
+
+          .filters-sidebar-close:hover {
+            color: var(--primary-color);
+          }
+
+          .filters-sidebar-content {
+            padding: 1.5rem;
+          }
+
+          .filter-section {
+            margin-bottom: 1.5rem;
+          }
+
+          .filter-section-title {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+          }
+
+          .filter-section select {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+          }
+
+          .filter-section select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+          }
+
+          .sidebar-search-box {
+            position: relative;
+            width: 100%;
+          }
+
+          .sidebar-search-box input {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+          }
+
+          .sidebar-search-box input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+          }
+
+          .sidebar-search-box i {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            pointer-events: none;
+          }
+
+          .sidebar-clear-btn {
+            width: 100%;
+            background: var(--primary-color);
+            border: none;
+            color: #000;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+            font-size: 0.95rem;
+          }
+
+          .sidebar-clear-btn:hover {
+            background: var(--primary-dark);
+            transform: scale(1.02);
+          }
+
+          /* Dropdown moderno */
+          .dropdown-container { position: relative; display: inline-flex; z-index: 2200; }
+          .more-btn { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; transition: all 0.2s; white-space: nowrap; z-index: 2200; }
+          .more-btn:hover { color: var(--primary-color); border-color: var(--primary-color); background: rgba(229, 160, 13, 0.05); }
+          .more-btn.active { color: var(--primary-color); background: rgba(229, 160, 13, 0.1); border-color: var(--primary-color); }
+          .more-btn i { transition: transform 0.2s; font-size: 0.7rem; }
+          .more-btn.active i { transform: rotate(180deg); }
+          .dropdown-menu { position: absolute; top: calc(100% + 0.5rem); right: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 200px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2200; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; max-height: 80vh; overflow-y: auto; }
+          .dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
+          .dropdown-menu a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; font-size: 0.875rem; border-radius: 0; }
+          .dropdown-menu a:hover { background: rgba(229, 160, 13, 0.1); color: var(--primary-color); }
+          .dropdown-menu a.active { color: var(--primary-color); font-weight: 600; background: rgba(229, 160, 13, 0.05); }
+          .dropdown-menu a i { font-size: 0.875rem; min-width: 1em; }
+          
           .search-container { position: relative; display: flex; align-items: center; }
           .search-container input { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 2.5rem 0.5rem 1rem; color: var(--text-primary); width: 250px; height: 38px; }
+          .search-container input:focus { outline: none; border-color: var(--primary-color); }
           .search-container i { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary); }
           
-          /* Library controls */
-          .library-controls { background: var(--bg-secondary); padding: 1rem 0; border-bottom: 1px solid var(--border-color); }
-          .controls-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 1rem; overflow-x: auto; }
-          .filters-group { display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1; justify-content: center; }
-          .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 1rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem; min-width: 140px; }
+          /* Library Controls */
+          .library-controls { background: var(--bg-secondary); padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); }
+          .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0 0.5rem; }
+          
+          /* Left: Library Info */
+          .library-info { display: flex; align-items: center; gap: 0.5rem; min-width: fit-content; }
+          .library-title { font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--primary-color); white-space: nowrap; }
+          .library-title i { margin-right: 0.35rem; font-size: 1.1rem; }
+          .library-count { font-size: 0.95rem; font-weight: 600; color: var(--primary-color); white-space: nowrap; }
+          
+          /* Center: Filters Group */
+          .filters-group { display: flex; gap: 0.4rem; flex-wrap: nowrap; flex: 1; justify-content: center; align-items: center; }
+          .filter-select { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.4rem 0.65rem; color: var(--text-primary); cursor: pointer; font-size: 0.75rem; min-width: 90px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .filter-select option { white-space: normal; }
           .filter-select:focus { outline: none; border-color: var(--primary-color); }
-          .btn-clear-filters { background: var(--primary-color); color: #000; border: none; border-radius: 6px; padding: 0.5rem 1.2rem; cursor: pointer; font-weight: 600; transition: background 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+          .btn-clear-filters { background: var(--primary-color); color: #000; border: none; border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; font-weight: 600; transition: background 0.2s; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; white-space: nowrap; }
           .btn-clear-filters:hover { background: var(--primary-dark); }
           
-          /* View controls */
-          .view-controls { display: flex; gap: 1rem; align-items: center; }
+          /* Right: View Controls */
+          .view-controls { display: flex; gap: 1rem; align-items: center; min-width: fit-content; }
           .grid-size-control { display: flex; align-items: center; gap: 0.75rem; transition: opacity 0.3s, visibility 0.3s; }
           .grid-size-control.hidden { opacity: 0; visibility: hidden; width: 0; overflow: hidden; }
           .grid-size-control i { color: var(--text-secondary); }
@@ -5042,6 +5879,9 @@ app.get('/browse', async (req, res) => {
           .movie-poster img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; display: block; }
           .movie-card:hover .movie-poster img { transform: scale(1.1); }
           .no-poster { width: 100%; height: 100%; background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 0.875rem; }
+          
+          /* Episode count badge for series */
+          .episode-count-badge { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(229, 160, 13, 0.95); color: #000; padding: 0.35rem 0.65rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
           
           /* Movie overlay */
           .movie-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 50%, transparent 100%); opacity: 0; transition: opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; padding: 1rem; }
@@ -5088,11 +5928,248 @@ app.get('/browse', async (req, res) => {
           .movie-grid.list-view .movie-overlay { display: none; }
           
           /* Responsive */
+          
+          /* Tablet and below - iPad Pro included */
+          @media (max-width: 1024px) {
+            .navbar { padding: 0; }
+            .navbar .container { padding: 0.75rem 1rem; }
+            .nav-content { gap: 0.75rem; flex-wrap: nowrap; }
+            .logo-title { font-size: 1.3rem; }
+            
+            /* Mostrar dropdown "Más" cuando hay muchas bibliotecas */
+            .navbar-links { 
+              display: flex; 
+              gap: 0.5rem;
+              flex-wrap: nowrap;
+              flex: 1;
+              min-width: 0;
+            }
+            .navbar-links a { 
+              padding: 0.5rem 0.75rem; 
+              font-size: 0.875rem; 
+              white-space: nowrap;
+              flex-shrink: 0;
+            }
+            .navbar-links a i { font-size: 0.875rem; }
+            
+            .dropdown-container { 
+              display: inline-flex !important;
+              margin-left: 0.5rem;
+            }
+            .more-btn { 
+              padding: 0.5rem 0.75rem;
+              font-size: 0.875rem;
+            }
+            
+            .search-container input { width: 200px; font-size: 0.875rem; }
+            
+            .library-controls { padding: 0.75rem 0; }
+            .controls-row { gap: 0.75rem; }
+            .library-title { font-size: 1.1rem; }
+            .library-count { font-size: 0.85rem; }
+            .filter-select { 
+              min-width: 90px; 
+              max-width: 120px; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.6rem; 
+            }
+            .btn-clear-filters { 
+              padding: 0.4rem 0.75rem; 
+              font-size: 0.75rem; 
+            }
+            
+            .container { padding: 0 1.5rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+              gap: 1.25rem; 
+            }
+          }
+          
+          /* Tablet portrait and below */
           @media (max-width: 768px) {
-            .navbar-links { display: none; }
-            .search-container input { width: 180px; }
-            .movie-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+            .mobile-search-bar { display: block; }
+            .library-controls { display: none; }
+            .search-container { display: none !important; }
+            
+            .navbar .container { padding: 0.5rem 0.75rem; }
+            .nav-content { gap: 0.25rem; }
+            .logo-title { font-size: 0.95rem; }
+            
+            .navbar-links { 
+              gap: 0.15rem;
+              flex: 1;
+              min-width: 0;
+            }
+            .navbar-links #library-links {
+              gap: 0.15rem;
+            }
+            .navbar-links a { 
+              font-size: 0.75rem; 
+              padding: 0.35rem 0.4rem;
+              flex-shrink: 0;
+              gap: 0.3rem;
+            }
+            .navbar-links a i { font-size: 0.7rem; }
+            
+            .dropdown-container { margin-left: 0.15rem; }
+            .more-btn { 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.4rem;
+              gap: 0.25rem;
+            }
+            .more-btn i { font-size: 0.65rem; }
+            
+            .search-container input { 
+              width: 150px; 
+              font-size: 0.8rem; 
+              padding: 0.4rem 2rem 0.4rem 0.75rem; 
+              height: 34px; 
+            }
+            .search-container i { font-size: 0.8rem; }
+            
+            .library-controls { padding: 0.75rem 0; }
+            .controls-row { 
+              flex-direction: column; 
+              gap: 0.75rem; 
+              align-items: stretch; 
+            }
+            .library-info { 
+              justify-content: space-between; 
+              width: 100%; 
+            }
+            .library-title { font-size: 1.1rem; }
+            .library-count { font-size: 0.85rem; }
+            
+            .filters-group { 
+              gap: 0.35rem; 
+              flex-wrap: nowrap; 
+              overflow-x: auto; 
+              scrollbar-width: none; 
+              -ms-overflow-style: none; 
+              padding: 0 0.25rem; 
+            }
+            .filters-group::-webkit-scrollbar { display: none; }
+            .filter-select { 
+              min-width: 110px; 
+              flex-shrink: 0; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.6rem; 
+            }
+            .btn-clear-filters { 
+              min-width: 90px; 
+              flex-shrink: 0; 
+              font-size: 0.75rem; 
+              padding: 0.4rem 0.7rem; 
+            }
+            
             .view-controls { display: none; }
+            
+            .container { padding: 0 1rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+              gap: 1rem; 
+            }
+          }
+          
+          /* Mobile devices */
+          @media (max-width: 540px) {
+            .navbar { padding: 0; }
+            .navbar .container { padding: 0.5rem 0.75rem; }
+            .nav-content { 
+              flex-wrap: nowrap;
+              gap: 0.5rem;
+            }
+            .logo-title { font-size: 1.1rem; }
+            
+            /* Bibliotecas compactas */
+            .navbar-links { 
+              gap: 0.25rem;
+              flex: 1;
+              min-width: 0;
+            }
+            .navbar-links a { 
+              font-size: 0.75rem; 
+              padding: 0.35rem 0.5rem;
+              flex-shrink: 0;
+            }
+            .navbar-links a i { display: none; }
+            
+            .dropdown-container { margin-left: 0.25rem; }
+            .more-btn { 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.5rem; 
+            }
+            
+            .search-container input { 
+              width: 120px; 
+              font-size: 0.75rem; 
+              padding: 0.35rem 1.75rem 0.35rem 0.65rem; 
+              height: 32px; 
+            }
+            .search-container i { 
+              right: 0.5rem; 
+              font-size: 0.75rem; 
+            }
+            
+            .library-title { font-size: 1rem; }
+            .library-title i { font-size: 0.9rem; }
+            .library-count { font-size: 0.8rem; }
+            
+            .filter-select { 
+              min-width: 100px; 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.5rem; 
+            }
+            .btn-clear-filters { 
+              min-width: 85px; 
+              font-size: 0.7rem; 
+              padding: 0.35rem 0.6rem; 
+            }
+            
+            .container { padding: 0 0.75rem; }
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+              gap: 0.75rem; 
+            }
+            
+            .movie-card { border-radius: 6px; }
+            .movie-poster { border-radius: 6px; }
+            .movie-info { padding: 0.5rem; }
+            .movie-title { font-size: 0.8rem; }
+            .movie-year { font-size: 0.675rem; }
+            .movie-meta { font-size: 0.675rem; }
+          }
+          
+          /* Extra small devices */
+          @media (max-width: 480px) {
+            .logo-title { font-size: 1rem; }
+            
+            .navbar-links { 
+              flex: 1;
+              min-width: 0;
+            }
+            .navbar-links a { 
+              font-size: 0.7rem; 
+              padding: 0.3rem 0.45rem;
+              flex-shrink: 0;
+            }
+            .more-btn { 
+              font-size: 0.65rem; 
+              padding: 0.3rem 0.45rem; 
+            }
+            
+            .search-container input { 
+              width: 100px;
+              font-size: 0.7rem;
+            }
+            
+            .movie-grid { 
+              grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); 
+              gap: 0.625rem; 
+            }
+            .movie-info { padding: 0.4rem; }
+            .movie-title { font-size: 0.75rem; }
+            .movie-year, .movie-meta { font-size: 0.625rem; }
           }
         </style>
       </head>
@@ -5104,57 +6181,123 @@ app.get('/browse', async (req, res) => {
 
         <!-- Navbar -->
         <nav class="navbar">
-          <div class="container" style="display: flex; align-items: center; justify-content: space-between;">
-            <a class="navbar-brand" href="/library?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}">
-              <div class="logo-container">
-                <div class="logo-title">Infinity Scrap</div>
+          <div class="container">
+            <div class="nav-content">
+              <a class="navbar-brand" href="/library?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}">
+                <div class="logo-container">
+                  <span class="logo-title">Infinity Scrap</span>
+                </div>
+              </a>
+              <div class="navbar-links" id="navbar-links">
+                <span id="library-links"></span>
+                <div class="dropdown-container" id="more-libraries" style="display: none;">
+                  <button class="more-btn" id="more-btn">
+                    Más <i class="fas fa-chevron-down"></i>
+                  </button>
+                  <div class="dropdown-menu" id="dropdown-menu">
+                    <!-- Bibliotecas adicionales -->
+                  </div>
+                </div>
               </div>
-            </a>
-            <div class="navbar-links">
-              <!-- Las bibliotecas se cargarán dinámicamente -->
-              <span id="library-links" style="display: flex; gap: 1.5rem; align-items: center;"></span>
-            </div>
-            <div class="navbar-controls">
-              <div class="search-container">
-                <input type="text" id="search-input" placeholder="Buscar ${libraryTitle.toLowerCase()}...">
-                <i class="fas fa-search"></i>
+              <div class="navbar-controls">
+                <div class="search-container">
+                  <input type="text" id="search-input" placeholder="Buscar ${libraryTitle.toLowerCase()}...">
+                  <i class="fas fa-search"></i>
+                </div>
               </div>
             </div>
           </div>
         </nav>
         
-        <!-- Library Header -->
-        <header style="padding:1rem 0; background:var(--bg-secondary); border-bottom:1px solid var(--border-color);">
-          <div class="container">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <h1 style="font-size:2rem; font-weight:700; margin: 0;"><i class="fas fa-${libraryType === 'movie' ? 'film' : 'tv'}"></i> ${libraryTitle}</h1>
-                <span id="footer-count" class="footer-count" style="font-size: 1.125rem; color: var(--text-secondary);">(${items.length} ${libraryType === 'movie' ? 'películas' : 'series'})</span>
-              </div>
-              <div class="view-controls">
-                <div class="grid-size-control" id="grid-size-control">
-                  <i class="fas fa-compress-alt"></i>
-                  <input type="range" id="grid-size-slider" min="120" max="250" value="180" step="10">
-                  <i class="fas fa-expand-alt"></i>
-                </div>
-                <div class="view-buttons">
-                  <button class="view-btn active" id="grid-view-btn" title="Vista grid">
-                    <i class="fas fa-th"></i>
-                  </button>
-                  <button class="view-btn" id="list-view-btn" title="Vista lista">
-                    <i class="fas fa-list"></i>
-                  </button>
-                </div>
+        <!-- Mobile Search Bar -->
+        <div class="mobile-search-bar">
+          <div class="mobile-search-wrapper">
+            <input type="text" id="search-input-mobile" placeholder="0 películas" readonly>
+            <button class="mobile-search-btn" id="mobile-search-btn" aria-label="Buscar">
+              <i class="fas fa-search"></i>
+            </button>
+            <button class="mobile-filter-btn" id="mobile-filter-btn" aria-label="Abrir filtros">
+              <i class="fas fa-filter"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile Filters Sidebar -->
+        <div class="filters-overlay" id="filters-overlay"></div>
+        <aside class="filters-sidebar" id="filters-sidebar">
+          <div class="filters-sidebar-header">
+            <h3><i class="fas fa-filter"></i> Filtros</h3>
+            <button class="filters-sidebar-close" id="filters-sidebar-close" aria-label="Cerrar filtros">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="filters-sidebar-content">
+            <div class="filter-section">
+              <div class="filter-section-title">BÚSQUEDA</div>
+              <div class="sidebar-search-box">
+                <input type="text" id="search-input-sidebar" placeholder="Buscar películas...">
+                <i class="fas fa-search"></i>
               </div>
             </div>
+            <div class="filter-section">
+              <div class="filter-section-title">GÉNERO</div>
+              <select id="genre-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los géneros</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">AÑO</div>
+              <select id="year-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los años</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">PAÍS</div>
+              <select id="country-filter-mobile" class="filter-select-mobile">
+                <option value="">Todos los países</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">VALORACIÓN</div>
+              <select id="rating-filter-mobile" class="filter-select-mobile">
+                <option value="">Todas las valoraciones</option>
+                <option value="9">⭐ 9.0+</option>
+                <option value="8">⭐ 8.0+</option>
+                <option value="7">⭐ 7.0+</option>
+                <option value="6">⭐ 6.0+</option>
+              </select>
+            </div>
+            <div class="filter-section">
+              <div class="filter-section-title">ORDENAR POR</div>
+              <select id="sort-filter-mobile" class="filter-select-mobile">
+                <option value="added-desc">Recientes</option>
+                <option value="added-asc">Antiguos</option>
+                <option value="title">Título A-Z</option>
+                <option value="title-desc">Título Z-A</option>
+                <option value="year-desc">Año ↓</option>
+                <option value="year-asc">Año ↑</option>
+                <option value="rating-desc">Valoración ↓</option>
+                <option value="rating-asc">Valoración ↑</option>
+              </select>
+            </div>
+            <button id="clear-filters-mobile" class="sidebar-clear-btn">
+              <i class="fas fa-broom"></i> Limpiar filtros
+            </button>
           </div>
-        </header>
+        </aside>
         
         <!-- Library Controls -->
         <div class="library-controls">
           <div class="container">
             <div class="controls-row">
-              <div class="filters-group" style="width: 100%;">
+              <!-- Left: Title & Count -->
+              <div class="library-info">
+                <h1 class="library-title"><i class="fas fa-${libraryType === 'movie' ? 'film' : 'tv'}"></i> ${libraryTitle}</h1>
+                <span id="footer-count" class="library-count">(${items.length} ${libraryType === 'movie' ? 'películas' : 'series'})</span>
+              </div>
+              
+              <!-- Center: Filters -->
+              <div class="filters-group">
                 <select id="genre-filter" class="filter-select">
                   <option value="">Géneros</option>
                   ${uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('')}
@@ -5162,10 +6305,6 @@ app.get('/browse', async (req, res) => {
                 <select id="year-filter" class="filter-select">
                   <option value="">Años</option>
                   ${uniqueYears.map(y => `<option value="${y}">${y}</option>`).join('')}
-                </select>
-                <select id="collection-filter" class="filter-select" style="display: ${libraryType === 'movie' && uniqueCollections.length > 0 ? 'inline-block' : 'none'};">
-                  <option value="">Colecciones</option>
-                  ${uniqueCollections.map(c => `<option value="${c}">${c}</option>`).join('')}
                 </select>
                 <select id="country-filter" class="filter-select">
                   <option value="">Países</option>
@@ -5185,6 +6324,22 @@ app.get('/browse', async (req, res) => {
                   <i class="fas fa-broom"></i> Limpiar
                 </button>
               </div>
+              
+              <!-- Right: View Controls -->
+              <div class="view-controls">
+                <div class="grid-size-control" id="grid-size-control">
+                  <input type="range" id="grid-size-slider" min="120" max="250" value="180" step="10">
+                  <i class="fas fa-expand-alt"></i>
+                </div>
+                <div class="view-buttons">
+                  <button class="view-btn active" id="grid-view-btn" title="Vista grid">
+                    <i class="fas fa-th"></i>
+                  </button>
+                  <button class="view-btn" id="list-view-btn" title="Vista lista">
+                    <i class="fas fa-list"></i>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -5199,8 +6354,20 @@ app.get('/browse', async (req, res) => {
         </main>
         
         <script>
-          // Datos en JSON para generación dinámica
-          const itemsData = ${JSON.stringify(items)};
+          // ENFOQUE HÍBRIDO: Primer lote de 50 items completos + índice ligero de todos
+          const itemsData = ${JSON.stringify(items.slice(0, 50))};
+          const itemsIndex = ${JSON.stringify(items.map(item => ({
+            id: item.ratingKey,
+            title: item.title,
+            year: item.year || '',
+            genres: item.genres || [],
+            rating: item.rating || 0,
+            thumb: item.thumb || '',
+            ratingKey: item.ratingKey,
+            tmdbId: item.tmdbId || '',
+            countries: item.countries || [],
+            addedAt: item.addedAt || 0
+          })))};
           const accessToken = '${accessToken}';
           const baseURI = '${baseURI}';
           const libraryType = '${libraryType}';
@@ -5222,13 +6389,8 @@ app.get('/browse', async (req, res) => {
             const addedAt = item.addedAt || 0;
             
             const detailUrl = libraryType === 'movie' 
-              ? \`/movie?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&downloadURL=\${encodeURIComponent(\`\${baseURI}/library/metadata/\${item.ratingKey}?download=1&X-Plex-Token=\${accessToken}\`)}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`
-              : \`/series?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
-            
-            // For movies, extract file metadata from Plex XML before redirecting
-            const onclickHandler = libraryType === 'movie' 
-              ? \`handleMovieClick(event, '\${item.ratingKey}', '\${encodeURIComponent(item.title)}', '\${encodeURIComponent(item.thumb)}', '\${item.tmdbId}')\`
-              : \`window.location.href='\${detailUrl}'\`;
+              ? \`/movie-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`
+              : \`/series-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
             
             return \`
               <div class="movie-card" 
@@ -5242,9 +6404,9 @@ app.get('/browse', async (req, res) => {
                    data-tmdb-id="\${tmdbId}"
                    data-rating-key="\${item.ratingKey}"
                    data-added-at="\${addedAt}"
-                   onclick="\${onclickHandler}">
+                   onclick="window.location.href='\${detailUrl}'">
                 <div class="movie-poster">
-                  \${posterPath ? \`<img src="\${posterPath}" alt="\${itemTitle}" loading="lazy" />\` : '<div class="no-poster">Sin imagen</div>'}
+                  \${posterPath ? \`<img loading="lazy" src="\${posterPath}" alt="\${itemTitle}" loading="lazy" />\` : '<div class="no-poster">Sin imagen</div>'}
                   <div class="movie-overlay">
                     <div class="movie-overlay-content">
                       <div class="overlay-title">\${itemTitle}</div>
@@ -5290,104 +6452,23 @@ app.get('/browse', async (req, res) => {
             return Array.from(grid.querySelectorAll('.movie-card'));
           }
           
-          // Generar primer lote de tarjetas
-          allCards = renderBatch(0, BATCH_SIZE);
-          currentDisplayedIndex = BATCH_SIZE;
+          // Generar primer lote de tarjetas desde los datos cargados
+          window.filteredItemIds = itemsIndex.map(item => item.ratingKey);
+          loadAndRenderBatch(0, Math.min(BATCH_SIZE, itemsIndex.length));
           
-          // Cargar más tarjetas al hacer scroll
+          // Cargar más tarjetas al hacer scroll (sin uso ahora, usamos loadAndRenderBatch)
           function loadMoreCards() {
-            if (isLoading || currentDisplayedIndex >= itemsData.length) return;
-            isLoading = true;
-            
-            const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, itemsData.length);
-            const newCards = renderBatch(currentDisplayedIndex, endIndex);
-            allCards = allCards.concat(newCards);
-            currentDisplayedIndex = endIndex;
-            isLoading = false;
-            
-            // Configurar observer en la última tarjeta nueva
-            if (currentDisplayedIndex < itemsData.length) {
-              setupScrollObserver();
-            }
+            // Esta función ya no se usa, se maneja con loadAndRenderBatch
           }
           
-          // Observer para detectar scroll al final
+          // Observer para detectar scroll al final (sin uso ahora)
           function setupScrollObserver() {
-            if (observer) observer.disconnect();
-            
-            const lastCard = allCards[allCards.length - 1];
-            if (!lastCard) return;
-            
-            observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                  loadMoreCards();
-                }
-              });
-            }, {
-              rootMargin: '200px'
-            });
-            
-            observer.observe(lastCard);
+            // Esta función ya no se usa, se maneja con setupFilteredScrollObserver
           }
           
-          // Iniciar observer
-          setupScrollObserver();
+          // No iniciar observer al principio, se maneja con applyFilters
           
-          // Handle movie click: extract file metadata from Plex XML before redirecting
-          async function handleMovieClick(event, ratingKey, titleEncoded, thumbEncoded, tmdbId) {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            try {
-              // Fetch Plex XML metadata
-              const metadataUrl = \`\${baseURI}/library/metadata/\${ratingKey}?X-Plex-Token=\${accessToken}\`;
-              const response = await fetch(metadataUrl);
-              const xmlText = await response.text();
-              
-              // Extract file metadata from Part tag
-              const partKeyMatch = xmlText.match(/<Part[^>]*key="([^"]*)"/);
-              const fileMatch = xmlText.match(/<Part[^>]*file="([^"]*)"/);
-              const sizeMatch = xmlText.match(/<Part[^>]*size="([^"]*)"/);
-              
-              let fileName = '';
-              let fileSize = '';
-              let partKey = '';
-              let downloadUrl = '';
-              
-              if (partKeyMatch && fileMatch && sizeMatch) {
-                partKey = partKeyMatch[1];
-                const fileFull = fileMatch[1];
-                fileName = fileFull.split('/').pop();
-                fileSize = sizeMatch[1];
-                
-                // Construct proper download URL
-                const keyBase = partKey.replace(/\\/[^\\/]+$/, '/');
-                downloadUrl = \`\${baseURI}\${keyBase}\${fileName}?download=1&X-Plex-Token=\${accessToken}\`;
-                
-                console.log('📦 File metadata extracted from /browse:', { fileName, fileSize, partKey, downloadUrl });
-              } else {
-                // Fallback to metadata URL if Part not found
-                downloadUrl = \`\${baseURI}/library/metadata/\${ratingKey}?download=1&X-Plex-Token=\${accessToken}\`;
-                console.warn('⚠️ Part tag not found in Plex XML, using metadata URL');
-              }
-              
-              // Redirect to /movie with all parameters
-              const movieUrl = \`/movie?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&downloadURL=\${encodeURIComponent(downloadUrl)}&title=\${titleEncoded}&posterUrl=\${thumbEncoded}&tmdbId=\${tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}&fileName=\${encodeURIComponent(fileName)}&fileSize=\${fileSize}&partKey=\${encodeURIComponent(partKey)}\`;
-              
-              window.location.href = movieUrl;
-            } catch (error) {
-              console.error('Error fetching file metadata:', error);
-              // Fallback: redirect without file metadata
-              const fallbackUrl = \`/movie?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&downloadURL=\${encodeURIComponent(\`\${baseURI}/library/metadata/\${ratingKey}?download=1&X-Plex-Token=\${accessToken}\`)}&title=\${titleEncoded}&posterUrl=\${thumbEncoded}&tmdbId=\${tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
-              window.location.href = fallbackUrl;
-            }
-          }
-          
-          // Make function globally available
-          window.handleMovieClick = handleMovieClick;
-          
-          // Load all libraries and show them in navbar
+          // Load all libraries and show them in navbar with overflow dropdown
           fetch('${baseURI}/library/sections?X-Plex-Token=${accessToken}')
             .then(r => r.text())
             .then(xmlText => {
@@ -5395,6 +6476,11 @@ app.get('/browse', async (req, res) => {
               const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
               const directories = xmlDoc.querySelectorAll('Directory');
               const libraryLinksContainer = document.getElementById('library-links');
+              const moreLibrariesContainer = document.getElementById('more-libraries');
+              const dropdownMenu = document.getElementById('dropdown-menu');
+              const moreBtn = document.getElementById('more-btn');
+              
+              const allLibraries = [];
               
               directories.forEach(dir => {
                 const key = dir.getAttribute('key');
@@ -5402,42 +6488,538 @@ app.get('/browse', async (req, res) => {
                 const type = dir.getAttribute('type');
                 
                 if (key && title && (type === 'movie' || type === 'show')) {
-                  const a = document.createElement('a');
-                  const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + key + '&libraryTitle=' + encodeURIComponent(title) + '&libraryType=' + type;
-                  a.href = browseUrl;
-                  a.innerHTML = '<i class="fas fa-' + (type === 'movie' ? 'film' : 'tv') + '"></i> ' + title;
-                  if (title === '${libraryTitle}') a.classList.add('active');
-                  libraryLinksContainer.appendChild(a);
+                  allLibraries.push({ key, title, type, isActive: title === '${libraryTitle}' });
                 }
+              });
+              
+              // Renderizar bibliotecas con detección automática de overflow
+              function renderLibraries() {
+                libraryLinksContainer.innerHTML = '';
+                dropdownMenu.innerHTML = '';
+                moreLibrariesContainer.style.setProperty('display', 'none', 'important');
+                
+                // Renderizar TODAS las bibliotecas
+                allLibraries.forEach((lib) => {
+                  const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                  const a = document.createElement('a');
+                  a.href = browseUrl;
+                  a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                  if (lib.isActive) a.classList.add('active');
+                  libraryLinksContainer.appendChild(a);
+                });
+                
+                // Detectar overflow y reorganizar
+                requestAnimationFrame(() => {
+                  const navbarLinks = libraryLinksContainer.parentElement;
+                  if (!navbarLinks) return;
+                  
+                  // Verificar si hay overflow
+                  const isOverflowing = navbarLinks.scrollWidth > navbarLinks.clientWidth;
+                  
+                  if (!isOverflowing) {
+                    // No hay overflow, mostrar todas
+                    moreLibrariesContainer.style.setProperty('display', 'none', 'important');
+                    console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ')');
+                    return;
+                  }
+                  
+                  // Hay overflow - necesitamos el botón "Más"
+                  // Mostrar el botón primero
+                  moreLibrariesContainer.style.setProperty('display', 'inline-flex');
+                  
+                  // Algoritmo optimizado: intentar poner la activa + las más cortas
+                  requestAnimationFrame(() => {
+                    const links = Array.from(libraryLinksContainer.children);
+                    
+                    // Crear array con índice y ancho de cada biblioteca
+                    const libsWithWidth = allLibraries.map((lib, index) => ({
+                      index: index,
+                      lib: lib,
+                      width: links[index] ? links[index].offsetWidth : 0,
+                      isActive: lib.isActive
+                    }));
+                    
+                    // Separar la activa y ordenar las demás por ancho (más cortas primero)
+                    const activeLib = libsWithWidth.find(l => l.isActive);
+                    const otherLibs = libsWithWidth.filter(l => !l.isActive).sort((a, b) => a.width - b.width);
+                    
+                    // Intentar agregar bibliotecas hasta que haya overflow
+                    let visibleIndices = [];
+                    if (activeLib) visibleIndices.push(activeLib.index);
+                    
+                    // Limpiar y re-renderizar solo con las seleccionadas
+                    const tryRender = (indices) => {
+                      libraryLinksContainer.innerHTML = '';
+                      
+                      // Ordenar índices para mantener el orden original
+                      indices.sort((a, b) => a - b);
+                      
+                      indices.forEach(i => {
+                        const lib = allLibraries[i];
+                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                        const a = document.createElement('a');
+                        a.href = browseUrl;
+                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                        if (lib.isActive) a.classList.add('active');
+                        libraryLinksContainer.appendChild(a);
+                      });
+                    };
+                    
+                    // Intentar agregar las más cortas una por una
+                    for (let i = 0; i < otherLibs.length; i++) {
+                      const testIndices = [...visibleIndices, otherLibs[i].index];
+                      tryRender(testIndices);
+                      
+                      // Esperar un frame y verificar overflow
+                      if (navbarLinks.scrollWidth <= navbarLinks.clientWidth) {
+                        visibleIndices.push(otherLibs[i].index);
+                      } else {
+                        // Ya no cabe, volver al estado anterior
+                        tryRender(visibleIndices);
+                        break;
+                      }
+                    }
+                    
+                    // Poner las no visibles en el dropdown
+                    dropdownMenu.innerHTML = '';
+                    allLibraries.forEach((lib, index) => {
+                      if (!visibleIndices.includes(index)) {
+                        const browseUrl = '/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=' + lib.key + '&libraryTitle=' + encodeURIComponent(lib.title) + '&libraryType=' + lib.type;
+                        const a = document.createElement('a');
+                        a.href = browseUrl;
+                        a.innerHTML = '<i class="fas fa-' + (lib.type === 'movie' ? 'film' : 'tv') + '"></i> ' + lib.title;
+                        if (lib.isActive) a.classList.add('active');
+                        dropdownMenu.appendChild(a);
+                      }
+                    });
+                    
+                    console.log('📚 Bibliotecas:', visibleIndices.length, 'visibles de', allLibraries.length);
+                  });
+                });
+              }
+              
+              renderLibraries();
+              
+              // Flag para evitar múltiples listeners
+              let dropdownListenerAdded = false;
+              
+              // Event delegation en el documento para el botón Más
+              if (!dropdownListenerAdded) {
+                document.addEventListener('click', function(e) {
+                  const moreBtn = e.target.closest('#more-btn');
+                  
+                  // Si se hizo click en el botón Más
+                  if (moreBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const dropdown = document.getElementById('dropdown-menu');
+                    if (dropdown) {
+                      const wasActive = moreBtn.classList.contains('active');
+                      moreBtn.classList.toggle('active');
+                      dropdown.classList.toggle('show');
+                      console.log('🔽 Dropdown:', wasActive ? 'cerrando' : 'abriendo');
+                    }
+                    return;
+                  }
+                  
+                  // Si se hizo click en una biblioteca del dropdown
+                  const dropdownLink = e.target.closest('#dropdown-menu a');
+                  if (dropdownLink) {
+                    e.preventDefault();
+                    
+                    // Extraer libraryKey de la URL
+                    const url = new URL(dropdownLink.href);
+                    const clickedKey = url.searchParams.get('libraryKey');
+                    
+                    if (clickedKey) {
+                      // Encontrar la biblioteca clickeada
+                      const clickedLib = allLibraries.find(lib => lib.key === clickedKey);
+                      if (clickedLib) {
+                        // Remover de su posición actual
+                        const index = allLibraries.indexOf(clickedLib);
+                        allLibraries.splice(index, 1);
+                        // Agregar al principio
+                        allLibraries.unshift(clickedLib);
+                        
+                        console.log('📌 Biblioteca movida al principio:', clickedLib.title);
+                        
+                        // Cerrar dropdown
+                        const btn = document.getElementById('more-btn');
+                        const menu = document.getElementById('dropdown-menu');
+                        if (btn) btn.classList.remove('active');
+                        if (menu) menu.classList.remove('show');
+                        
+                        // Navegar a la biblioteca después de re-renderizar
+                        window.location.href = dropdownLink.href;
+                      }
+                    }
+                    return;
+                  }
+                  
+                  // Si se hizo click fuera del contenedor del dropdown
+                  const moreContainer = document.getElementById('more-libraries');
+                  if (moreContainer && !moreContainer.contains(e.target)) {
+                    const btn = document.getElementById('more-btn');
+                    const menu = document.getElementById('dropdown-menu');
+                    if (btn && btn.classList.contains('active')) {
+                      btn.classList.remove('active');
+                      if (menu) menu.classList.remove('show');
+                      console.log('🔽 Dropdown cerrado (click fuera)');
+                    }
+                  }
+                });
+                dropdownListenerAdded = true;
+                console.log('✅ Dropdown listener configurado');
+              }
+              
+              // Reajustar al cambiar tamaño de ventana
+              let resizeTimeout;
+              window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                  renderLibraries();
+                }, 200);
               });
             })
             .catch(e => console.error('Error loading libraries:', e));
           
-          // Filtrar y ordenar sobre los datos JSON
+          // **MOBILE SEARCH & FILTERS**
+          const mobileSearchInput = document.getElementById('search-input-mobile');
+          const mobileSearchBtn = document.getElementById('mobile-search-btn');
+          const mobileFilterBtn = document.getElementById('mobile-filter-btn');
+          const filtersSidebar = document.getElementById('filters-sidebar');
+          const filtersOverlay = document.getElementById('filters-overlay');
+          const filtersSidebarClose = document.getElementById('filters-sidebar-close');
+          const searchInputSidebar = document.getElementById('search-input-sidebar');
+          
+          // Mobile search input - click para abrir sidebar de búsqueda
+          if (mobileSearchInput) {
+            mobileSearchInput.addEventListener('click', () => {
+              openFiltersSidebar();
+              setTimeout(() => {
+                if (searchInputSidebar) {
+                  searchInputSidebar.focus();
+                  searchInputSidebar.removeAttribute('readonly');
+                }
+              }, 300);
+            });
+          }
+          
+          // Mobile search button - ejecuta búsqueda o limpia
+          if (mobileSearchBtn) {
+            mobileSearchBtn.addEventListener('click', () => {
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch && desktopSearch.value.trim()) {
+                // Si hay búsqueda activa, limpiarla
+                desktopSearch.value = '';
+                desktopSearch.dispatchEvent(new Event('input'));
+                if (searchInputSidebar) searchInputSidebar.value = '';
+              }
+            });
+          }
+          
+          // Mobile filter button - abre sidebar
+          if (mobileFilterBtn) {
+            mobileFilterBtn.addEventListener('click', openFiltersSidebar);
+          }
+          
+          // Cerrar sidebar
+          if (filtersSidebarClose) {
+            filtersSidebarClose.addEventListener('click', closeFiltersSidebar);
+          }
+          
+          if (filtersOverlay) {
+            filtersOverlay.addEventListener('click', closeFiltersSidebar);
+          }
+          
+          function openFiltersSidebar() {
+            if (filtersSidebar) filtersSidebar.classList.add('active');
+            if (filtersOverlay) filtersOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+          }
+          
+          function closeFiltersSidebar() {
+            if (filtersSidebar) filtersSidebar.classList.remove('active');
+            if (filtersOverlay) filtersOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+          }
+          
+          // Sincronizar búsqueda sidebar con desktop
+          if (searchInputSidebar) {
+            searchInputSidebar.addEventListener('input', (e) => {
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch) {
+                desktopSearch.value = e.target.value;
+                desktopSearch.dispatchEvent(new Event('input'));
+              }
+            });
+          }
+          
+          // Sincronizar filtros móviles con desktop
+          const genreFilterMobile = document.getElementById('genre-filter-mobile');
+          const yearFilterMobile = document.getElementById('year-filter-mobile');
+          const countryFilterMobile = document.getElementById('country-filter-mobile');
+          const ratingFilterMobile = document.getElementById('rating-filter-mobile');
+          
+          if (genreFilterMobile) {
+            genreFilterMobile.addEventListener('change', (e) => {
+              const desktopGenre = document.getElementById('genre-filter');
+              if (desktopGenre) {
+                desktopGenre.value = e.target.value;
+                desktopGenre.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (yearFilterMobile) {
+            yearFilterMobile.addEventListener('change', (e) => {
+              const desktopYear = document.getElementById('year-filter');
+              if (desktopYear) {
+                desktopYear.value = e.target.value;
+                desktopYear.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (countryFilterMobile) {
+            countryFilterMobile.addEventListener('change', (e) => {
+              const desktopCountry = document.getElementById('country-filter');
+              if (desktopCountry) {
+                desktopCountry.value = e.target.value;
+                desktopCountry.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          if (ratingFilterMobile) {
+            ratingFilterMobile.addEventListener('change', (e) => {
+              const desktopRating = document.getElementById('rating-filter');
+              if (desktopRating) {
+                desktopRating.value = e.target.value;
+                desktopRating.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          const sortFilterMobile = document.getElementById('sort-filter-mobile');
+          if (sortFilterMobile) {
+            sortFilterMobile.addEventListener('change', (e) => {
+              const desktopSort = document.getElementById('sort-filter');
+              if (desktopSort) {
+                desktopSort.value = e.target.value;
+                desktopSort.dispatchEvent(new Event('change'));
+              }
+            });
+          }
+          
+          // Limpiar filtros desde móvil
+          const clearFiltersMobile = document.getElementById('clear-filters-mobile');
+          if (clearFiltersMobile) {
+            clearFiltersMobile.addEventListener('click', () => {
+              // Limpiar búsqueda
+              const desktopSearch = document.getElementById('search-input');
+              if (desktopSearch) {
+                desktopSearch.value = '';
+                desktopSearch.dispatchEvent(new Event('input'));
+              }
+              if (searchInputSidebar) searchInputSidebar.value = '';
+              
+              // Limpiar filtros
+              const desktopGenre = document.getElementById('genre-filter');
+              const desktopYear = document.getElementById('year-filter');
+              const desktopCountry = document.getElementById('country-filter');
+              const desktopRating = document.getElementById('rating-filter');
+              const desktopSort = document.getElementById('sort-filter');
+              
+              if (desktopGenre) {
+                desktopGenre.value = '';
+                desktopGenre.dispatchEvent(new Event('change'));
+              }
+              if (desktopYear) {
+                desktopYear.value = '';
+                desktopYear.dispatchEvent(new Event('change'));
+              }
+              if (desktopCountry) {
+                desktopCountry.value = '';
+                desktopCountry.dispatchEvent(new Event('change'));
+              }
+              if (desktopRating) {
+                desktopRating.value = '';
+                desktopRating.dispatchEvent(new Event('change'));
+              }
+              if (desktopSort) {
+                desktopSort.value = 'added-desc';
+                desktopSort.dispatchEvent(new Event('change'));
+              }
+              
+              // Actualizar filtros móviles
+              if (genreFilterMobile) genreFilterMobile.value = '';
+              if (yearFilterMobile) yearFilterMobile.value = '';
+              if (countryFilterMobile) countryFilterMobile.value = '';
+              if (ratingFilterMobile) ratingFilterMobile.value = '';
+              if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
+              
+              // Cerrar sidebar después de limpiar
+              setTimeout(() => {
+                closeFiltersSidebar();
+              }, 300);
+            });
+          }
+          
+          // **CONTADOR DINÁMICO**: Actualizar contador en mobile search bar
+          function updateMobileSearchCounter(count) {
+            const mobileSearchInput = document.getElementById('search-input-mobile');
+            if (mobileSearchInput) {
+              const label = '${libraryType}' === 'movie' ? 'películas' : 'series';
+              mobileSearchInput.placeholder = count + ' ' + label;
+            }
+          }
+
+          // **FILTROS DINÁMICOS**: Actualizar opciones de filtros basados en items filtrados
+          function updateDynamicFilters(filteredItems) {
+            // Obtener valores actuales seleccionados
+            const currentGenre = document.getElementById('genre-filter').value;
+            const currentYear = document.getElementById('year-filter').value;
+            const currentCountry = document.getElementById('country-filter').value;
+            
+            // Extraer valores disponibles de items filtrados
+            const availableGenres = new Set();
+            const availableYears = new Set();
+            const availableCountries = new Set();
+            
+            filteredItems.forEach(item => {
+              // Géneros
+              if (Array.isArray(item.genres)) {
+                item.genres.forEach(g => availableGenres.add(g));
+              }
+              
+              // Años
+              if (item.year) availableYears.add(item.year.toString());
+              
+              // Países
+              if (item.countries) {
+                const countriesArray = Array.isArray(item.countries) 
+                  ? item.countries 
+                  : item.countries.split(',').map(c => c.trim());
+                countriesArray.forEach(country => {
+                  const trimmed = typeof country === 'string' ? country.trim() : country;
+                  if (trimmed) availableCountries.add(trimmed);
+                });
+              }
+            });
+            
+            // Actualizar filtro de género
+            const genreFilter = document.getElementById('genre-filter');
+            const genreOptions = '<option value="">Géneros</option>' + 
+              Array.from(availableGenres).sort().map(genre => 
+                \`<option value="\${genre}" \${genre === currentGenre ? 'selected' : ''}>\${genre}</option>\`
+              ).join('');
+            genreFilter.innerHTML = genreOptions;
+            
+            // Sincronizar con móvil
+            const genreFilterMobile = document.getElementById('genre-filter-mobile');
+            if (genreFilterMobile) {
+              genreFilterMobile.innerHTML = genreOptions;
+            }
+            
+            // Actualizar filtro de año
+            const yearFilter = document.getElementById('year-filter');
+            const yearOptions = '<option value="">Años</option>' + 
+              Array.from(availableYears).sort((a, b) => b - a).map(year => 
+                \`<option value="\${year}" \${year === currentYear ? 'selected' : ''}>\${year}</option>\`
+              ).join('');
+            yearFilter.innerHTML = yearOptions;
+            
+            // Sincronizar con móvil
+            const yearFilterMobile = document.getElementById('year-filter-mobile');
+            if (yearFilterMobile) {
+              yearFilterMobile.innerHTML = yearOptions;
+            }
+            
+            // Actualizar filtro de país
+            const countryFilter = document.getElementById('country-filter');
+            const countryOptions = '<option value="">Países</option>' + 
+              Array.from(availableCountries).sort().map(country => 
+                \`<option value="\${country}" \${country === currentCountry ? 'selected' : ''}>\${country}</option>\`
+              ).join('');
+            countryFilter.innerHTML = countryOptions;
+            
+            // Sincronizar con móvil
+            const countryFilterMobile = document.getElementById('country-filter-mobile');
+            if (countryFilterMobile) {
+              countryFilterMobile.innerHTML = countryOptions;
+            }
+          }
+          
+          // Filtrar y ordenar sobre el índice ligero
           function applyFilters() {
-            const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            const genreValue = document.getElementById('genre-filter').value.toLowerCase();
+            const searchValue = document.getElementById('search-input').value;
+            const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
-            const collectionValue = document.getElementById('collection-filter').value.toLowerCase();
-            const countryValue = document.getElementById('country-filter').value.toLowerCase();
+            const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
-            // Filtrar sobre los datos JSON completos
-            let filteredData = itemsData.filter(item => {
-              const title = item.title.toLowerCase();
-              const genres = item.genres ? item.genres.map(g => g.toLowerCase()).join(',') : '';
-              const year = item.year;
-              const collections = item.collections ? item.collections.map(c => c.toLowerCase()).join(',') : '';
-              const countries = item.countries ? item.countries.map(c => c.toLowerCase()).join(',') : '';
+            // Filtrar sobre el índice completo (22k items, búsqueda instantánea)
+            let filteredData = itemsIndex.filter(item => {
+              // Búsqueda: solo sobre título y año (datos del índice ligero)
+              if (searchValue && searchValue.trim() !== '') {
+                // Función para decodificar entidades HTML
+                const decodeHTML = (text) => {
+                  if (!text) return '';
+                  const txt = document.createElement('textarea');
+                  txt.innerHTML = text;
+                  return txt.value;
+                };
+                
+                const normalizeText = (text) => {
+                  if (!text) return '';
+                  // Primero decodificar entidades HTML
+                  const decoded = decodeHTML(text);
+                  return decoded
+                    .toString()
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9\s]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                };
+                
+                const searchNormalized = normalizeText(searchValue);
+                const titleNormalized = normalizeText(item.title);
+                const yearNormalized = normalizeText(item.year);
+                
+                const titleMatch = titleNormalized.includes(searchNormalized);
+                const yearMatch = yearNormalized.includes(searchNormalized);
+                
+                if (!titleMatch && !yearMatch) return false;
+              }
               
-              if (searchTerm && !title.includes(searchTerm)) return false;
-              if (genreValue && !genres.includes(genreValue)) return false;
-              if (yearValue && year !== yearValue) return false;
-              if (collectionValue && !collections.includes(collectionValue)) return false;
-              if (countryValue && !countries.includes(countryValue)) return false;
+              // Filtro de género - comparación directa con array
+              if (genreValue) {
+                const itemGenres = Array.isArray(item.genres) ? item.genres : [];
+                if (!itemGenres.includes(genreValue)) return false;
+              }
+              
+              // Filtro de año - comparación directa
+              if (yearValue) {
+                if (item.year !== yearValue && item.year !== parseInt(yearValue)) return false;
+              }
+              
+              // Filtro de país - comparación directa con array
+              if (countryValue) {
+                const countries = Array.isArray(item.countries) 
+                  ? item.countries 
+                  : (item.countries ? item.countries.split(',').map(c => c.trim()) : []);
+                if (!countries.includes(countryValue)) return false;
+              }
               
               return true;
             });
+            
+            // **FILTROS DINÁMICOS**: Actualizar opciones disponibles basadas en los items filtrados
+            updateDynamicFilters(filteredData);
             
             // Ordenar
             filteredData.sort((a, b) => {
@@ -5463,34 +7045,76 @@ app.get('/browse', async (req, res) => {
               }
             });
             
-            // Limpiar grid y regenerar con datos filtrados
+            // Limpiar grid y regenerar con IDs filtrados
             const grid = document.getElementById('movies-grid');
             grid.innerHTML = '';
             
-            // Actualizar itemsData temporal con filtrados
-            window.filteredItems = filteredData;
+            // Guardar IDs filtrados para cargar datos completos bajo demanda
+            window.filteredItemIds = filteredData.map(item => item.ratingKey);
             
             // Resetear lazy loading
             if (observer) observer.disconnect();
             currentDisplayedIndex = 0;
             allCards = [];
             
-            // Renderizar primer lote
+            // Renderizar primer lote (cargar datos completos si no los tenemos)
             if (filteredData.length > 0) {
-              const firstBatch = filteredData.slice(0, BATCH_SIZE);
-              const htmlArray = firstBatch.map(item => createCardHTML(item));
-              grid.innerHTML = htmlArray.join('');
-              allCards = Array.from(grid.querySelectorAll('.movie-card'));
-              currentDisplayedIndex = BATCH_SIZE;
-              
-              // Configurar observer si hay más
-              if (filteredData.length > BATCH_SIZE) {
-                setupFilteredScrollObserver();
-              }
+              loadAndRenderBatch(0, Math.min(BATCH_SIZE, filteredData.length));
             }
             
             // Actualizar contador
             document.getElementById('footer-count').textContent = '(' + filteredData.length + ' ${libraryType === 'movie' ? 'películas' : 'series'}' + ')';
+            
+            // Actualizar contador móvil
+            updateMobileSearchCounter(filteredData.length);
+          }
+          
+          // Cargar datos completos del servidor y renderizar
+          async function loadAndRenderBatch(startIndex, endIndex) {
+            const idsToLoad = window.filteredItemIds.slice(startIndex, endIndex);
+            
+            // Buscar en itemsData los que ya tenemos
+            const itemsToRender = [];
+            const missingIds = [];
+            
+            idsToLoad.forEach(id => {
+              const existing = itemsData.find(item => item.ratingKey === id);
+              if (existing) {
+                itemsToRender.push(existing);
+              } else {
+                missingIds.push(id);
+              }
+            });
+            
+            // Si faltan datos, cargar del servidor (TODO: implementar endpoint)
+            // Por ahora, crear datos mínimos desde el índice
+            if (missingIds.length > 0) {
+              missingIds.forEach(id => {
+                const indexItem = itemsIndex.find(item => item.ratingKey === id);
+                if (indexItem) {
+                  itemsToRender.push({
+                    ...indexItem,
+                    summary: '',
+                    overview: '',
+                    collections: [],
+                    genres: indexItem.genres || [],
+                    countries: indexItem.countries || []
+                  });
+                }
+              });
+            }
+            
+            // Renderizar
+            const grid = document.getElementById('movies-grid');
+            const htmlArray = itemsToRender.map(item => createCardHTML(item));
+            grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
+            allCards = Array.from(grid.querySelectorAll('.movie-card'));
+            currentDisplayedIndex = endIndex;
+            
+            // Configurar observer si hay más
+            if (endIndex < window.filteredItemIds.length) {
+              setupFilteredScrollObserver();
+            }
           }
           
           // Observer para scroll con datos filtrados
@@ -5504,21 +7128,12 @@ app.get('/browse', async (req, res) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && !isLoading) {
                   isLoading = true;
-                  const filteredData = window.filteredItems || itemsData;
-                  const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, filteredData.length);
-                  const batch = filteredData.slice(currentDisplayedIndex, endIndex);
+                  const totalFiltered = window.filteredItemIds.length;
+                  const endIndex = Math.min(currentDisplayedIndex + BATCH_SIZE, totalFiltered);
                   
-                  const grid = document.getElementById('movies-grid');
-                  const htmlArray = batch.map(item => createCardHTML(item));
-                  grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
-                  
-                  allCards = Array.from(grid.querySelectorAll('.movie-card'));
-                  currentDisplayedIndex = endIndex;
-                  isLoading = false;
-                  
-                  if (currentDisplayedIndex < filteredData.length) {
-                    setupFilteredScrollObserver();
-                  }
+                  loadAndRenderBatch(currentDisplayedIndex, endIndex).then(() => {
+                    isLoading = false;
+                  });
                 }
               });
             }, {
@@ -5595,17 +7210,31 @@ app.get('/browse', async (req, res) => {
           document.getElementById('search-input').addEventListener('input', applyFilters);
           document.getElementById('genre-filter').addEventListener('change', applyFilters);
           document.getElementById('year-filter').addEventListener('change', applyFilters);
-          document.getElementById('collection-filter').addEventListener('change', applyFilters);
           document.getElementById('country-filter').addEventListener('change', applyFilters);
-          document.getElementById('sort-filter').addEventListener('change', applyFilters);
+          document.getElementById('sort-filter').addEventListener('change', (e) => {
+            // Sincronizar con móvil
+            const sortFilterMobile = document.getElementById('sort-filter-mobile');
+            if (sortFilterMobile) sortFilterMobile.value = e.target.value;
+            applyFilters();
+          });
           
           document.getElementById('clear-filters').addEventListener('click', () => {
             document.getElementById('search-input').value = '';
             document.getElementById('genre-filter').value = '';
             document.getElementById('year-filter').value = '';
-            document.getElementById('collection-filter').value = '';
             document.getElementById('country-filter').value = '';
             document.getElementById('sort-filter').value = 'added-desc';
+            
+            // Sincronizar con móvil
+            const genreFilterMobile = document.getElementById('genre-filter-mobile');
+            const yearFilterMobile = document.getElementById('year-filter-mobile');
+            const countryFilterMobile = document.getElementById('country-filter-mobile');
+            const sortFilterMobile = document.getElementById('sort-filter-mobile');
+            if (genreFilterMobile) genreFilterMobile.value = '';
+            if (yearFilterMobile) yearFilterMobile.value = '';
+            if (countryFilterMobile) countryFilterMobile.value = '';
+            if (sortFilterMobile) sortFilterMobile.value = 'added-desc';
+            
             applyFilters();
           });
           
@@ -5639,11 +7268,14 @@ app.get('/browse', async (req, res) => {
           
           // Los datos ya están en Plex (rating, géneros, sinopsis)
           // No necesitamos fetch de TMDB
-          console.log('✅ Usando datos de Plex: ratings, géneros, colecciones y sinopsis ya disponibles');
+          // console.log('✅ Usando datos de Plex: ratings, géneros, colecciones y sinopsis ya disponibles');
           
           // Initialize with "Recientes" filter and apply
           document.getElementById('sort-filter').value = 'added-desc';
           applyFilters();
+          
+          // Inicializar contador móvil
+          updateMobileSearchCounter(itemsIndex.length);
           
           // Hide loading screen
           document.getElementById('loading-screen').style.display = 'none';
@@ -5695,7 +7327,7 @@ app.get('/library', async (req, res) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bibliotecas - PlexDL</title>
+        <title>Bibliotecas - Infinity Scrap</title>
         <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
@@ -5823,6 +7455,8 @@ app.get('/library', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Servidor escuchando en el puerto ${port}`);
+const host = process.env.HOST || '0.0.0.0';
+
+app.listen(port, host, () => {
+  console.log(`✅ Servidor Infinity Scrap escuchando en http://${host}:${port}`);
 });
