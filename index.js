@@ -7579,32 +7579,55 @@ app.get('/library', async (req, res) => {
             left: 1.5rem;
             z-index: 100;
             display: none;
+            max-width: 350px;
           }
           .server-selector.active {
             display: block;
           }
+          .server-selector-label {
+            color: #9ca3af;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            display: block;
+          }
           .server-selector select {
-            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            width: 100%;
+            padding: 1rem 3rem 1rem 3.5rem;
             background: rgba(31, 41, 55, 0.95);
+            background-image: 
+              url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23e5a00d' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 6v6l4 2'/%3E%3C/svg%3E"),
+              url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23e5a00d' d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat, no-repeat;
+            background-position: 1rem center, right 1rem center;
             border: 2px solid rgba(229, 160, 13, 0.3);
-            border-radius: 12px;
+            border-radius: 16px;
             color: #f3f4f6;
-            font-size: 0.95rem;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(20px);
             appearance: none;
-            background-image: url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23e5a00d' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 1rem center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
           }
           .server-selector select:hover {
             border-color: rgba(229, 160, 13, 0.6);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(229, 160, 13, 0.3);
           }
           .server-selector select:focus {
             outline: none;
             border-color: #e5a00d;
+            box-shadow: 0 0 0 4px rgba(229, 160, 13, 0.1);
+          }
+          .server-selector select option {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 1rem;
+            font-weight: 500;
           }
           
           /* Botón Actualizar - Abajo derecha */
@@ -7765,12 +7788,18 @@ app.get('/library', async (req, res) => {
               font-size: 1.25rem;
             }
             .server-selector {
-              top: 1rem;
-              left: 1rem;
+              position: relative;
+              top: auto;
+              left: auto;
+              max-width: 100%;
+              margin: 2rem auto 2rem auto;
+              padding: 0;
             }
             .server-selector select {
-              padding: 0.625rem 2rem 0.625rem 0.875rem;
+              padding: 0.875rem 2.5rem 0.875rem 3rem;
               font-size: 0.875rem;
+              background-position: 0.75rem center, right 0.75rem center;
+              background-size: 18px, 14px;
             }
             .btn-refresh {
               bottom: 1rem;
@@ -7811,13 +7840,6 @@ app.get('/library', async (req, res) => {
           🔐
         </div>
         
-        <!-- Dropdown Servidores (solo visible en modo admin) -->
-        <div class="server-selector" id="serverSelector">
-          <select id="serverDropdown" onchange="switchServer()">
-            <option value="">Servidor actual</option>
-          </select>
-        </div>
-        
         <!-- Modal Login Admin -->
         <div class="modal-overlay" id="modalOverlay">
           <div class="modal">
@@ -7848,6 +7870,14 @@ app.get('/library', async (req, res) => {
             </div>
             <h1>Selecciona una Biblioteca</h1>
             <p class="subtitle">Explora tu contenido multimedia</p>
+            
+            <!-- Dropdown Servidores (solo visible en modo admin) -->
+            <div class="server-selector" id="serverSelector">
+              <label class="server-selector-label">🌐 SERVIDOR ACTIVO</label>
+              <select id="serverDropdown" onchange="switchServer()">
+                <option value="">Cargando servidores...</option>
+              </select>
+            </div>
           </div>
           
           <div class="libraries-grid">
@@ -7942,12 +7972,29 @@ app.get('/library', async (req, res) => {
               
               if (data.servers) {
                 const dropdown = document.getElementById('serverDropdown');
-                dropdown.innerHTML = '<option value="">Servidor actual</option>';
+                dropdown.innerHTML = '';
+                
+                // Marcar servidor actual
+                const currentServerId = generateServerId(currentToken, currentURI);
                 
                 data.servers.forEach(server => {
+                  const serverId = generateServerId(server.accessToken, server.baseURI);
                   const option = document.createElement('option');
                   option.value = JSON.stringify({ accessToken: server.accessToken, baseURI: server.baseURI });
-                  option.textContent = \`\${server.serverName} (\${server.libraryCount} bibliotecas)\`;
+                  
+                  // Formatear fecha de último acceso
+                  const lastAccess = new Date(server.lastAccess);
+                  const timeAgo = getTimeAgo(lastAccess);
+                  
+                  // Texto del option
+                  const isCurrent = serverId === currentServerId;
+                  option.textContent = \`\${isCurrent ? '● ' : ''}\${server.serverName} · \${server.libraryCount} libs · \${timeAgo}\`;
+                  
+                  if (isCurrent) {
+                    option.selected = true;
+                    option.style.fontWeight = '700';
+                  }
+                  
                   dropdown.appendChild(option);
                 });
                 
@@ -7955,7 +8002,24 @@ app.get('/library', async (req, res) => {
               }
             } catch (error) {
               console.error('Error cargando servidores:', error);
+              document.getElementById('serverDropdown').innerHTML = '<option>Error cargando servidores</option>';
             }
+          }
+          
+          // Generar ID del servidor (para comparar)
+          function generateServerId(token, uri) {
+            return btoa(uri + '-' + token).substring(0, 16);
+          }
+          
+          // Calcular tiempo transcurrido
+          function getTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            
+            if (seconds < 60) return 'ahora';
+            if (seconds < 3600) return \`hace \${Math.floor(seconds / 60)}m\`;
+            if (seconds < 86400) return \`hace \${Math.floor(seconds / 3600)}h\`;
+            if (seconds < 2592000) return \`hace \${Math.floor(seconds / 86400)}d\`;
+            return \`hace \${Math.floor(seconds / 2592000)}m\`;
           }
           
           // Desactivar modo admin
