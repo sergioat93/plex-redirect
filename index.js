@@ -5386,51 +5386,45 @@ app.get('/browse', async (req, res) => {
       }
     }
 
-    // Actualizar ratings desde TMDB para todos los items
-    // Como el XML de lista no siempre contiene tmdbId, obtenemos del XML individual
-    const ratingPromises = items.map(async (item, index) => {
-      try {
-        // Si ya tiene tmdbId, usarlo directamente
-        if (item.tmdbId) {
-          const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-          const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${item.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-          const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${item.tmdbId}`);
-          if (tmdbData && tmdbData.vote_average) {
-            item.rating = tmdbData.vote_average.toFixed(1);
-          }
-          return;
-        }
-        
-        // Si no tiene tmdbId, obtener XML individual para extraerlo del fileName
-        const metadataUrl = `${baseURI}/library/metadata/${item.ratingKey}?X-Plex-Token=${accessToken}`;
-        const xmlText = await httpsGetXML(metadataUrl, true);
-        
-        // Extraer tmdbId del fileName que viene en el atributo file
-        let tmdbId = '';
-        const fileMatch = xmlText.match(/\sfile="([^"]+)"/);
-        if (fileMatch) {
-          const tmdbFileMatch = fileMatch[1].match(/\[tmdb-(\d+)\]/i);
-          if (tmdbFileMatch) {
-            tmdbId = tmdbFileMatch[1];
-            item.tmdbId = tmdbId;
-          }
-        }
-        
-        // Si tenemos tmdbId, obtener rating de TMDB
-        if (tmdbId) {
-          const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-          const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-          const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${tmdbId}`);
-          if (tmdbData && tmdbData.vote_average) {
-            item.rating = tmdbData.vote_average.toFixed(1);
-          }
-        }
-      } catch (error) {
-        // Silenciar errores individuales para no llenar logs
-      }
-    });
+    // Fallback: Buscar en TMDB solo para items sin rating válido de Plex
+    const itemsWithoutRating = items.filter(item => !item.rating || item.rating === '0' || parseFloat(item.rating) === 0);
     
-    await Promise.all(ratingPromises);
+    if (itemsWithoutRating.length > 0) {
+      console.log(`[/browse] ${itemsWithoutRating.length} items sin rating de Plex, buscando en TMDB...`);
+      
+      const fallbackPromises = itemsWithoutRating.map(async (item) => {
+        try {
+          let tmdbId = item.tmdbId;
+          
+          // Si no tiene tmdbId, buscar por título + año
+          if (!tmdbId && item.title && item.year) {
+            const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
+            const searchUrl = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(item.title)}&year=${item.year}`;
+            const searchResults = await httpsGet(searchUrl, true, `tmdb_search_${endpoint}_${item.title}_${item.year}`);
+            
+            if (searchResults && searchResults.results && searchResults.results.length > 0) {
+              tmdbId = searchResults.results[0].id.toString();
+              item.tmdbId = tmdbId;
+            }
+          }
+          
+          // Si tenemos tmdbId, obtener rating de TMDB
+          if (tmdbId) {
+            const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
+            const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
+            const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${tmdbId}`);
+            if (tmdbData && tmdbData.vote_average) {
+              item.rating = tmdbData.vote_average.toFixed(1);
+            }
+          }
+        } catch (error) {
+          // Mantener rating en 0 si falla
+        }
+      });
+      
+      await Promise.all(fallbackPromises);
+      console.log(`[/browse] Ratings de TMDB (fallback) actualizados`);
+    }
 
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
