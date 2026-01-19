@@ -8191,15 +8191,18 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
         const batch = itemsPending.slice(i, i + batchSize);
         const promises = batch.map(async (item) => {
           try {
+            // Decodificar HTML entities en el título antes de buscar
+            const cleanTitle = decodeHtmlEntities(item.title || '');
+            
             // PRIORIDAD 1: Usar tmdbId de Plex si existe
             let tmdbId = item.tmdbId || null;
             let searchMethod = tmdbId ? 'plex-id' : 'search';
             
-            // PRIORIDAD 2: Búsqueda inteligente por título
+            // PRIORIDAD 2: Búsqueda inteligente por título (con título limpio)
             if (!tmdbId) {
               tmdbId = isMovie 
-                ? await searchTMDBMovie(item.title, item.year)
-                : await searchTMDBSeries(item.title, item.year);
+                ? await searchTMDBMovie(cleanTitle, item.year)
+                : await searchTMDBSeries(cleanTitle, item.year);
             }
             
             if (tmdbId) {
@@ -8235,31 +8238,31 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                   
                   // Log solo cada 10 encontrados
                   if (foundBasic % 10 === 0) {
-                    console.log(`[Background] ✅ "${item.title}" (${item.year}) - Rating: ${rating} | Método: ${searchMethod}`);
+                    console.log(`[Background] ✅ "${cleanTitle}" (${item.year}) - Rating: ${rating} | Método: ${searchMethod}`);
                   }
                   
-                  return { success: true, title: item.title };
+                  return { success: true, title: cleanTitle };
                 } else {
-                  console.log(`[Background] ⚠️ "${item.title}" - Rating inválido (${fullData.rating}), marcando como scrapeado sin rating`);
+                  console.log(`[Background] ⚠️ "${cleanTitle}" - Rating inválido (${fullData.rating}), marcando como scrapeado sin rating`);
                   // Marcar como scrapeado pero sin rating
                   await itemsCollection.updateOne(
                     { ratingKey: item.ratingKey },
                     { $set: { tmdbScraped: true, updatedAt: new Date() } }
                   );
                   notFoundBasic++;
-                  return { success: false, title: item.title };
+                  return { success: false, title: cleanTitle };
                 }
               }
             }
             
             // Marcar como scrapeado aunque no se encontró
-            console.log(`[Background] ❌ "${item.title}" (${item.year}) - No encontrado en TMDB`);
+            console.log(`[Background] ❌ "${cleanTitle}" (${item.year}) - No encontrado en TMDB`);
             await itemsCollection.updateOne(
               { ratingKey: item.ratingKey },
               { $set: { tmdbScraped: true, updatedAt: new Date() } }
             );
             notFoundBasic++;
-            return { success: false, title: item.title };
+            return { success: false, title: cleanTitle };
             
           } catch (error) {
             console.error(`[Background] Error procesando "${item.title}":`, error.message);
