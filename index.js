@@ -16,6 +16,7 @@ const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
 let db;
 let itemsCollection;
 let itemDetailsCollection;
+let scrapingInProgress = false; // Control de scraping background
 
 if (process.env.MONGODB_URI) {
   const client = new MongoClient(process.env.MONGODB_URI);
@@ -319,7 +320,7 @@ async function saveItemToDB(item) {
   }
 }
 
-// Actualizar datos de TMDB de un item
+// Actualizar datos de TMDB de un item (solo rating básico)
 async function updateTMDBData(ratingKey, tmdbRating, tmdbGenres = null, tmdbCollections = null) {
   if (!itemsCollection) return;
   
@@ -339,6 +340,46 @@ async function updateTMDBData(ratingKey, tmdbRating, tmdbGenres = null, tmdbColl
     );
   } catch (error) {
     console.error('Error actualizando datos TMDB:', error);
+  }
+}
+
+// Guardar datos completos de película/serie en item_details
+async function saveItemDetails(ratingKey, tmdbId, itemType, fullData) {
+  if (!itemDetailsCollection) return;
+  
+  try {
+    await itemDetailsCollection.updateOne(
+      { ratingKey },
+      {
+        $set: {
+          ratingKey,
+          tmdbId,
+          itemType, // 'movie' o 'series'
+          ...fullData,
+          scrapedAt: new Date(),
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          createdAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    console.error('Error guardando detalles completos:', error);
+  }
+}
+
+// Obtener datos completos de un item
+async function getItemDetails(ratingKey) {
+  if (!itemDetailsCollection) return null;
+  
+  try {
+    const details = await itemDetailsCollection.findOne({ ratingKey });
+    return details;
+  } catch (error) {
+    console.error('Error obteniendo detalles:', error);
+    return null;
   }
 }
 
@@ -399,22 +440,116 @@ async function getLastUpdate(baseURI, libraryKey) {
   }
 }
 
+// Búsqueda inteligente en TMDB (para movies)
+async function searchTMDBMovie(title, year) {
+  try {
+    // Intentar búsqueda 1: Con título y año exacto
+    let searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}&year=${year}`;
+    let searchData = await httpsGet(searchUrl, true, searchUrl);
+    
+    if (searchData?.results && searchData.results.length > 0) {
+      return searchData.results[0].id;
+    }
+    
+    // Intentar búsqueda 2: Sin año
+    searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}`;
+    searchData = await httpsGet(searchUrl, true, searchUrl);
+    
+    if (searchData?.results && searchData.results.length > 0) {
+      // Si hay resultados, buscar uno con año cercano (±1 año)
+      const yearNum = parseInt(year);
+      const closeMatch = searchData.results.find(r => {
+        const releaseYear = r.release_date ? parseInt(r.release_date.split('-')[0]) : 0;
+        return Math.abs(releaseYear - yearNum) <= 1;
+      });
+      
+      if (closeMatch) return closeMatch.id;
+      return searchData.results[0].id; // O tomar el primero
+    }
+    
+    // Intentar búsqueda 3: Título limpio (sin caracteres especiales)
+    const cleanTitle = title.replace(/[:\-\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleanTitle !== title) {
+      searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(cleanTitle)}&year=${year}`;
+      searchData = await httpsGet(searchUrl, true, searchUrl);
+      
+      if (searchData?.results && searchData.results.length > 0) {
+        return searchData.results[0].id;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error buscando película "${title}":`, error.message);
+    return null;
+  }
+}
+
+// Búsqueda inteligente en TMDB (para series)
+async function searchTMDBSeries(title, year) {
+  try {
+    // Intentar búsqueda 1: Con título completo
+    let searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}`;
+    let searchData = await httpsGet(searchUrl, true, searchUrl);
+    
+    if (searchData?.results && searchData.results.length > 0) {
+      // Si tenemos año, intentar match por año
+      if (year) {
+        const yearNum = parseInt(year);
+        const closeMatch = searchData.results.find(r => {
+          const firstAirYear = r.first_air_date ? parseInt(r.first_air_date.split('-')[0]) : 0;
+          return Math.abs(firstAirYear - yearNum) <= 1;
+        });
+        
+        if (closeMatch) return closeMatch.id;
+      }
+      
+      return searchData.results[0].id;
+    }
+    
+    // Intentar búsqueda 2: Título limpio (sin caracteres especiales)
+    const cleanTitle = title.replace(/[:\-\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleanTitle !== title) {
+      searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(cleanTitle)}`;
+      searchData = await httpsGet(searchUrl, true, searchUrl);
+      
+      if (searchData?.results && searchData.results.length > 0) {
+        return searchData.results[0].id;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error buscando serie "${title}":`, error.message);
+    return null;
+  }
+}
+
 // Contar items scrapeados vs pendientes
 async function getScrapingStats(baseURI, libraryKey) {
-  if (!itemsCollection) return { total: 0, scraped: 0, pending: 0 };
+  if (!itemsCollection) return { total: 0, scraped: 0, pending: 0, detailedScraped: 0 };
   
   try {
     const total = await itemsCollection.countDocuments({ baseURI, libraryKey });
     const scraped = await itemsCollection.countDocuments({ baseURI, libraryKey, tmdbScraped: true });
     
+    // Contar items con detalles completos
+    let detailedScraped = 0;
+    if (itemDetailsCollection) {
+      const items = await itemsCollection.find({ baseURI, libraryKey }).toArray();
+      const ratingKeys = items.map(i => i.ratingKey);
+      detailedScraped = await itemDetailsCollection.countDocuments({ ratingKey: { $in: ratingKeys } });
+    }
+    
     return {
       total,
       scraped,
-      pending: total - scraped
+      pending: total - scraped,
+      detailedScraped
     };
   } catch (error) {
     console.error('Error obteniendo estadísticas:', error);
-    return { total: 0, scraped: 0, pending: 0 };
+    return { total: 0, scraped: 0, pending: 0, detailedScraped: 0 };
   }
 }
 
@@ -5452,20 +5587,90 @@ app.get('/browse', async (req, res) => {
     let items = [];
     let xmlData = null;
     
-    // PASO 1: Cargar datos de MongoDB en paralelo (para merge posterior)
+    // PASO 1: Verificar si MongoDB tiene datos completos y actualizados
     let dbItemsMap = new Map();
-    if (itemsCollection) {
+    let shouldFetchPlex = true;
+    
+    if (itemsCollection && !_refresh) {
       const dbItems = await getItemsFromDB(baseURI, libraryKey);
+      
       if (dbItems && dbItems.length > 0) {
-        console.log(`[/browse] 📦 ${dbItems.length} items en MongoDB (para merge con Plex)`);
+        console.log(`[/browse] 📦 ${dbItems.length} items en MongoDB`);
         dbItems.forEach(doc => {
           dbItemsMap.set(doc.ratingKey, doc);
         });
+        
+        // Verificar si tenemos un número razonable de items (indicador de DB completa)
+        // y si el scraping está completo o avanzado
+        const stats = await getScrapingStats(baseURI, libraryKey);
+        const scrapingProgress = stats.total > 0 ? ((stats.total - stats.pending) / stats.total) : 0;
+        
+        // Si tenemos >1000 items Y el scraping está >80% completo, verificar si hay contenido nuevo
+        if (dbItems.length > 1000 && scrapingProgress > 0.8) {
+          // Consulta rápida a Plex para ver el count total (solo headers, sin parsear XML completo)
+          try {
+            const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
+            const quickCheck = await httpsGetXML(contentUrl);
+            const sizeMatch = quickCheck.match(/size="(\d+)"/);
+            const plexCount = sizeMatch ? parseInt(sizeMatch[1]) : 0;
+            
+            if (plexCount !== dbItems.length) {
+              console.log(`[/browse] 🆕 Contenido nuevo detectado (Plex: ${plexCount}, MongoDB: ${dbItems.length})`);
+              shouldFetchPlex = true; // Forzar actualización desde Plex
+            } else {
+              console.log(`[/browse] ⚡ MongoDB actualizada (${dbItems.length} items, ${(scrapingProgress*100).toFixed(1)}% scrapeado)`);
+              shouldFetchPlex = false;
+              
+              // Convertir desde MongoDB
+              items = dbItems.map(doc => ({
+                ratingKey: doc.ratingKey,
+                title: doc.title,
+                year: doc.year || '',
+                thumb: doc.thumb || '',
+                tmdbId: doc.tmdbId || '',
+                rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
+                summary: doc.summary || '',
+                addedAt: doc.addedAt || 0,
+                genres: doc.genresTMDB || doc.genresPlex || [],
+                collections: doc.collectionsTMDB || doc.collectionsPlex || [],
+                countries: doc.countriesPlex || []
+              }));
+              
+              // Continuar scraping en background si hay pendientes
+              if (stats.pending > 0) {
+                console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items aún pendientes de TMDB`);
+                setImmediate(() => {
+                  fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
+                });
+              }
+            }
+          } catch (err) {
+            console.log(`[/browse] ⚠️  Error verificando count de Plex, usando MongoDB: ${err.message}`);
+            shouldFetchPlex = false;
+            
+            // Usar MongoDB aunque no pudimos verificar
+            items = dbItems.map(doc => ({
+              ratingKey: doc.ratingKey,
+              title: doc.title,
+              year: doc.year || '',
+              thumb: doc.thumb || '',
+              tmdbId: doc.tmdbId || '',
+              rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
+              summary: doc.summary || '',
+              addedAt: doc.addedAt || 0,
+              genres: doc.genresTMDB || doc.genresPlex || [],
+              collections: doc.collectionsTMDB || doc.collectionsPlex || [],
+              countries: doc.countriesPlex || []
+            }));
+          }
+        } else {
+          console.log(`[/browse] 🔄 Merge mode: DB incompleta o scraping inicial (${(scrapingProgress*100).toFixed(1)}%)`);
+        }
       }
     }
     
-    // PASO 2: SIEMPRE obtener de Plex para tener lista completa
-    {
+    // PASO 2: Obtener de Plex y hacer merge con MongoDB (solo si es necesario)
+    if (shouldFetchPlex) {
       const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
       xmlData = await httpsGetXML(contentUrl);
       
@@ -5586,9 +5791,11 @@ app.get('/browse', async (req, res) => {
           
           // Verificar cuántos necesitan scrapeo
           const stats = await getScrapingStats(baseURI, libraryKey);
-          console.log(`[/browse] 📊 ${stats.pending}/${stats.total} items pendientes de scrapeo TMDB`);
+          const ratingProgress = stats.total > 0 ? ((stats.scraped / stats.total) * 100).toFixed(1) : 0;
+          const detailsProgress = stats.total > 0 ? ((stats.detailedScraped / stats.total) * 100).toFixed(1) : 0;
+          console.log(`[/browse] 📊 Progreso scraping: Ratings ${stats.scraped}/${stats.total} (${ratingProgress}%) | Detalles ${stats.detailedScraped}/${stats.total} (${detailsProgress}%)`);
           
-          if (stats.pending > 0) {
+          if (stats.pending > 0 || stats.detailedScraped < stats.total) {
             // Iniciar scrapeo de TMDB
             fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType);
           }
@@ -7601,93 +7808,133 @@ async function fetchMissingRatingsBackground(itemsWithoutRating, libraryType, ac
   console.log(`[Background] ✅ Completado: ${found} ratings encontrados de ${itemsWithoutRating.length} items en ${totalTime}s`);
 }
 
-// Función para obtener ratings faltantes en background usando MongoDB
+// Función para obtener datos completos en background usando MongoDB
 async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType) {
-  if (!itemsCollection) {
-    console.log('[Background] MongoDB no configurada, usando método legacy');
+  if (!itemsCollection || scrapingInProgress) {
+    if (scrapingInProgress) console.log('[Background] ⏳ Scraping ya en progreso, omitiendo nueva ejecución');
     return;
   }
   
+  scrapingInProgress = true;
   const startTime = Date.now();
-  const itemsPending = await getItemsPendingTMDB(baseURI, libraryKey);
   
-  if (itemsPending.length === 0) {
-    console.log('[Background] ✅ No hay items pendientes de scrapeo');
-    return;
-  }
-  
-  console.log(`[Background] 🚀 Iniciando búsqueda de ${itemsPending.length} ratings faltantes...`);
-  
-  const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-  const batchSize = 40; // Límite de TMDB: 40 req/10s
-  const delayMs = 10000; // 10 segundos
-  let processed = 0;
-  let found = 0;
-  let notFound = 0;
-  
-  // Procesar en lotes
-  for (let i = 0; i < itemsPending.length; i += batchSize) {
-    const batch = itemsPending.slice(i, i + batchSize);
-    const promises = batch.map(async (item) => {
-      try {
-        // Buscar por título y año en TMDB
-        const searchUrl = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(item.title)}&year=${item.year}`;
-        const searchData = await httpsGet(searchUrl, true, searchUrl);
-        
-        if (searchData?.results && searchData.results.length > 0) {
-          const result = searchData.results[0];
-          const rating = result.vote_average;
-          
-          if (rating && rating > 0) {
-            // Extraer géneros de TMDB
-            const tmdbGenres = result.genre_ids ? 
-              result.genre_ids.map(id => getGenreName(id, libraryType)) : 
-              [];
+  try {
+    // Obtener estadísticas iniciales
+    const stats = await getScrapingStats(baseURI, libraryKey);
+    
+    if (stats.pending === 0 && stats.detailedScraped === stats.total) {
+      console.log('[Background] ✅ Scraping completo: todos los items tienen datos completos');
+      scrapingInProgress = false;
+      return;
+    }
+    
+    console.log(`[Background] 🚀 Iniciando scraping completo`);
+    console.log(`[Background] 📊 Estado inicial: ${stats.total} items | Ratings: ${stats.scraped}/${stats.total} (${((stats.scraped/stats.total)*100).toFixed(1)}%) | Detalles: ${stats.detailedScraped}/${stats.total} (${((stats.detailedScraped/stats.total)*100).toFixed(1)}%)`);
+    
+    // Obtener items pendientes de scrapeo básico
+    const itemsPending = await getItemsPendingTMDB(baseURI, libraryKey);
+    
+    const isMovie = libraryType === 'movie';
+    const batchSize = 40; // Límite de TMDB: 40 req/10s
+    const delayMs = 10000; // 10 segundos
+    let processed = 0;
+    let foundBasic = 0;
+    let notFoundBasic = 0;
+    let savedDetails = 0;
+    
+    // FASE 1: Scrapeo básico (rating + géneros) para items sin datos
+    if (itemsPending.length > 0) {
+      console.log(`[Background] 📝 Fase 1: Scrapeando ratings básicos de ${itemsPending.length} items...`);
+      
+      for (let i = 0; i < itemsPending.length; i += batchSize) {
+        const batch = itemsPending.slice(i, i + batchSize);
+        const promises = batch.map(async (item) => {
+          try {
+            // Usar búsqueda inteligente
+            const tmdbId = isMovie 
+              ? await searchTMDBMovie(item.title, item.year)
+              : await searchTMDBSeries(item.title, item.year);
             
-            // Actualizar en MongoDB
-            await updateTMDBData(
-              item.ratingKey,
-              parseFloat(rating.toFixed(1)),
-              tmdbGenres.length > 0 ? tmdbGenres : null,
-              null // Colecciones se obtienen en endpoint /movie individual
+            if (tmdbId) {
+              // Obtener datos completos de TMDB
+              const fullData = isMovie 
+                ? await fetchTMDBMovieData(tmdbId)
+                : await fetchTMDBSeriesData(tmdbId);
+              
+              if (fullData) {
+                // Guardar rating básico en items collection
+                const rating = parseFloat(fullData.rating);
+                if (!isNaN(rating)) {
+                  await updateTMDBData(
+                    item.ratingKey,
+                    rating,
+                    fullData.genres || [],
+                    null
+                  );
+                  foundBasic++;
+                }
+                
+                // Guardar datos completos en item_details collection
+                await saveItemDetails(
+                  item.ratingKey,
+                  tmdbId.toString(),
+                  isMovie ? 'movie' : 'series',
+                  fullData
+                );
+                savedDetails++;
+                
+                return { success: true, title: item.title };
+              }
+            }
+            
+            // Marcar como scrapeado aunque no se encontró
+            await itemsCollection.updateOne(
+              { ratingKey: item.ratingKey },
+              { $set: { tmdbScraped: true, updatedAt: new Date() } }
             );
+            notFoundBasic++;
+            return { success: false, title: item.title };
             
-            found++;
-            return { title: item.title, rating: rating.toFixed(1) };
+          } catch (error) {
+            console.error(`[Background] Error procesando "${item.title}":`, error.message);
+            notFoundBasic++;
+            return { success: false, title: item.title };
           }
-        }
+        });
         
-        // Marcar como scrapeado aunque no tenga rating
-        await itemsCollection.updateOne(
-          { ratingKey: item.ratingKey },
-          { $set: { tmdbScraped: true, updatedAt: new Date() } }
-        );
-        notFound++;
-        return null;
-      } catch (error) {
-        console.error(`[Background] Error procesando "${item.title}":`, error.message);
-        notFound++;
-        return null;
+        await Promise.all(promises);
+        processed += batch.length;
+        
+        // Log de progreso
+        const currentStats = await getScrapingStats(baseURI, libraryKey);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const progressPercent = ((processed / itemsPending.length) * 100).toFixed(1);
+        const etaSeconds = itemsPending.length > processed ? ((elapsed / processed) * (itemsPending.length - processed)) : 0;
+        const etaMinutes = (etaSeconds / 60).toFixed(1);
+        
+        console.log(`[Background] 📊 Progreso: ${processed}/${itemsPending.length} (${progressPercent}%) | ✅ ${foundBasic} encontrados | ❌ ${notFoundBasic} no encontrados | 💾 ${savedDetails} guardados | ⏱️  ${elapsed}s | ETA: ${etaMinutes}min`);
+        
+        // Esperar antes del siguiente lote
+        if (i + batchSize < itemsPending.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
       }
-    });
-    
-    await Promise.all(promises);
-    processed += batch.length;
-    
-    // Log de progreso cada 100 items
-    if (processed % 100 === 0 || processed === itemsPending.length) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`[Background] 📊 Progreso: ${processed}/${itemsPending.length} (${found} encontrados, ${notFound} no encontrados) - ${elapsed}s`);
     }
     
-    // Esperar antes del siguiente lote (excepto en el último)
-    if (i + batchSize < itemsPending.length) {
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
+    // Estadísticas finales
+    const finalStats = await getScrapingStats(baseURI, libraryKey);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    const totalMinutes = (totalTime / 60).toFixed(1);
+    
+    console.log(`[Background] ✅ Scraping completado en ${totalMinutes} minutos`);
+    console.log(`[Background] 📈 Estado final: Ratings: ${finalStats.scraped}/${finalStats.total} (${((finalStats.scraped/finalStats.total)*100).toFixed(1)}%) | Detalles: ${finalStats.detailedScraped}/${finalStats.total} (${((finalStats.detailedScraped/finalStats.total)*100).toFixed(1)}%)`);
+    console.log(`[Background] 📝 Resumen: ${foundBasic} ratings encontrados | ${notFoundBasic} no encontrados | ${savedDetails} detalles completos guardados`);
+    
+  } catch (error) {
+    console.error('[Background] Error en scraping:', error);
+  } finally {
+    scrapingInProgress = false;
   }
-  
-  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[Background] ✅ Completado: ${found} ratings encontrados de ${itemsPending.length} items en ${totalTime}s`);
 }
 
 // Helper para convertir genre_ids de TMDB a nombres
