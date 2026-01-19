@@ -5730,8 +5730,10 @@ app.get('/browse', async (req, res) => {
             background: var(--bg-secondary);
             z-index: 2000;
             transition: right 0.3s ease;
-            overflow-y: auto;
+            overflow: hidden;
             box-shadow: -4px 0 12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
           }
 
           .filters-sidebar.active {
@@ -5775,6 +5777,9 @@ app.get('/browse', async (req, res) => {
 
           .filters-sidebar-content {
             padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+            -webkit-overflow-scrolling: touch;
           }
 
           .filter-section {
@@ -5956,11 +5961,8 @@ app.get('/browse', async (req, res) => {
           /* Episode count badge for series */
           .episode-count-badge { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(229, 160, 13, 0.95); color: #000; padding: 0.35rem 0.65rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
           
-          /* Movie overlay */
-          .movie-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 50%, transparent 100%); opacity: 0; transition: opacity 0.3s ease; display: flex; flex-direction: column; justify-content: flex-end; padding: 1rem; }
-          .movie-card:hover .movie-overlay { opacity: 1; }
-          .movie-overlay-content { transform: translateY(20px); transition: transform 0.3s ease; }
-          .movie-card:hover .movie-overlay-content { transform: translateY(0); }
+          /* Movie overlay - Hidden */
+          .movie-overlay { display: none; }
           
           /* Movie info - Grid mode (default) */
           .movie-info { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -6447,11 +6449,13 @@ app.get('/browse', async (req, res) => {
             title: item.title,
             year: item.year || '',
             genres: item.genres || [],
+            collections: item.collections || [],
             rating: item.rating || 0,
             thumb: item.thumb || '',
             ratingKey: item.ratingKey,
             tmdbId: item.tmdbId || '',
             countries: item.countries || [],
+            summary: item.summary || '',
             addedAt: item.addedAt || 0
           })))};
           const accessToken = '${accessToken}';
