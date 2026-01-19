@@ -5356,7 +5356,12 @@ app.get('/browse', async (req, res) => {
           addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
           genres: itemGenres,
           collections: itemCollections,
-       Debug: Contar cuántos items tienen rating válido
+          countries: itemCountries
+        });
+      }
+    }
+
+    // Debug: Contar cuántos items tienen rating válido
     const itemsWithRating = items.filter(i => i.rating && i.rating !== '0' && parseFloat(i.rating) > 0);
     const itemsWithoutRating = items.filter(i => !i.rating || i.rating === '0' || parseFloat(i.rating) === 0);
     console.log(`[/browse] Total items: ${items.length}, Con rating: ${itemsWithRating.length}, Sin rating: ${itemsWithoutRating.length}`);
