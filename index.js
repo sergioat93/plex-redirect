@@ -4490,6 +4490,55 @@ app.get('/movie', async (req, res) => {
             : '▶ Mostrar detalles técnicos';
         }
         
+        // **SINCRONIZACIÓN DE RATING CON LOCALSTORAGE**
+        (function syncRatingWithLocalStorage() {
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          if (!tmdbIdUsed) return;
+          
+          // Buscar en localStorage (prioridad)
+          const cacheKey = \`tmdb_rating_movie_\${tmdbIdUsed}\`;
+          const cachedRating = localStorage.getItem(cacheKey);
+          
+          if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
+            // Actualizar el rating en el badge si existe
+            const ratingBadge = document.querySelector('.rating-badge');
+            if (ratingBadge) {
+              const svgIcon = ratingBadge.querySelector('svg');
+              ratingBadge.innerHTML = '';
+              if (svgIcon) ratingBadge.appendChild(svgIcon);
+              ratingBadge.insertAdjacentText('beforeend', cachedRating);
+            }
+          } else if (!${movieData && movieData.rating !== 'N/A' ? 'true' : 'false'}) {
+            // Si no hay rating en Plex ni en cache, consultar TMDB
+            fetch(\`https://api.themoviedb.org/3/movie/\${tmdbIdUsed}?api_key=e299a98a37554b4c7419c5257c248e75\`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.vote_average) {
+                  const rating = data.vote_average.toFixed(1);
+                  localStorage.setItem(cacheKey, rating);
+                  
+                  // Crear o actualizar el rating badge
+                  const badgesRow = document.querySelector('.modal-badges-row');
+                  if (badgesRow) {
+                    const existingRating = badgesRow.querySelector('.rating-badge');
+                    if (!existingRating) {
+                      const ratingBadge = document.createElement('span');
+                      ratingBadge.className = 'rating-badge';
+                      ratingBadge.innerHTML = \`
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        </svg>
+                        \${rating}
+                      \`;
+                      badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
+                    }
+                  }
+                }
+              })
+              .catch(err => console.error('Error fetching TMDB rating:', err));
+          }
+        })();
+        
         function toggleSynopsis() {
           const synopsis = document.getElementById('synopsis-text');
           const button = document.getElementById('synopsis-toggle');
@@ -5189,6 +5238,55 @@ app.get('/series', async (req, res) => {
             }
           }
         });
+        
+        // **SINCRONIZACIÓN DE RATING CON LOCALSTORAGE (SERIES)**
+        (function syncRatingWithLocalStorage() {
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          if (!tmdbIdUsed) return;
+          
+          // Buscar en localStorage (prioridad)
+          const cacheKey = \`tmdb_rating_tv_\${tmdbIdUsed}\`;
+          const cachedRating = localStorage.getItem(cacheKey);
+          
+          if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
+            // Actualizar el rating en el badge si existe
+            const ratingBadge = document.querySelector('.rating-badge');
+            if (ratingBadge) {
+              const svgIcon = ratingBadge.querySelector('svg');
+              ratingBadge.innerHTML = '';
+              if (svgIcon) ratingBadge.appendChild(svgIcon);
+              ratingBadge.insertAdjacentText('beforeend', cachedRating);
+            }
+          } else if (!${seriesData && seriesData.rating !== 'N/A' ? 'true' : 'false'}) {
+            // Si no hay rating en Plex ni en cache, consultar TMDB
+            fetch(\`https://api.themoviedb.org/3/tv/\${tmdbIdUsed}?api_key=e299a98a37554b4c7419c5257c248e75\`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.vote_average) {
+                  const rating = data.vote_average.toFixed(1);
+                  localStorage.setItem(cacheKey, rating);
+                  
+                  // Crear o actualizar el rating badge
+                  const badgesRow = document.querySelector('.modal-badges-row');
+                  if (badgesRow) {
+                    const existingRating = badgesRow.querySelector('.rating-badge');
+                    if (!existingRating) {
+                      const ratingBadge = document.createElement('span');
+                      ratingBadge.className = 'rating-badge';
+                      ratingBadge.innerHTML = \`
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        </svg>
+                        \${rating}
+                      \`;
+                      badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
+                    }
+                  }
+                }
+              })
+              .catch(err => console.error('Error fetching TMDB rating:', err));
+          }
+        })();
         
         function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId, parentRatingKey, libraryKey, libraryTitle) {
           // Redirigir a la página /list con los datos de la temporada
@@ -6502,9 +6600,9 @@ app.get('/browse', async (req, res) => {
                       <div class="overlay-title">\${itemTitle}</div>
                       <div class="overlay-meta">
                         \${itemYear ? \`<span class="overlay-year">\${itemYear}</span>\` : ''}
-                        <span class="overlay-rating" data-tmdb-rating>
+                        <span class="overlay-rating" data-tmdb-rating style="opacity: \${itemRating > 0 ? '1' : '0.5'}">
                           <i class="fas fa-star"></i>
-                          <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
+                          <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '--'}</span>
                         </span>
                       </div>
                     </div>
@@ -6514,9 +6612,9 @@ app.get('/browse', async (req, res) => {
                   <div class="movie-title" title="\${itemTitle}">\${itemTitle}\${itemYear ? \` <span class="movie-year list-only">(\${itemYear})</span>\` : ''}</div>
                   \${itemYear ? \`<div class="movie-year grid-only">\${itemYear}</div>\` : ''}
                   <div class="movie-meta">
-                    <span class="movie-rating" data-tmdb-rating>
+                    <span class="movie-rating" data-tmdb-rating style="opacity: \${itemRating > 0 ? '1' : '0.5'}">
                       <i class="fas fa-star"></i>
-                      <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
+                      <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '--'}</span>
                     </span>
                     \${genresDisplay ? \`<span class="movie-genres">\${genresDisplay}</span>\` : ''}
                   </div>
@@ -6956,6 +7054,111 @@ app.get('/browse', async (req, res) => {
               }, 300);
             });
           }
+          
+          // **TMDB RATINGS API**: Configuración y funciones
+          const TMDB_API_KEY = 'e299a98a37554b4c7419c5257c248e75'; // Reemplaza con tu API key de TMDB
+          const TMDB_API_BASE = 'https://api.themoviedb.org/3';
+          
+          // Función para obtener rating de TMDB
+          async function fetchTMDBRating(tmdbId, type = 'movie') {
+            if (!tmdbId) return null;
+            
+            try {
+              const url = \`\${TMDB_API_BASE}/\${type}/\${tmdbId}?api_key=\${TMDB_API_KEY}\`;
+              const response = await fetch(url);
+              if (!response.ok) return null;
+              
+              const data = await response.json();
+              return data.vote_average ? parseFloat(data.vote_average).toFixed(1) : null;
+            } catch (error) {
+              console.error('Error fetching TMDB rating:', error);
+              return null;
+            }
+          }
+          
+          // Función para actualizar rating en una tarjeta
+          function updateCardRating(card, rating) {
+            if (!card || !rating) return;
+            
+            // Actualizar en .movie-info (grid/list view)
+            const ratingElement = card.querySelector('.movie-rating');
+            if (ratingElement) {
+              ratingElement.textContent = \`⭐ \${rating}\`;
+              ratingElement.style.opacity = '1';
+            }
+            
+            // Actualizar en overlay (hover)
+            const overlayRating = card.querySelector('.overlay-rating .rating-value');
+            if (overlayRating) {
+              overlayRating.textContent = rating;
+            }
+            
+            // Actualizar data-rating attribute
+            card.dataset.rating = rating;
+          }
+          
+          // Lazy loading de ratings con IntersectionObserver
+          let loadedRatings = new Set();
+          
+          function initRatingLazyLoader() {
+            const observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  const card = entry.target;
+                  const tmdbId = card.dataset.tmdbId;
+                  const ratingKey = card.dataset.ratingKey;
+                  const currentRating = card.dataset.rating;
+                  
+                  // Solo procesar si no tiene rating (0) y tiene tmdbId
+                  if (currentRating === '0' && tmdbId && !loadedRatings.has(tmdbId)) {
+                    loadedRatings.add(tmdbId);
+                    loadRatingForCard(card, tmdbId, ratingKey);
+                  }
+                  
+                  // Dejar de observar esta card
+                  observer.unobserve(card);
+                }
+              });
+            }, {
+              rootMargin: '200px' // Cargar con 200px de anticipación
+            });
+            
+            // Observar todas las cards
+            document.querySelectorAll('.movie-card').forEach(card => {
+              observer.observe(card);
+            });
+          }
+          
+          // Cargar rating para una card específica
+          async function loadRatingForCard(card, tmdbId, ratingKey) {
+            // Verificar localStorage primero
+            const cacheKey = \`tmdb_rating_\${'${libraryType}' === 'movie' ? 'movie' : 'tv'}_\${tmdbId}\`;
+            const cached = localStorage.getItem(cacheKey);
+            
+            if (cached) {
+              updateCardRating(card, cached);
+              return;
+            }
+            
+            // Consultar TMDB API
+            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
+            const rating = await fetchTMDBRating(tmdbId, type);
+            
+            if (rating && rating !== '0' && rating !== '0.0') {
+              // Guardar en localStorage
+              localStorage.setItem(cacheKey, rating);
+              
+              // Actualizar card
+              updateCardRating(card, rating);
+              
+              console.log(\`Rating cargado: \${tmdbId} = \${rating}\`);
+            }
+          }
+          
+          // Inicializar lazy loader cuando el DOM esté listo
+          window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(initRatingLazyLoader, 500);
+          });
           
           // **CONTADOR DINÁMICO**: Actualizar contador en mobile search bar
           function updateMobileSearchCounter(count) {
