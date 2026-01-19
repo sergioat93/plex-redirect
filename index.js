@@ -5788,6 +5788,20 @@ app.get('/browse', async (req, res) => {
                   finalRating = doc.ratingPlex.toFixed(1);
                 }
                 
+                // Obtener géneros con fallback
+                let genresArray = (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [];
+                
+                // Normalizar y deduplicar géneros de este item
+                const genreMap = new Map();
+                genresArray.forEach(g => {
+                  if (!g || typeof g !== 'string') return;
+                  const decoded = decodeHtmlEntities(g);
+                  const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+                  const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
+                  if (!genreMap.has(key)) genreMap.set(key, normalized);
+                });
+                const uniqueGenres = [...genreMap.values()];
+                
                 return {
                   ratingKey: doc.ratingKey,
                   title: doc.title,
@@ -5797,7 +5811,7 @@ app.get('/browse', async (req, res) => {
                   rating: finalRating,
                   summary: doc.summary || '',
                   addedAt: doc.addedAt || 0,
-                  genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+                  genres: uniqueGenres,
                   collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
                   countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
                 };
@@ -5835,6 +5849,20 @@ app.get('/browse', async (req, res) => {
                 finalRating = doc.ratingPlex.toFixed(1);
               }
               
+              // Obtener géneros con fallback
+              let genresArray = (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [];
+              
+              // Normalizar y deduplicar géneros de este item
+              const genreMap = new Map();
+              genresArray.forEach(g => {
+                if (!g || typeof g !== 'string') return;
+                const decoded = decodeHtmlEntities(g);
+                const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+                const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
+                if (!genreMap.has(key)) genreMap.set(key, normalized);
+              });
+              const uniqueGenres = [...genreMap.values()];
+              
               return {
                 ratingKey: doc.ratingKey,
                 title: doc.title,
@@ -5844,7 +5872,7 @@ app.get('/browse', async (req, res) => {
                 rating: finalRating,
                 summary: doc.summary || '',
                 addedAt: doc.addedAt || 0,
-                genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+                genres: uniqueGenres,
                 collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
                 countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
               };
@@ -5938,11 +5966,22 @@ app.get('/browse', async (req, res) => {
           }
           
           // Priorizar datos TMDB de MongoDB sobre Plex (con validación de arrays no vacíos)
-          const finalGenres = (dbItem?.genresTMDB?.length > 0) 
+          let finalGenres = (dbItem?.genresTMDB?.length > 0) 
             ? dbItem.genresTMDB 
             : (dbItem?.genresPlex?.length > 0)
             ? dbItem.genresPlex
             : itemGenres;
+          
+          // Normalizar y deduplicar géneros de este item específico
+          const genreMap = new Map();
+          finalGenres.forEach(g => {
+            if (!g || typeof g !== 'string') return;
+            const decoded = decodeHtmlEntities(g);
+            const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+            const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
+            if (!genreMap.has(key)) genreMap.set(key, normalized);
+          });
+          finalGenres = [...genreMap.values()];
           
           const finalCollections = (dbItem?.collectionsTMDB?.length > 0) 
             ? dbItem.collectionsTMDB 
