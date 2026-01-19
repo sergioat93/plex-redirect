@@ -5764,7 +5764,8 @@ app.get('/browse', async (req, res) => {
         
         // PROTECCIÓN OOM: Si hay >5000 items, usar solo índice ligero
         if (dbItems.length > 5000) {
-          console.log(`[/browse] ⚡ Biblioteca grande - Cargando índice optimizado`);
+          console.log(`[/browse] ⚡ Biblioteca grande detectada (${dbItems.length} items)`);
+          console.log(`[/browse] 📋 Cargando índice optimizado de todos + ratings de primeros 50`);
           shouldFetchPlex = false;
           
           // Cargar ratings solo de los primeros 50 para mostrar
@@ -5808,6 +5809,8 @@ app.get('/browse', async (req, res) => {
             };
           });
           
+          console.log(`[/browse] ✅ Índice creado: ${items.length} items disponibles para filtrar`);
+          
           // Continuar scraping en background
           const stats = await getScrapingStats(baseURI, libraryKey);
           if (stats.pending > 0) {
@@ -5817,8 +5820,8 @@ app.get('/browse', async (req, res) => {
             });
           }
           
-          // Saltar al render HTML
-        } else {
+          // SALTAR directamente al renderizado (no ejecutar lógica de Plex)
+        } else if (dbItems.length > 0) {
           // Biblioteca pequeña (<5000) - usar lógica normal
           dbItems.forEach(doc => {
             dbItemsMap.set(doc.ratingKey, doc);
