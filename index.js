@@ -383,6 +383,25 @@ async function getItemDetails(ratingKey) {
   }
 }
 
+// Decodificar HTML entities (&#237; -> í, &#250; -> ú, etc.)
+function decodeHtmlEntities(text) {
+  if (!text || typeof text !== 'string') return text;
+  const entities = {
+    '&#225;': 'á', '&#233;': 'é', '&#237;': 'í', '&#243;': 'ó', '&#250;': 'ú',
+    '&#193;': 'Á', '&#201;': 'É', '&#205;': 'Í', '&#211;': 'Ó', '&#218;': 'Ú',
+    '&#241;': 'ñ', '&#209;': 'Ñ', '&#252;': 'ü', '&#220;': 'Ü',
+    '&#39;': "'", '&quot;': '"', '&amp;': '&', '&lt;': '<', '&gt;': '>'
+  };
+  let decoded = text;
+  for (const [entity, char] of Object.entries(entities)) {
+    decoded = decoded.split(entity).join(char);
+  }
+  // También decodificar entidades numéricas genéricas
+  decoded = decoded.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec));
+  decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+  return decoded;
+}
+
 // Obtener items de MongoDB
 async function getItemsFromDB(baseURI, libraryKey) {
   if (!itemsCollection) return null;
@@ -4139,22 +4158,37 @@ app.get('/movie', async (req, res) => {
   }
   
   // Obtener datos completos de TMDB si tenemos el ID (solo si no hay datos en MongoDB)
+  let ratingKeyForSave = null;
+  if (downloadURL) {
+    const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+    if (ratingKeyMatch) ratingKeyForSave = ratingKeyMatch[1];
+  }
   
   if (!fromMongoDB && tmdbId && tmdbId.trim() !== '') {
-    // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
+    console.log('[/movie] 🔄 Consultando TMDB y guardando en MongoDB...');
     movieData = await fetchTMDBMovieData(tmdbId);
-    // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
-    if (movieData) {
-      // console.log('[/movie] movieData.title:', movieData.title);
-      // console.log('[/movie] movieData.year:', movieData.year);
-      // console.log('[/movie] movieData.genres:', movieData.genres);
+    
+    if (movieData && ratingKeyForSave && itemDetailsCollection) {
+      // Guardar en MongoDB para próxima vez
+      await saveItemDetails(ratingKeyForSave, tmdbId, 'movie', movieData);
+      
+      // También actualizar rating en items si es válido
+      if (movieData.rating && !isNaN(movieData.rating) && movieData.rating > 0) {
+        await updateTMDBData(
+          ratingKeyForSave,
+          parseFloat(movieData.rating),
+          movieData.genres || [],
+          movieData.collections || []
+        );
+      }
+      console.log('[/movie] ✅ Datos guardados en MongoDB para reutilización');
     }
   } else if (!fromMongoDB && title && movieYear) {
     // Decodificar HTML entities en el título antes de buscar
     const decodedTitle = decodeHtmlEntities(title);
     
     // Búsqueda automática en TMDB por título + año
-    // console.log('[/movie] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle, movieYear);
+    console.log('[/movie] 🔍 Buscando en TMDB por título+año y guardando...');
     try {
       const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}&year=${movieYear}`;
       const searchResults = await httpsGet(searchUrl);
@@ -4163,19 +4197,34 @@ app.get('/movie', async (req, res) => {
         // Tomar el primer resultado que coincida con el año
         const firstResult = searchResults.results[0];
         autoSearchedTmdbId = firstResult.id.toString();
-        // console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
         
         // Obtener datos completos con el ID encontrado
         movieData = await fetchTMDBMovieData(autoSearchedTmdbId);
-        // console.log('[/movie] movieData obtenido por búsqueda automática');
+        
+        // Guardar en MongoDB para próxima vez
+        if (movieData && ratingKeyForSave && itemDetailsCollection) {
+          await saveItemDetails(ratingKeyForSave, autoSearchedTmdbId, 'movie', movieData);
+          
+          if (movieData.rating && !isNaN(movieData.rating) && movieData.rating > 0) {
+            await updateTMDBData(
+              ratingKeyForSave,
+              parseFloat(movieData.rating),
+              movieData.genres || [],
+              movieData.collections || []
+            );
+          }
+          console.log('[/movie] ✅ Datos de búsqueda guardados en MongoDB');
+        }
       } else {
-        // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
+        console.log('[/movie] ⚠️ No se encontraron resultados en TMDB');
       }
     } catch (error) {
       console.error('[/movie] Error en búsqueda automática de TMDB:', error);
     }
+  } else if (fromMongoDB) {
+    console.log('[/movie] ⚡ Usando datos de MongoDB (sin consultar TMDB)');
   } else {
-    // console.log('[/movie] NO SE RECIBIÓ tmdbId ni título+año válidos');
+    console.log('[/movie] ⚠️ No se recibió tmdbId ni título+año válidos');
   }
   
   // Usar datos de TMDB o fallback a los datos de Plex
@@ -4930,15 +4979,30 @@ app.get('/series', async (req, res) => {
   // PASO 2: Obtener datos de TMDB solo si no hay en MongoDB
   
   if (!fromMongoDB && tmdbId && tmdbId.trim() !== '') {
-    // console.log('[/series] Llamando a fetchTMDBSeriesData con tmdbId:', tmdbId);
+    console.log('[/series] 🔄 Consultando TMDB y guardando en MongoDB...');
     seriesData = await fetchTMDBSeriesData(tmdbId);
-    // console.log('[/series] seriesData obtenido:', seriesData ? 'SI' : 'NO');
+    
+    if (seriesData && seriesId && itemDetailsCollection) {
+      // Guardar en MongoDB para próxima vez
+      await saveItemDetails(seriesId, tmdbId, 'series', seriesData);
+      
+      // También actualizar rating en items si es válido
+      if (seriesData.rating && !isNaN(seriesData.rating) && seriesData.rating > 0) {
+        await updateTMDBData(
+          seriesId,
+          parseFloat(seriesData.rating),
+          seriesData.genres || [],
+          [] // Series no tienen collections
+        );
+      }
+      console.log('[/series] ✅ Datos guardados en MongoDB para reutilización');
+    }
   } else if (!fromMongoDB && seriesTitle) {
     // Decodificar HTML entities en el título antes de buscar
     const decodedTitle = decodeHtmlEntities(seriesTitle);
     
     // Búsqueda automática en TMDB por título
-    // console.log('[/series] NO hay tmdbId - buscando automáticamente en TMDB:', decodedTitle);
+    console.log('[/series] 🔍 Buscando en TMDB por título y guardando...');
     try {
       const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(decodedTitle)}`;
       const searchResults = await httpsGet(searchUrl);
@@ -4947,19 +5011,34 @@ app.get('/series', async (req, res) => {
         // Tomar el primer resultado
         const firstResult = searchResults.results[0];
         autoSearchedTmdbId = firstResult.id.toString();
-        // console.log('[/series] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.name);
         
         // Obtener datos completos con el ID encontrado
         seriesData = await fetchTMDBSeriesData(autoSearchedTmdbId);
-        // console.log('[/series] seriesData obtenido por búsqueda automática');
+        
+        // Guardar en MongoDB para próxima vez
+        if (seriesData && seriesId && itemDetailsCollection) {
+          await saveItemDetails(seriesId, autoSearchedTmdbId, 'series', seriesData);
+          
+          if (seriesData.rating && !isNaN(seriesData.rating) && seriesData.rating > 0) {
+            await updateTMDBData(
+              seriesId,
+              parseFloat(seriesData.rating),
+              seriesData.genres || [],
+              []
+            );
+          }
+          console.log('[/series] ✅ Datos de búsqueda guardados en MongoDB');
+        }
       } else {
-        // console.log('[/series] ⚠️ No se encontraron resultados en TMDB para:', decodedTitle);
+        console.log('[/series] ⚠️ No se encontraron resultados en TMDB');
       }
     } catch (error) {
       console.error('[/series] Error en búsqueda automática de TMDB:', error);
     }
+  } else if (fromMongoDB) {
+    console.log('[/series] ⚡ Usando datos de MongoDB (sin consultar TMDB)');
   } else {
-    // console.log('[/series] NO SE RECIBIÓ tmdbId ni título válido');
+    console.log('[/series] ⚠️ No se recibió tmdbId ni título válido');
   }
   
   // Usar poster y backdrop de TMDB si están disponibles
@@ -5654,6 +5733,7 @@ app.get('/browse', async (req, res) => {
     
     // PASO 1: Verificar si MongoDB tiene datos completos y actualizados
     let dbItemsMap = new Map();
+    let dbItemDetailsMap = new Map();
     let shouldFetchPlex = true;
     
     if (itemsCollection && !_refresh) {
@@ -5686,20 +5766,42 @@ app.get('/browse', async (req, res) => {
               console.log(`[/browse] ⚡ MongoDB actualizada (${dbItems.length} items, ${(scrapingProgress*100).toFixed(1)}% scrapeado)`);
               shouldFetchPlex = false;
               
-              // Convertir desde MongoDB
-              items = dbItems.map(doc => ({
-                ratingKey: doc.ratingKey,
-                title: doc.title,
-                year: doc.year || '',
-                thumb: doc.thumb || '',
-                tmdbId: doc.tmdbId || '',
-                rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
-                summary: doc.summary || '',
-                addedAt: doc.addedAt || 0,
-                genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
-                collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
-                countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
-              }));
+              // Cargar item_details para ratings actualizados
+              if (itemDetailsCollection) {
+                const ratingKeys = dbItems.map(i => i.ratingKey);
+                const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+                details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
+                console.log(`[/browse] 📊 ${details.length} items con detalles completos`);
+              }
+              
+              // Convertir desde MongoDB con prioridad a item_details
+              items = dbItems.map(doc => {
+                const itemDetails = dbItemDetailsMap.get(doc.ratingKey);
+                let finalRating = '0';
+                
+                // Prioridad: item_details.vote_average > items.ratingTMDB > items.ratingPlex
+                if (itemDetails?.vote_average && !isNaN(itemDetails.vote_average)) {
+                  finalRating = itemDetails.vote_average.toFixed(1);
+                } else if (doc.ratingTMDB) {
+                  finalRating = doc.ratingTMDB.toFixed(1);
+                } else if (doc.ratingPlex) {
+                  finalRating = doc.ratingPlex.toFixed(1);
+                }
+                
+                return {
+                  ratingKey: doc.ratingKey,
+                  title: doc.title,
+                  year: doc.year || '',
+                  thumb: doc.thumb || '',
+                  tmdbId: doc.tmdbId || '',
+                  rating: finalRating,
+                  summary: doc.summary || '',
+                  addedAt: doc.addedAt || 0,
+                  genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+                  collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
+                  countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
+                };
+              });
               
               // Continuar scraping en background si hay pendientes
               if (stats.pending > 0) {
@@ -5713,19 +5815,40 @@ app.get('/browse', async (req, res) => {
             console.log(`[/browse] ⚠️  Error verificando count de Plex, usando MongoDB: ${err.message}`);
             shouldFetchPlex = false;
             
+            // Cargar item_details también en fallback
+            if (itemDetailsCollection) {
+              const ratingKeys = dbItems.map(i => i.ratingKey);
+              const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+              details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
+            }
+            
             // Usar MongoDB aunque no pudimos verificar
-            items = dbItems.map(doc => ({
-              ratingKey: doc.ratingKey,
-              title: doc.title,
-              year: doc.year || '',
-              thumb: doc.thumb || '',
-              tmdbId: doc.tmdbId || '',
-              rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
-              summary: doc.summary || '',
-              addedAt: doc.addedAt || 0,
-              genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
-              collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
-              countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
+            items = dbItems.map(doc => {
+              const itemDetails = dbItemDetailsMap.get(doc.ratingKey);
+              let finalRating = '0';
+              
+              if (itemDetails?.vote_average && !isNaN(itemDetails.vote_average)) {
+                finalRating = itemDetails.vote_average.toFixed(1);
+              } else if (doc.ratingTMDB) {
+                finalRating = doc.ratingTMDB.toFixed(1);
+              } else if (doc.ratingPlex) {
+                finalRating = doc.ratingPlex.toFixed(1);
+              }
+              
+              return {
+                ratingKey: doc.ratingKey,
+                title: doc.title,
+                year: doc.year || '',
+                thumb: doc.thumb || '',
+                tmdbId: doc.tmdbId || '',
+                rating: finalRating,
+                summary: doc.summary || '',
+                addedAt: doc.addedAt || 0,
+                genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+                collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
+                countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
+              };
+            });
             }));
           }
         } else {
@@ -5738,6 +5861,14 @@ app.get('/browse', async (req, res) => {
     if (shouldFetchPlex) {
       const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
       xmlData = await httpsGetXML(contentUrl);
+      
+      // Cargar item_details si aún no está cargado
+      if (itemDetailsCollection && dbItemDetailsMap.size === 0 && dbItemsMap.size > 0) {
+        const ratingKeys = Array.from(dbItemsMap.keys());
+        const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+        details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
+        console.log(`[/browse] 📊 ${details.length} items con detalles para merge`);
+      }
       
       const tagType = libraryType === 'movie' ? 'Video' : 'Directory';
       const allGenres = new Set();
@@ -5795,9 +5926,17 @@ app.get('/browse', async (req, res) => {
           
           // MERGE: Verificar si hay datos de MongoDB para este item
           const dbItem = dbItemsMap.get(ratingKeyMatch[1]);
-          const finalRating = dbItem?.ratingTMDB 
-            ? dbItem.ratingTMDB.toFixed(1) 
-            : (itemRatingPlex ? itemRatingPlex.toFixed(1) : '0');
+          const itemDetails = dbItemDetailsMap.get(ratingKeyMatch[1]);
+          
+          // Prioridad: item_details.vote_average > items.ratingTMDB > ratingPlex
+          let finalRating = '0';
+          if (itemDetails?.vote_average && !isNaN(itemDetails.vote_average)) {
+            finalRating = itemDetails.vote_average.toFixed(1);
+          } else if (dbItem?.ratingTMDB) {
+            finalRating = dbItem.ratingTMDB.toFixed(1);
+          } else if (itemRatingPlex) {
+            finalRating = itemRatingPlex.toFixed(1);
+          }
           
           // Priorizar datos TMDB de MongoDB sobre Plex (con validación de arrays no vacíos)
           const finalGenres = (dbItem?.genresTMDB?.length > 0) 
@@ -5890,12 +6029,14 @@ app.get('/browse', async (req, res) => {
     const ratingsDebug = items.slice(0, 5).map(i => `${i.title}: ${i.rating}`).join(' | ');
     console.log(`[/browse] 🔍 Ratings muestra: ${ratingsDebug}`);
     
-    // Normalizar géneros y eliminar duplicados (agresivo: acentos, espacios, case)
+    // Normalizar géneros y eliminar duplicados (agresivo: acentos, espacios, case, HTML entities)
     const genresMap = new Map();
     items.flatMap(i => i.genres || []).forEach(g => {
       if (!g || typeof g !== 'string') return;
+      // Decodificar HTML entities primero (&#237; -> í)
+      const decoded = decodeHtmlEntities(g);
       // Limpiar espacios extra, normalizar acentos, lowercase
-      const normalized = g
+      const normalized = decoded
         .trim()
         .replace(/\s+/g, ' ') // Múltiples espacios → uno
         .replace(/\u00A0/g, ' '); // Non-breaking space → espacio normal
@@ -5914,7 +6055,8 @@ app.get('/browse', async (req, res) => {
     const collectionsMap = new Map();
     items.flatMap(i => i.collections || []).forEach(c => {
       if (!c || typeof c !== 'string') return;
-      const normalized = c.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+      const decoded = decodeHtmlEntities(c);
+      const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
       const key = normalized
         .toLowerCase()
         .normalize('NFD')
@@ -5929,7 +6071,8 @@ app.get('/browse', async (req, res) => {
     const countriesMap = new Map();
     items.flatMap(i => i.countries || []).forEach(c => {
       if (!c || typeof c !== 'string') return;
-      const normalized = c.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+      const decoded = decodeHtmlEntities(c);
+      const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
       const key = normalized
         .toLowerCase()
         .normalize('NFD')
