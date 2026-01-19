@@ -402,6 +402,26 @@ function decodeHtmlEntities(text) {
   return decoded;
 }
 
+// Función helper para deduplicar géneros de un array
+function deduplicateGenres(genresArray) {
+  if (!genresArray || !Array.isArray(genresArray)) return [];
+  const seen = new Set();
+  const result = [];
+  
+  for (const g of genresArray) {
+    if (!g || typeof g !== 'string') continue;
+    const decoded = decodeHtmlEntities(g);
+    const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
+    const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
+    
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(normalized);
+    }
+  }
+  return result;
+}
+
 // Obtener items de MongoDB
 async function getItemsFromDB(baseURI, libraryKey) {
   if (!itemsCollection) return null;
@@ -5766,12 +5786,15 @@ app.get('/browse', async (req, res) => {
               console.log(`[/browse] ⚡ MongoDB actualizada (${dbItems.length} items, ${(scrapingProgress*100).toFixed(1)}% scrapeado)`);
               shouldFetchPlex = false;
               
-              // Cargar item_details para ratings actualizados
+              // Cargar SOLO ratings de item_details (no todos los datos para ahorrar memoria)
               if (itemDetailsCollection) {
                 const ratingKeys = dbItems.map(i => i.ratingKey);
-                const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+                const details = await itemDetailsCollection
+                  .find({ ratingKey: { $in: ratingKeys } })
+                  .project({ ratingKey: 1, vote_average: 1 }) // Solo estos campos
+                  .toArray();
                 details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
-                console.log(`[/browse] 📊 ${details.length} items con detalles completos`);
+                console.log(`[/browse] 📊 ${details.length} items con ratings actualizados`);
               }
               
               // Convertir desde MongoDB con prioridad a item_details
@@ -5791,17 +5814,6 @@ app.get('/browse', async (req, res) => {
                 // Obtener géneros con fallback
                 let genresArray = (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [];
                 
-                // Normalizar y deduplicar géneros de este item
-                const genreMap = new Map();
-                genresArray.forEach(g => {
-                  if (!g || typeof g !== 'string') return;
-                  const decoded = decodeHtmlEntities(g);
-                  const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
-                  const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
-                  if (!genreMap.has(key)) genreMap.set(key, normalized);
-                });
-                const uniqueGenres = [...genreMap.values()];
-                
                 return {
                   ratingKey: doc.ratingKey,
                   title: doc.title,
@@ -5811,7 +5823,7 @@ app.get('/browse', async (req, res) => {
                   rating: finalRating,
                   summary: doc.summary || '',
                   addedAt: doc.addedAt || 0,
-                  genres: uniqueGenres,
+                  genres: deduplicateGenres(genresArray),
                   collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
                   countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
                 };
@@ -5832,7 +5844,10 @@ app.get('/browse', async (req, res) => {
             // Cargar item_details también en fallback
             if (itemDetailsCollection) {
               const ratingKeys = dbItems.map(i => i.ratingKey);
-              const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+              const details = await itemDetailsCollection
+                .find({ ratingKey: { $in: ratingKeys } })
+                .project({ ratingKey: 1, vote_average: 1 }) // Solo ratings
+                .toArray();
               details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
             }
             
@@ -5852,17 +5867,6 @@ app.get('/browse', async (req, res) => {
               // Obtener géneros con fallback
               let genresArray = (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [];
               
-              // Normalizar y deduplicar géneros de este item
-              const genreMap = new Map();
-              genresArray.forEach(g => {
-                if (!g || typeof g !== 'string') return;
-                const decoded = decodeHtmlEntities(g);
-                const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
-                const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
-                if (!genreMap.has(key)) genreMap.set(key, normalized);
-              });
-              const uniqueGenres = [...genreMap.values()];
-              
               return {
                 ratingKey: doc.ratingKey,
                 title: doc.title,
@@ -5872,7 +5876,7 @@ app.get('/browse', async (req, res) => {
                 rating: finalRating,
                 summary: doc.summary || '',
                 addedAt: doc.addedAt || 0,
-                genres: uniqueGenres,
+                genres: deduplicateGenres(genresArray),
                 collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
                 countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
               };
@@ -5889,12 +5893,15 @@ app.get('/browse', async (req, res) => {
       const contentUrl = `${baseURI}/library/sections/${libraryKey}/all?X-Plex-Token=${accessToken}`;
       xmlData = await httpsGetXML(contentUrl);
       
-      // Cargar item_details si aún no está cargado
+      // Cargar SOLO ratings de item_details si aún no está cargado
       if (itemDetailsCollection && dbItemDetailsMap.size === 0 && dbItemsMap.size > 0) {
         const ratingKeys = Array.from(dbItemsMap.keys());
-        const details = await itemDetailsCollection.find({ ratingKey: { $in: ratingKeys } }).toArray();
+        const details = await itemDetailsCollection
+          .find({ ratingKey: { $in: ratingKeys } })
+          .project({ ratingKey: 1, vote_average: 1 }) // Solo ratings
+          .toArray();
         details.forEach(d => dbItemDetailsMap.set(d.ratingKey, d));
-        console.log(`[/browse] 📊 ${details.length} items con detalles para merge`);
+        console.log(`[/browse] 📊 ${details.length} ratings cargados para merge`);
       }
       
       const tagType = libraryType === 'movie' ? 'Video' : 'Directory';
@@ -5973,15 +5980,7 @@ app.get('/browse', async (req, res) => {
             : itemGenres;
           
           // Normalizar y deduplicar géneros de este item específico
-          const genreMap = new Map();
-          finalGenres.forEach(g => {
-            if (!g || typeof g !== 'string') return;
-            const decoded = decodeHtmlEntities(g);
-            const normalized = decoded.trim().replace(/\s+/g, ' ').replace(/\u00A0/g, ' ');
-            const key = normalized.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
-            if (!genreMap.has(key)) genreMap.set(key, normalized);
-          });
-          finalGenres = [...genreMap.values()];
+          finalGenres = deduplicateGenres(finalGenres);
           
           const finalCollections = (dbItem?.collectionsTMDB?.length > 0) 
             ? dbItem.collectionsTMDB 
@@ -8211,8 +8210,8 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
     console.log(`[Background] 🚀 Iniciando scraping completo`);
     console.log(`[Background] 📊 Estado inicial: ${stats.total} items | Ratings: ${stats.scraped}/${stats.total} (${((stats.scraped/stats.total)*100).toFixed(1)}%) | Detalles: ${stats.detailedScraped}/${stats.total} (${((stats.detailedScraped/stats.total)*100).toFixed(1)}%)`);
     
-    // Obtener items pendientes de scrapeo básico
-    const itemsPending = await getItemsPendingTMDB(baseURI, libraryKey);
+    // Obtener items pendientes de scrapeo básico (máximo 100 por ejecución para Railway free tier)
+    const itemsPending = await getItemsPendingTMDB(baseURI, libraryKey, 100);
     
     const isMovie = libraryType === 'movie';
     const batchSize = 40; // Límite de TMDB: 40 req/10s
