@@ -7000,32 +7000,33 @@ app.get('/browse', async (req, res) => {
             const countryValue = document.getElementById('country-filter').value;
             const sortValue = document.getElementById('sort-filter').value;
             
+            // Función helper para normalizar texto (compartida)
+            const normalizeText = (text) => {
+              if (!text) return '';
+              // Función para decodificar entidades HTML
+              const decodeHTML = (str) => {
+                if (!str) return '';
+                const txt = document.createElement('textarea');
+                txt.innerHTML = str;
+                return txt.value;
+              };
+              
+              // Primero decodificar entidades HTML, luego normalizar
+              const decoded = decodeHTML(text);
+              return decoded
+                .toString()
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9\s]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            };
+            
             // Filtrar sobre el índice completo (22k items, búsqueda instantánea)
             let filteredData = itemsIndex.filter(item => {
               // Búsqueda: solo sobre título y año (datos del índice ligero)
               if (searchValue && searchValue.trim() !== '') {
-                // Función para decodificar entidades HTML
-                const decodeHTML = (text) => {
-                  if (!text) return '';
-                  const txt = document.createElement('textarea');
-                  txt.innerHTML = text;
-                  return txt.value;
-                };
-                
-                const normalizeText = (text) => {
-                  if (!text) return '';
-                  // Primero decodificar entidades HTML
-                  const decoded = decodeHTML(text);
-                  return decoded
-                    .toString()
-                    .toLowerCase()
-                    .normalize('NFD')
-                    .replace(/[\u0300-\u036f]/g, '')
-                    .replace(/[^a-z0-9\s]/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                };
-                
                 const searchNormalized = normalizeText(searchValue);
                 const titleNormalized = normalizeText(item.title);
                 const yearNormalized = normalizeText(item.year);
@@ -7036,10 +7037,14 @@ app.get('/browse', async (req, res) => {
                 if (!titleMatch && !yearMatch) return false;
               }
               
-              // Filtro de género - comparación directa con array
+              // Filtro de género - comparación normalizada
               if (genreValue) {
                 const itemGenres = Array.isArray(item.genres) ? item.genres : [];
-                if (!itemGenres.includes(genreValue)) return false;
+                const genreNormalized = normalizeText(genreValue);
+                
+                // Normalizar cada género del item y comparar
+                const hasGenre = itemGenres.some(g => normalizeText(g) === genreNormalized);
+                if (!hasGenre) return false;
               }
               
               // Filtro de año - comparación directa
@@ -7047,12 +7052,15 @@ app.get('/browse', async (req, res) => {
                 if (item.year !== yearValue && item.year !== parseInt(yearValue)) return false;
               }
               
-              // Filtro de país - comparación directa con array
+              // Filtro de país - comparación normalizada
               if (countryValue) {
                 const countries = Array.isArray(item.countries) 
                   ? item.countries 
                   : (item.countries ? item.countries.split(',').map(c => c.trim()) : []);
-                if (!countries.includes(countryValue)) return false;
+                
+                const countryNormalized = normalizeText(countryValue);
+                const hasCountry = countries.some(c => normalizeText(c) === countryNormalized);
+                if (!hasCountry) return false;
               }
               
               return true;
