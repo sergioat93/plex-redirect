@@ -563,6 +563,11 @@ async function fetchTMDBMovieData(tmdbId) {
         // Extraer géneros
         const genres = movieData.genres ? movieData.genres.map(g => g.name) : [];
         
+        // Extraer colección (si pertenece a una)
+        const collections = movieData.belongs_to_collection 
+            ? [movieData.belongs_to_collection.name] 
+            : [];
+        
         // Extraer director del crew
         const director = movieData.credits && movieData.credits.crew 
             ? movieData.credits.crew.find(person => person.job === 'Director')?.name || 'N/A'
@@ -605,6 +610,8 @@ async function fetchTMDBMovieData(tmdbId) {
             runtimeMinutes: movieData.runtime || 0,
             genres: genres,
             genresString: genres.join(', ') || 'N/A',
+            collections: collections,
+            collectionsString: collections.join(', ') || 'N/A',
             rating: movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A',
             voteCount: movieData.vote_count ? movieData.vote_count.toLocaleString('es-ES') : 'N/A',
             budget: formatCurrency(movieData.budget),
@@ -5667,9 +5674,9 @@ app.get('/browse', async (req, res) => {
                 rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
                 summary: doc.summary || '',
                 addedAt: doc.addedAt || 0,
-                genres: doc.genresTMDB || doc.genresPlex || [],
-                collections: doc.collectionsTMDB || doc.collectionsPlex || [],
-                countries: doc.countriesPlex || []
+                genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+                collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
+                countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
               }));
               
               // Continuar scraping en background si hay pendientes
@@ -5694,9 +5701,9 @@ app.get('/browse', async (req, res) => {
               rating: doc.ratingTMDB ? doc.ratingTMDB.toFixed(1) : (doc.ratingPlex ? doc.ratingPlex.toFixed(1) : '0'),
               summary: doc.summary || '',
               addedAt: doc.addedAt || 0,
-              genres: doc.genresTMDB || doc.genresPlex || [],
-              collections: doc.collectionsTMDB || doc.collectionsPlex || [],
-              countries: doc.countriesPlex || []
+              genres: (doc.genresTMDB?.length > 0) ? doc.genresTMDB : (doc.genresPlex?.length > 0) ? doc.genresPlex : [],
+              collections: (doc.collectionsTMDB?.length > 0) ? doc.collectionsTMDB : [],
+              countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
             }));
           }
         } else {
@@ -5770,6 +5777,21 @@ app.get('/browse', async (req, res) => {
             ? dbItem.ratingTMDB.toFixed(1) 
             : (itemRatingPlex ? itemRatingPlex.toFixed(1) : '0');
           
+          // Priorizar datos TMDB de MongoDB sobre Plex (con validación de arrays no vacíos)
+          const finalGenres = (dbItem?.genresTMDB?.length > 0) 
+            ? dbItem.genresTMDB 
+            : (dbItem?.genresPlex?.length > 0)
+            ? dbItem.genresPlex
+            : itemGenres;
+          
+          const finalCollections = (dbItem?.collectionsTMDB?.length > 0) 
+            ? dbItem.collectionsTMDB 
+            : []; // Solo TMDB, sin fallback
+          
+          const finalCountries = (dbItem?.countriesPlex?.length > 0) 
+            ? dbItem.countriesPlex 
+            : itemCountries;
+          
           // Preparar para frontend (priorizar TMDB si existe en MongoDB)
           items.push({
             ratingKey: ratingKeyMatch[1],
@@ -5780,9 +5802,9 @@ app.get('/browse', async (req, res) => {
             rating: finalRating,
             summary: summaryMatch ? summaryMatch[1] : '',
             addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
-            genres: itemGenres,
-            collections: itemCollections,
-            countries: itemCountries
+            genres: finalGenres,
+            collections: finalCollections,
+            countries: finalCountries
           });
           
           // Preparar para guardar en MongoDB
@@ -7972,7 +7994,7 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                     item.ratingKey,
                     rating,
                     fullData.genres || [],
-                    null
+                    fullData.collections || []
                   );
                   foundBasic++;
                 }
