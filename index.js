@@ -331,8 +331,8 @@ async function updateTMDBData(ratingKey, tmdbRating, tmdbGenres = null, tmdbColl
       updatedAt: new Date()
     };
     
-    if (tmdbGenres) updateData.genresTMDB = tmdbGenres;
-    if (tmdbCollections) updateData.collectionsTMDB = tmdbCollections;
+    if (tmdbGenres && tmdbGenres.length > 0) updateData.genresTMDB = tmdbGenres;
+    if (tmdbCollections && tmdbCollections.length > 0) updateData.collectionsTMDB = tmdbCollections;
     
     await itemsCollection.updateOne(
       { ratingKey },
@@ -451,23 +451,36 @@ async function searchTMDBMovie(title, year) {
       return searchData.results[0].id;
     }
     
-    // Intentar búsqueda 2: Sin año
+    // Intentar búsqueda 2: Con título y año ±1
+    if (year) {
+      for (let offset of [-1, 1]) {
+        const altYear = parseInt(year) + offset;
+        searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}&year=${altYear}`;
+        searchData = await httpsGet(searchUrl, true, searchUrl);
+        if (searchData?.results && searchData.results.length > 0) {
+          return searchData.results[0].id;
+        }
+      }
+    }
+    
+    // Intentar búsqueda 3: Sin año
     searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(title)}`;
     searchData = await httpsGet(searchUrl, true, searchUrl);
     
     if (searchData?.results && searchData.results.length > 0) {
-      // Si hay resultados, buscar uno con año cercano (±1 año)
-      const yearNum = parseInt(year);
-      const closeMatch = searchData.results.find(r => {
-        const releaseYear = r.release_date ? parseInt(r.release_date.split('-')[0]) : 0;
-        return Math.abs(releaseYear - yearNum) <= 1;
-      });
-      
-      if (closeMatch) return closeMatch.id;
-      return searchData.results[0].id; // O tomar el primero
+      // Si hay resultados y tenemos año, buscar uno con año cercano (±2 años)
+      if (year) {
+        const yearNum = parseInt(year);
+        const closeMatch = searchData.results.find(r => {
+          const releaseYear = r.release_date ? parseInt(r.release_date.split('-')[0]) : 0;
+          return Math.abs(releaseYear - yearNum) <= 2;
+        });
+        if (closeMatch) return closeMatch.id;
+      }
+      return searchData.results[0].id;
     }
     
-    // Intentar búsqueda 3: Título limpio (sin caracteres especiales)
+    // Intentar búsqueda 4: Título limpio (sin caracteres especiales)
     const cleanTitle = title.replace(/[:\-\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
     if (cleanTitle !== title) {
       searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(cleanTitle)}&year=${year}`;
@@ -493,12 +506,12 @@ async function searchTMDBSeries(title, year) {
     let searchData = await httpsGet(searchUrl, true, searchUrl);
     
     if (searchData?.results && searchData.results.length > 0) {
-      // Si tenemos año, intentar match por año
+      // Si tenemos año, intentar match por año (±2 años para series)
       if (year) {
         const yearNum = parseInt(year);
         const closeMatch = searchData.results.find(r => {
           const firstAirYear = r.first_air_date ? parseInt(r.first_air_date.split('-')[0]) : 0;
-          return Math.abs(firstAirYear - yearNum) <= 1;
+          return Math.abs(firstAirYear - yearNum) <= 2;
         });
         
         if (closeMatch) return closeMatch.id;
@@ -514,6 +527,15 @@ async function searchTMDBSeries(title, year) {
       searchData = await httpsGet(searchUrl, true, searchUrl);
       
       if (searchData?.results && searchData.results.length > 0) {
+        // Intentar match por año si está disponible
+        if (year) {
+          const yearNum = parseInt(year);
+          const closeMatch = searchData.results.find(r => {
+            const firstAirYear = r.first_air_date ? parseInt(r.first_air_date.split('-')[0]) : 0;
+            return Math.abs(firstAirYear - yearNum) <= 2;
+          });
+          if (closeMatch) return closeMatch.id;
+        }
         return searchData.results[0].id;
       }
     }
@@ -5861,11 +5883,40 @@ app.get('/browse', async (req, res) => {
       }
     }
     
-    // PASO 3: Preparar datos para el frontend
+    // PASO 3: Preparar datos para el frontend (normalizados y deduplicados)
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
-    const uniqueGenres = [...new Set(items.flatMap(i => i.genres))].sort();
-    const uniqueCollections = [...new Set(items.flatMap(i => i.collections))].sort();
-    const uniqueCountries = [...new Set(items.flatMap(i => i.countries))].sort();
+    
+    // Debug: verificar ratings
+    const ratingsDebug = items.slice(0, 5).map(i => `${i.title}: ${i.rating}`).join(' | ');
+    console.log(`[/browse] 🔍 Ratings muestra: ${ratingsDebug}`);
+    
+    // Normalizar géneros y eliminar duplicados (case-insensitive)
+    const genresMap = new Map();
+    items.flatMap(i => i.genres || []).forEach(g => {
+      const normalized = g.trim();
+      const key = normalized.toLowerCase();
+      if (!genresMap.has(key)) genresMap.set(key, normalized);
+    });
+    const uniqueGenres = [...genresMap.values()].sort();
+    
+    // Normalizar colecciones y eliminar duplicados
+    const collectionsMap = new Map();
+    items.flatMap(i => i.collections || []).forEach(c => {
+      const normalized = c.trim();
+      const key = normalized.toLowerCase();
+      if (!collectionsMap.has(key)) collectionsMap.set(key, normalized);
+    });
+    const uniqueCollections = [...collectionsMap.values()].sort();
+    console.log(`[/browse] 📚 ${uniqueCollections.length} colecciones únicas encontradas`);
+    
+    // Normalizar países y eliminar duplicados
+    const countriesMap = new Map();
+    items.flatMap(i => i.countries || []).forEach(c => {
+      const normalized = c.trim();
+      const key = normalized.toLowerCase();
+      if (!countriesMap.has(key)) countriesMap.set(key, normalized);
+    });
+    const uniqueCountries = [...countriesMap.values()].sort();
     
     // Estadísticas (solo si vino de Plex)
     let totalSizeFormatted = '0 GB';
@@ -7975,10 +8026,16 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
         const batch = itemsPending.slice(i, i + batchSize);
         const promises = batch.map(async (item) => {
           try {
-            // Usar búsqueda inteligente
-            const tmdbId = isMovie 
-              ? await searchTMDBMovie(item.title, item.year)
-              : await searchTMDBSeries(item.title, item.year);
+            // PRIORIDAD 1: Usar tmdbId de Plex si existe
+            let tmdbId = item.tmdbId || null;
+            let searchMethod = tmdbId ? 'plex-id' : 'search';
+            
+            // PRIORIDAD 2: Búsqueda inteligente por título
+            if (!tmdbId) {
+              tmdbId = isMovie 
+                ? await searchTMDBMovie(item.title, item.year)
+                : await searchTMDBSeries(item.title, item.year);
+            }
             
             if (tmdbId) {
               // Obtener datos completos de TMDB
@@ -7997,6 +8054,13 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
                     fullData.collections || []
                   );
                   foundBasic++;
+                  
+                  // Log solo cada 10 encontrados
+                  if (foundBasic % 10 === 0) {
+                    console.log(`[Background] ✅ "${item.title}" (${item.year}) - Rating: ${rating} | Método: ${searchMethod}`);
+                  }
+                } else {
+                  console.log(`[Background] ⚠️ "${item.title}" - Rating inválido: ${fullData.rating}`);
                 }
                 
                 // Guardar datos completos en item_details collection
@@ -8013,6 +8077,7 @@ async function fetchMissingRatingsBackgroundDB(baseURI, libraryKey, libraryType)
             }
             
             // Marcar como scrapeado aunque no se encontró
+            console.log(`[Background] ❌ "${item.title}" (${item.year}) - No encontrado en TMDB`);
             await itemsCollection.updateOne(
               { ratingKey: item.ratingKey },
               { $set: { tmdbScraped: true, updatedAt: new Date() } }
