@@ -1,12 +1,52 @@
 const express = require('express');
 const https = require('https');
+const { MongoClient } = require('mongodb');
+const crypto = require('crypto');
 // const compression = require('compression');
 // const NodeCache = require('node-cache');
 const app = express();
 
+// Middleware para parsear JSON en el body de las peticiones
+app.use(express.json());
+
 // ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
 // Obtén una gratis en: https://www.themoviedb.org/settings/api
 const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
+
+// ========================================
+// CONFIGURACIÓN MONGODB
+// ========================================
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://plexadmin:Sporting1905.@plex-redirect.nrifwco.mongodb.net/?appName=Plex-Redirect';
+const MONGODB_DB = process.env.MONGODB_DB || 'plex_servers';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '159357456';
+
+let mongoClient = null;
+let serversCollection = null;
+
+// Conectar a MongoDB
+async function connectMongoDB() {
+  if (mongoClient) return mongoClient;
+  
+  try {
+    mongoClient = new MongoClient(MONGODB_URI);
+    await mongoClient.connect();
+    const db = mongoClient.db(MONGODB_DB);
+    serversCollection = db.collection('servers');
+    
+    // Crear índices
+    await serversCollection.createIndex({ serverId: 1 }, { unique: true });
+    await serversCollection.createIndex({ lastAccess: -1 });
+    
+    console.log('✅ Conectado a MongoDB Atlas');
+    return mongoClient;
+  } catch (error) {
+    console.error('❌ Error conectando a MongoDB:', error);
+    return null;
+  }
+}
+
+// Iniciar conexión al arrancar
+connectMongoDB();
 
 // ========================================
 // OPTIMIZACIONES DE RENDIMIENTO
@@ -7291,7 +7331,47 @@ app.get('/browse', async (req, res) => {
 
 // Ruta para mostrar las bibliotecas disponibles
 app.get('/library', async (req, res) => {
-  const { accessToken, baseURI } = req.query;
+  const { accessToken, baseURI, action, password, adminPassword } = req.query;
+  
+  // ========================================
+  // ACCIONES DE ADMIN (sin accessToken/baseURI)
+  // ========================================
+  
+  // Verificar password de admin
+  if (action === 'verify-admin') {
+    if (password === ADMIN_PASSWORD) {
+      return res.json({ success: true });
+    } else {
+      return res.json({ success: false });
+    }
+  }
+  
+  // Obtener lista de servidores (solo admin)
+  if (action === 'get-servers') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    try {
+      if (!serversCollection) {
+        await connectMongoDB();
+      }
+      
+      const servers = await serversCollection
+        .find({})
+        .sort({ lastAccess: -1 })
+        .toArray();
+      
+      return res.json({ servers });
+    } catch (error) {
+      console.error('Error obteniendo servidores:', error);
+      return res.status(500).json({ error: 'Error al obtener servidores' });
+    }
+  }
+  
+  // ========================================
+  // MODO NORMAL: Mostrar bibliotecas
+  // ========================================
   
   if (!accessToken || !baseURI) {
     return res.status(400).send('Faltan parámetros requeridos: accessToken, baseURI');
@@ -7318,6 +7398,46 @@ app.get('/library', async (req, res) => {
           title: titleMatch[1],
           type: typeMatch[1]
         });
+      }
+    }
+    
+    // Auto-registrar servidor en MongoDB
+    if (serversCollection || await connectMongoDB()) {
+      try {
+        const serverId = crypto.createHash('md5')
+          .update(`${baseURI}-${accessToken}`)
+          .digest('hex');
+        
+        // Obtener nombre del servidor
+        let serverName = 'Servidor Plex';
+        try {
+          const serverUrl = `${baseURI}/?X-Plex-Token=${accessToken}`;
+          const serverXml = await httpsGetXML(serverUrl);
+          const nameMatch = serverXml.match(/friendlyName="([^"]*)"/);
+          if (nameMatch) serverName = nameMatch[1];
+        } catch (e) {
+          // Usar nombre por defecto
+        }
+        
+        await serversCollection.updateOne(
+          { serverId },
+          {
+            $set: {
+              serverName,
+              accessToken,
+              baseURI,
+              lastAccess: new Date(),
+              libraryCount: libraries.length,
+              libraryNames: libraries.map(l => l.title)
+            },
+            $setOnInsert: { createdAt: new Date() }
+          },
+          { upsert: true }
+        );
+        
+        console.log(`📝 Servidor registrado: ${serverName}`);
+      } catch (error) {
+        console.error('Error registrando servidor:', error);
       }
     }
     
@@ -7422,9 +7542,304 @@ app.get('/library', async (req, res) => {
             text-transform: uppercase;
             letter-spacing: 0.05em;
           }
+          
+          /* Admin Icon - Esquina superior derecha */
+          .admin-icon {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 48px;
+            height: 48px;
+            background: rgba(31, 41, 55, 0.9);
+            border: 2px solid rgba(229, 160, 13, 0.3);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+          }
+          .admin-icon:hover {
+            border-color: rgba(229, 160, 13, 0.8);
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
+          }
+          .admin-icon.active {
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border-color: #f5b81d;
+          }
+          
+          /* Dropdown Servidores - Arriba izquierda (solo admin) */
+          .server-selector {
+            position: fixed;
+            top: 1.5rem;
+            left: 1.5rem;
+            z-index: 100;
+            display: none;
+          }
+          .server-selector.active {
+            display: block;
+          }
+          .server-selector select {
+            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            background: rgba(31, 41, 55, 0.95);
+            border: 2px solid rgba(229, 160, 13, 0.3);
+            border-radius: 12px;
+            color: #f3f4f6;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            appearance: none;
+            background-image: url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23e5a00d' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+          }
+          .server-selector select:hover {
+            border-color: rgba(229, 160, 13, 0.6);
+          }
+          .server-selector select:focus {
+            outline: none;
+            border-color: #e5a00d;
+          }
+          
+          /* Botón Actualizar - Abajo derecha */
+          .btn-refresh {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            color: #000;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
+            z-index: 50;
+          }
+          .btn-refresh:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(229, 160, 13, 0.5);
+          }
+          .btn-refresh:active {
+            transform: translateY(0);
+          }
+          .btn-refresh svg {
+            width: 20px;
+            height: 20px;
+          }
+          .btn-refresh.loading svg {
+            animation: rotate 1s linear infinite;
+          }
+          @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          
+          /* Modal Login Admin */
+          .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            backdrop-filter: blur(5px);
+          }
+          .modal-overlay.active {
+            display: flex;
+          }
+          .modal {
+            background: rgba(31, 41, 55, 0.95);
+            border: 2px solid rgba(229, 160, 13, 0.3);
+            border-radius: 24px;
+            padding: 2.5rem;
+            max-width: 400px;
+            width: 90%;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          }
+          .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+          }
+          .modal-subtitle {
+            color: #9ca3af;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+            text-align: center;
+          }
+          .modal-input {
+            width: 100%;
+            padding: 1rem;
+            background: rgba(17, 24, 39, 0.8);
+            border: 2px solid rgba(229, 160, 13, 0.2);
+            border-radius: 12px;
+            color: #f3f4f6;
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+          }
+          .modal-input:focus {
+            outline: none;
+            border-color: #e5a00d;
+          }
+          .modal-buttons {
+            display: flex;
+            gap: 1rem;
+          }
+          .modal-btn {
+            flex: 1;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+          }
+          .modal-btn-primary {
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            color: #000;
+          }
+          .modal-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
+          }
+          .modal-btn-secondary {
+            background: rgba(31, 41, 55, 0.8);
+            color: #f3f4f6;
+            border: 2px solid rgba(229, 160, 13, 0.2);
+          }
+          .modal-btn-secondary:hover {
+            border-color: rgba(229, 160, 13, 0.5);
+          }
+          .error-message {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: -1rem;
+            margin-bottom: 1rem;
+            text-align: center;
+          }
+          
+          /* Responsive */
+          @media (max-width: 768px) {
+            body {
+              padding: 1rem;
+            }
+            .logo-text {
+              font-size: 1.75rem;
+            }
+            .logo-icon {
+              width: 48px;
+              height: 48px;
+              font-size: 1.5rem;
+            }
+            h1 {
+              font-size: 1.5rem;
+            }
+            .subtitle {
+              font-size: 1rem;
+            }
+            .admin-icon {
+              top: 1rem;
+              right: 1rem;
+              width: 40px;
+              height: 40px;
+              font-size: 1.25rem;
+            }
+            .server-selector {
+              top: 1rem;
+              left: 1rem;
+            }
+            .server-selector select {
+              padding: 0.625rem 2rem 0.625rem 0.875rem;
+              font-size: 0.875rem;
+            }
+            .btn-refresh {
+              bottom: 1rem;
+              right: 1rem;
+              padding: 0.875rem 1.25rem;
+              font-size: 0.95rem;
+            }
+            .btn-refresh svg {
+              width: 18px;
+              height: 18px;
+            }
+            .libraries-grid {
+              grid-template-columns: 1fr;
+              gap: 1.5rem;
+              margin-top: 2rem;
+            }
+            .modal {
+              padding: 2rem;
+            }
+          }
+          @media (max-width: 480px) {
+            .btn-refresh span {
+              display: none;
+            }
+            .btn-refresh {
+              padding: 1rem;
+              border-radius: 50%;
+              width: 48px;
+              height: 48px;
+              justify-content: center;
+            }
+          }
         </style>
       </head>
       <body>
+        <!-- Icono Admin (esquina superior derecha) -->
+        <div class="admin-icon" id="adminIcon" onclick="toggleAdminLogin()">
+          🔐
+        </div>
+        
+        <!-- Dropdown Servidores (solo visible en modo admin) -->
+        <div class="server-selector" id="serverSelector">
+          <select id="serverDropdown" onchange="switchServer()">
+            <option value="">Servidor actual</option>
+          </select>
+        </div>
+        
+        <!-- Modal Login Admin -->
+        <div class="modal-overlay" id="modalOverlay">
+          <div class="modal">
+            <h2 class="modal-title">🔐 Acceso Administrador</h2>
+            <p class="modal-subtitle">Introduce la contraseña para acceder al modo admin</p>
+            <input type="password" class="modal-input" id="adminPassword" placeholder="Contraseña" />
+            <div class="error-message" id="errorMessage" style="display: none;">❌ Contraseña incorrecta</div>
+            <div class="modal-buttons">
+              <button class="modal-btn modal-btn-secondary" onclick="closeAdminLogin()">Cancelar</button>
+              <button class="modal-btn modal-btn-primary" onclick="verifyAdmin()">Acceder</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Botón Actualizar (abajo derecha) -->
+        <button class="btn-refresh" id="refreshBtn" onclick="refreshLibraries()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+          <span>Actualizar</span>
+        </button>
+        
         <div class="container">
           <div class="header">
             <div class="logo">
@@ -7445,6 +7860,143 @@ app.get('/library', async (req, res) => {
             `).join('')}
           </div>
         </div>
+        
+        <script>
+          // Variables globales
+          const currentToken = '${accessToken}';
+          const currentURI = '${baseURI}';
+          let isAdminMode = sessionStorage.getItem('adminMode') === 'true';
+          let adminPasswordStored = sessionStorage.getItem('adminPassword');
+          
+          // Inicializar al cargar
+          window.addEventListener('DOMContentLoaded', () => {
+            if (isAdminMode && adminPasswordStored) {
+              activateAdminMode();
+            }
+            
+            // Enter para enviar password
+            document.getElementById('adminPassword').addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') verifyAdmin();
+            });
+          });
+          
+          // Toggle modal login
+          function toggleAdminLogin() {
+            if (isAdminMode) {
+              // Ya está en modo admin - desactivar
+              deactivateAdminMode();
+            } else {
+              // Mostrar modal login
+              document.getElementById('modalOverlay').classList.add('active');
+              document.getElementById('adminPassword').focus();
+            }
+          }
+          
+          function closeAdminLogin() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('errorMessage').style.display = 'none';
+          }
+          
+          // Verificar password admin
+          async function verifyAdmin() {
+            const password = document.getElementById('adminPassword').value;
+            
+            if (!password) {
+              document.getElementById('errorMessage').textContent = '⚠️ Introduce una contraseña';
+              document.getElementById('errorMessage').style.display = 'block';
+              return;
+            }
+            
+            try {
+              const response = await fetch('/library?action=verify-admin&password=' + encodeURIComponent(password));
+              const data = await response.json();
+              
+              if (data.success) {
+                adminPasswordStored = password;
+                sessionStorage.setItem('adminMode', 'true');
+                sessionStorage.setItem('adminPassword', password);
+                closeAdminLogin();
+                activateAdminMode();
+              } else {
+                document.getElementById('errorMessage').textContent = '❌ Contraseña incorrecta';
+                document.getElementById('errorMessage').style.display = 'block';
+              }
+            } catch (error) {
+              console.error('Error verificando admin:', error);
+              document.getElementById('errorMessage').textContent = '⚠️ Error de conexión';
+              document.getElementById('errorMessage').style.display = 'block';
+            }
+          }
+          
+          // Activar modo admin
+          async function activateAdminMode() {
+            isAdminMode = true;
+            document.getElementById('adminIcon').classList.add('active');
+            document.getElementById('serverSelector').classList.add('active');
+            
+            // Cargar lista de servidores
+            try {
+              const response = await fetch('/library?action=get-servers&adminPassword=' + encodeURIComponent(adminPasswordStored));
+              const data = await response.json();
+              
+              if (data.servers) {
+                const dropdown = document.getElementById('serverDropdown');
+                dropdown.innerHTML = '<option value="">Servidor actual</option>';
+                
+                data.servers.forEach(server => {
+                  const option = document.createElement('option');
+                  option.value = JSON.stringify({ accessToken: server.accessToken, baseURI: server.baseURI });
+                  option.textContent = \`\${server.serverName} (\${server.libraryCount} bibliotecas)\`;
+                  dropdown.appendChild(option);
+                });
+                
+                console.log('✅ Modo admin activado -', data.servers.length, 'servidores disponibles');
+              }
+            } catch (error) {
+              console.error('Error cargando servidores:', error);
+            }
+          }
+          
+          // Desactivar modo admin
+          function deactivateAdminMode() {
+            isAdminMode = false;
+            sessionStorage.removeItem('adminMode');
+            sessionStorage.removeItem('adminPassword');
+            document.getElementById('adminIcon').classList.remove('active');
+            document.getElementById('serverSelector').classList.remove('active');
+            console.log('🔒 Modo admin desactivado');
+          }
+          
+          // Cambiar de servidor
+          function switchServer() {
+            const dropdown = document.getElementById('serverDropdown');
+            const selectedValue = dropdown.value;
+            
+            if (!selectedValue) return;
+            
+            try {
+              const serverData = JSON.parse(selectedValue);
+              const newUrl = \`/library?accessToken=\${encodeURIComponent(serverData.accessToken)}&baseURI=\${encodeURIComponent(serverData.baseURI)}\`;
+              window.location.href = newUrl;
+            } catch (error) {
+              console.error('Error cambiando servidor:', error);
+            }
+          }
+          
+          // Refrescar bibliotecas
+          function refreshLibraries() {
+            const btn = document.getElementById('refreshBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            
+            const url = \`/library?accessToken=\${encodeURIComponent(currentToken)}&baseURI=\${encodeURIComponent(currentURI)}&_refresh=\${Date.now()}\`;
+            
+            setTimeout(() => {
+              window.location.href = url;
+            }, 500);
+          }
+        </script>
       </body>
       </html>
     `);
