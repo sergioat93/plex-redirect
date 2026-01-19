@@ -5312,37 +5312,7 @@ app.get('/browse', async (req, res) => {
       const titleMatch = fullTag.match(/title="([^"]*)"/);
       const yearMatch = fullTag.match(/year="([^"]*)"/);
       const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
-      
-      // Extraer tmdbId: primero del guid, luego del title, luego del thumb, luego buscar en Media/Part
-      let tmdbId = '';
-      const guidMatch = fullTag.match(/guid="[^"]*tmdb:?\/\/(\d+)/i) || 
-                        fullTag.match(/guid="[^"]*themoviedb:?\/\/(\d+)/i);
-      if (guidMatch) {
-        tmdbId = guidMatch[1];
-      } else if (titleMatch) {
-        // Buscar [tmdb-XXXXX] en el título
-        const titleTmdbMatch = titleMatch[1].match(/\[tmdb-(\d+)\]/i);
-        if (titleTmdbMatch) {
-          tmdbId = titleTmdbMatch[1];
-        }
-      }
-      
-      // Si aún no tenemos tmdbId, buscar en el thumb (ruta del archivo)
-      if (!tmdbId && thumbMatch) {
-        const thumbTmdbMatch = thumbMatch[1].match(/\[tmdb-(\d+)\]/i);
-        if (thumbTmdbMatch) {
-          tmdbId = thumbTmdbMatch[1];
-        }
-      }
-      
-      // Si aún no tenemos tmdbId, buscar en tags Media y Part dentro del contenido
-      if (!tmdbId) {
-        const mediaPartMatch = contentUntilEnd.match(/\[tmdb-(\d+)\]/i);
-        if (mediaPartMatch) {
-          tmdbId = mediaPartMatch[1];
-        }
-      }
-      
+      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
       const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
       const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
       const summaryMatch = fullTag.match(/summary="([^"]*)"/);
@@ -5375,7 +5345,7 @@ app.get('/browse', async (req, res) => {
           title: titleMatch[1],
           year: yearMatch ? yearMatch[1] : '',
           thumb: thumbMatch ? `${baseURI}${thumbMatch[1]}?X-Plex-Token=${accessToken}` : '',
-          tmdbId: tmdbId,
+          tmdbId: tmdbMatch ? tmdbMatch[1] : '',
           rating: ratingMatch ? parseFloat(ratingMatch[1]).toFixed(1) : '0',
           summary: summaryMatch ? summaryMatch[1] : '',
           addedAt: addedAtMatch ? parseInt(addedAtMatch[1]) : 0,
@@ -5384,46 +5354,6 @@ app.get('/browse', async (req, res) => {
           countries: itemCountries
         });
       }
-    }
-
-    // Fallback: Buscar en TMDB solo para items sin rating válido de Plex
-    const itemsWithoutRating = items.filter(item => !item.rating || item.rating === '0' || parseFloat(item.rating) === 0);
-    
-    if (itemsWithoutRating.length > 0) {
-      console.log(`[/browse] ${itemsWithoutRating.length} items sin rating de Plex, buscando en TMDB...`);
-      
-      const fallbackPromises = itemsWithoutRating.map(async (item) => {
-        try {
-          let tmdbId = item.tmdbId;
-          
-          // Si no tiene tmdbId, buscar por título + año
-          if (!tmdbId && item.title && item.year) {
-            const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-            const searchUrl = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${TMDB_API_KEY}&language=es-ES&query=${encodeURIComponent(item.title)}&year=${item.year}`;
-            const searchResults = await httpsGet(searchUrl, true, `tmdb_search_${endpoint}_${item.title}_${item.year}`);
-            
-            if (searchResults && searchResults.results && searchResults.results.length > 0) {
-              tmdbId = searchResults.results[0].id.toString();
-              item.tmdbId = tmdbId;
-            }
-          }
-          
-          // Si tenemos tmdbId, obtener rating de TMDB
-          if (tmdbId) {
-            const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
-            const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
-            const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${tmdbId}`);
-            if (tmdbData && tmdbData.vote_average) {
-              item.rating = tmdbData.vote_average.toFixed(1);
-            }
-          }
-        } catch (error) {
-          // Mantener rating en 0 si falla
-        }
-      });
-      
-      await Promise.all(fallbackPromises);
-      console.log(`[/browse] Ratings de TMDB (fallback) actualizados`);
     }
 
     // Obtener listas únicas para filtros
