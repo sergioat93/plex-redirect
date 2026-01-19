@@ -5357,20 +5357,26 @@ app.get('/browse', async (req, res) => {
     }
 
     // Actualizar ratings desde TMDB para todos los items con tmdbId
-    await Promise.all(items.map(async (item) => {
+    console.log('[/browse] Actualizando ratings desde TMDB para', items.filter(i => i.tmdbId).length, 'items...');
+    const ratingPromises = items.map(async (item, index) => {
       if (item.tmdbId) {
         try {
           const endpoint = libraryType === 'movie' ? 'movie' : 'tv';
           const tmdbUrl = `https://api.themoviedb.org/3/${endpoint}/${item.tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES`;
           const tmdbData = await httpsGet(tmdbUrl, true, `tmdb_rating_${endpoint}_${item.tmdbId}`);
           if (tmdbData && tmdbData.vote_average) {
-            item.rating = tmdbData.vote_average.toFixed(1);
+            const newRating = tmdbData.vote_average.toFixed(1);
+            item.rating = newRating;
+            if (index < 3) console.log(`[/browse] Item "${item.title}" rating actualizado: ${newRating}`);
           }
         } catch (error) {
-          // Mantener rating de Plex si falla TMDB
+          console.error(`[/browse] Error obteniendo rating TMDB para ${item.title}:`, error.message);
         }
       }
-    }));
+    });
+    
+    await Promise.all(ratingPromises);
+    console.log('[/browse] Ratings actualizados desde TMDB completado');
 
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
