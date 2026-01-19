@@ -5369,11 +5369,6 @@ app.get('/browse', async (req, res) => {
       console.log(`[/browse] Primeros 3 sin rating:`, itemsWithoutRating.slice(0, 3).map(i => `"${i.title}" (rating=${i.rating})`));
     }
 
-    //    countries: itemCountries
-        });
-      }
-    }
-
     // Obtener listas únicas para filtros
     const uniqueYears = [...new Set(items.map(i => i.year).filter(y => y))].sort((a, b) => b - a);
     const uniqueGenres = Array.from(allGenres).sort();
