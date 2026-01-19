@@ -5323,6 +5323,13 @@ app.get('/browse', async (req, res) => {
         console.log(`[/browse] Item "${titleMatch ? titleMatch[1] : 'N/A'}": audienceRating="${audienceRatingMatch ? audienceRatingMatch[1] : 'NO EXISTE'}", rating="${ratingMatch ? ratingMatch[1] : 'NO EXISTE'}"`);
       }
       
+      // Debug: mostrar XML completo del primer item SIN rating
+      if (!ratingMatch && items.length === 0) {
+        console.log('[/browse] ========== XML COMPLETO DEL PRIMER ITEM SIN RATING ==========');
+        console.log(fullTag);
+        console.log('[/browse] ====================================================');
+      }
+      
       if (ratingKeyMatch && titleMatch) {
         // Extraer géneros de este item
         const itemGenres = [];
@@ -5367,6 +5374,17 @@ app.get('/browse', async (req, res) => {
     console.log(`[/browse] Total items: ${items.length}, Con rating: ${itemsWithRating.length}, Sin rating: ${itemsWithoutRating.length}`);
     if (itemsWithoutRating.length > 0) {
       console.log(`[/browse] Primeros 3 sin rating:`, itemsWithoutRating.slice(0, 3).map(i => `"${i.title}" (rating=${i.rating})`));
+      
+      // Mostrar XML completo del primero sin rating
+      console.log('[/browse] ========== BUSCANDO XML DEL PRIMER ITEM SIN RATING ==========');
+      const firstWithoutRating = itemsWithoutRating[0];
+      const firstIndex = xmlData.indexOf(`ratingKey="${firstWithoutRating.ratingKey}"`);
+      if (firstIndex !== -1) {
+        const xmlStart = xmlData.lastIndexOf('<', firstIndex);
+        const xmlEnd = xmlData.indexOf('>', firstIndex + 200);
+        console.log(xmlData.substring(xmlStart, xmlEnd + 1));
+      }
+      console.log('[/browse] ====================================================');
     }
 
     // Obtener listas únicas para filtros
