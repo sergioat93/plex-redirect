@@ -5849,7 +5849,6 @@ app.get('/browse', async (req, res) => {
                 countries: (doc.countriesPlex?.length > 0) ? doc.countriesPlex : []
               };
             });
-            }));
           }
         } else {
           console.log(`[/browse] 🔄 Merge mode: DB incompleta o scraping inicial (${(scrapingProgress*100).toFixed(1)}%)`);
