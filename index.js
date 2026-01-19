@@ -5304,6 +5304,7 @@ app.get('/browse', async (req, res) => {
     
     // Extraer items con géneros, colecciones y países
     const videoSections = xmlData.split(`<${tagType}`).slice(1);
+    let debugCount = 0;
     for (const section of videoSections) {
       const fullTag = `<${tagType}${section.split('>')[0]}>`;
       const contentUntilEnd = section.split(`</${tagType}>`)[0];
@@ -5312,8 +5313,18 @@ app.get('/browse', async (req, res) => {
       const titleMatch = fullTag.match(/title="([^"]*)"/);
       const yearMatch = fullTag.match(/year="([^"]*)"/);
       const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
-      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
-      const audienceRatingMatch = fullTag.match(/audienceRating="([^"]*)"/);
+      const guidMatch = fullTag.match(/guid="([^"]*)"/);
+      const tmdbMatch = fullTag.match(/guid="[^"]*tmdb:?\/\/(\d+)/i) || 
+                        fullTag.match(/guid="[^"]*themoviedb:?\/\/(\d+)/i) ||
+                        fullTag.match(/\[tmdb-(\d+)\]/i);
+      
+      // Debug: mostrar los primeros 3 guids para entender el formato
+      if (debugCount < 3 && guidMatch) {
+        console.log(`[/browse] DEBUG Item ${debugCount + 1}: title="${titleMatch ? titleMatch[1] : 'N/A'}", guid="${guidMatch[1]}", tmdbId=${tmdbMatch ? tmdbMatch[1] : 'NO ENCONTRADO'}`);
+        debugCount++;
+      }
+      
+      const audienceRatingMatch = fullTag.match(/audienceRatingMatch="([^"]*)"/);
       const ratingMatch = audienceRatingMatch || fullTag.match(/rating="([^"]*)"/);
       const summaryMatch = fullTag.match(/summary="([^"]*)"/);
       const addedAtMatch = fullTag.match(/addedAt="([^"]*)"/);
