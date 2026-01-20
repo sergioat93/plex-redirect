@@ -3712,6 +3712,26 @@ app.get('/movie', async (req, res) => {
 
   let partKey = decodeURIComponent(encodedPartKey);
   
+  // Extraer accessToken del downloadURL si no viene como parámetro
+  let finalAccessToken = accessToken;
+  if (!finalAccessToken && downloadURL) {
+    const tokenMatch = downloadURL.match(/X-Plex-Token=([^&]+)/);
+    if (tokenMatch) {
+      finalAccessToken = tokenMatch[1];
+      console.log('[/movie] 🔑 AccessToken extraído del downloadURL');
+    }
+  }
+  
+  // Extraer baseURI del downloadURL si no viene como parámetro
+  let finalBaseURI = baseURI;
+  if (!finalBaseURI && downloadURL) {
+    const urlMatch = downloadURL.match(/(https?:\/\/[^\/]+)/);
+    if (urlMatch) {
+      finalBaseURI = urlMatch[1];
+      console.log('[/movie] 🌐 BaseURI extraído del downloadURL:', finalBaseURI);
+    }
+  }
+  
   // Log para debug
   console.log('[/movie] Parámetros recibidos:', {
     tmdbId,
@@ -3741,12 +3761,13 @@ app.get('/movie', async (req, res) => {
   let plexRating = null; // Rating de Plex (audienceRating)
   
   // SIEMPRE intentar extraer rating de Plex si tenemos downloadURL
-  if (downloadURL && baseURI && accessToken) {
+  if (downloadURL && finalBaseURI && finalAccessToken) {
     try {
       const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
       if (ratingKeyMatch) {
         const ratingKey = ratingKeyMatch[1];
-        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        const metadataUrl = `${finalBaseURI}/library/metadata/${ratingKey}?X-Plex-Token=${finalAccessToken}`;
+        console.log('[/movie] 📡 Obteniendo metadata de:', metadataUrl);
         const xmlText = await httpsGetXML(metadataUrl);
         
         // DEBUG: Mostrar TODO el XML para ver qué atributos tiene
@@ -3754,33 +3775,39 @@ app.get('/movie', async (req, res) => {
         console.log(xmlText);
         console.log('[/movie] ====================================');
         
-        // Extraer rating de Plex (puede ser audienceRating o rating)
-        let plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
-        if (plexRatingMatch) {
-          plexRating = parseFloat(plexRatingMatch[1]);
-          console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
-        } else {
-          // Si no existe audienceRating, buscar rating (rating crítico)
-          plexRatingMatch = xmlText.match(/<Video[^>]*rating="([^"]*)"[^>]*>/);
-          if (plexRatingMatch) {
-            plexRating = parseFloat(plexRatingMatch[1]);
+        // Extraer rating IGUAL que en /browse
+        const videoTagMatch = xmlText.match(/<Video[^>]*>/);
+        if (videoTagMatch) {
+          const videoTag = videoTagMatch[0];
+          const audienceRatingMatch = videoTag.match(/audienceRating="([^"]*)"/);
+          const ratingAttrMatch = videoTag.match(/rating="([^"]*)"/);
+          
+          if (audienceRatingMatch) {
+            plexRating = parseFloat(audienceRatingMatch[1]);
+            console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
+          } else if (ratingAttrMatch) {
+            plexRating = parseFloat(ratingAttrMatch[1]);
             console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
           } else {
-            console.log('[/movie] ⚠️ NO se encontró rating ni audienceRating en el XML');
+            console.log('[/movie] ⚠️ NO se encontró rating en el tag <Video>');
           }
+        } else {
+          console.log('[/movie] ⚠️ NO se encontró tag <Video> en el XML');
         }
       }
     } catch (error) {
-      console.error('[/movie] Error al extraer rating de Plex:', error);
+      console.error('[/movie] ❌ Error al extraer rating de Plex:', error);
     }
+  } else {
+    console.log('[/movie] ⚠️ Faltan datos para extraer rating:', { downloadURL: !!downloadURL, baseURI: !!finalBaseURI, accessToken: !!finalAccessToken });
   }
   
-  if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
+  if ((!fileSize || !partKey) && downloadURL && finalBaseURI && finalAccessToken) {
     try {
       const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
       if (ratingKeyMatch) {
         const ratingKey = ratingKeyMatch[1];
-        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        const metadataUrl = `${finalBaseURI}/library/metadata/${ratingKey}?X-Plex-Token=${finalAccessToken}`;
         // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
         const xmlText = await httpsGetXML(metadataUrl);
         
