@@ -6706,7 +6706,7 @@ app.get('/browse', async (req, res) => {
           function createCardHTML(item) {
             const itemTitle = item.title;
             const itemYear = item.year || '';
-            const itemRating = parseFloat(item.rating) || 0;
+            let itemRating = parseFloat(item.rating) || 0;
             const posterPath = item.thumb || '';
             const tmdbId = item.tmdbId || '';
             const genres = item.genres ? item.genres.join(',') : '';
@@ -6715,6 +6715,17 @@ app.get('/browse', async (req, res) => {
             const countries = item.countries ? item.countries.join(',') : '';
             const summary = item.summary || '';
             const addedAt = item.addedAt || 0;
+            
+            // **CRÍTICO**: Consultar localStorage ANTES de renderizar
+            // Si el rating es 0 y hay un rating en cache, usarlo
+            if (itemRating === 0 && tmdbId) {
+              const type = libraryType === 'movie' ? 'movie' : 'tv';
+              const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
+              const cached = localStorage.getItem(cacheKey);
+              if (cached && parseFloat(cached) > 0) {
+                itemRating = parseFloat(cached);
+              }
+            }
             
             const detailUrl = libraryType === 'movie' 
               ? \`/movie-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`
