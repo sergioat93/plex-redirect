@@ -4496,67 +4496,70 @@ app.get('/movie', async (req, res) => {
           const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
           if (!tmdbIdUsed) return;
           
-          // PRIORIDAD 1: Si Plex tiene rating, usar ese (ya se muestra en el HTML)
+          // PRIORIDAD 1: Si Plex tiene rating, NO hacer nada (ya está en el HTML)
           const plexHasRating = ${movieData && movieData.rating !== 'N/A' ? 'true' : 'false'};
           if (plexHasRating) {
-            console.log('Rating de Plex disponible, no consultando TMDB');
-            return; // No hacer nada, usar el rating de Plex
+            console.log('[RATING] Usando rating de Plex, no consultando TMDB');
+            return; // El badge ya está en el HTML renderizado
           }
           
-          // PRIORIDAD 2: Si Plex NO tiene rating, buscar en localStorage
+          // PRIORIDAD 2: Verificar si YA existe el badge en el DOM
+          const badgesRow = document.querySelector('.modal-badges-row');
+          const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
+          if (existingRating) {
+            console.log('[RATING] Badge ya existe en el DOM, saltando');
+            return; // Ya hay un badge, no crear duplicado
+          }
+          
+          // PRIORIDAD 3: Si Plex NO tiene rating, buscar en localStorage
           const cacheKey = \`tmdb_rating_movie_\${tmdbIdUsed}\`;
           const cachedRating = localStorage.getItem(cacheKey);
           
           if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
-            console.log('Rating encontrado en cache:', cachedRating);
-            // Crear o actualizar el rating badge
-            const badgesRow = document.querySelector('.modal-badges-row');
+            console.log('[RATING] Encontrado en localStorage:', cachedRating);
+            // Crear badge con rating de localStorage
             if (badgesRow) {
-              const existingRating = badgesRow.querySelector('.rating-badge');
-              if (!existingRating) {
-                const ratingBadge = document.createElement('span');
-                ratingBadge.className = 'rating-badge';
-                ratingBadge.innerHTML = \`
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                  </svg>
-                  \${cachedRating}
-                \`;
-                badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-              }
+              const ratingBadge = document.createElement('span');
+              ratingBadge.className = 'rating-badge';
+              ratingBadge.innerHTML = \`
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                </svg>
+                \${cachedRating}
+              \`;
+              badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
             }
             return;
           }
           
-          // PRIORIDAD 3: Si no hay rating en Plex ni en cache, consultar TMDB
-          console.log('No hay rating, consultando TMDB...');
+          // PRIORIDAD 4: Si no hay rating en Plex ni en cache, consultar TMDB
+          console.log('[RATING] Consultando TMDB API para:', tmdbIdUsed);
           fetch(\`https://api.themoviedb.org/3/movie/\${tmdbIdUsed}?api_key=${TMDB_API_KEY}\`)
             .then(res => res.json())
             .then(data => {
               if (data.vote_average) {
                 const rating = data.vote_average.toFixed(1);
                 localStorage.setItem(cacheKey, rating);
-                console.log('Rating de TMDB guardado:', rating);
+                console.log('[RATING] TMDB guardado en localStorage:', rating);
                 
-                // Crear el rating badge
+                // Crear el rating badge SOLO si no existe
                 const badgesRow = document.querySelector('.modal-badges-row');
-                if (badgesRow) {
-                  const existingRating = badgesRow.querySelector('.rating-badge');
-                  if (!existingRating) {
-                    const ratingBadge = document.createElement('span');
-                    ratingBadge.className = 'rating-badge';
-                    ratingBadge.innerHTML = \`
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                      </svg>
-                      \${rating}
-                    \`;
-                    badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-                  }
+                const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
+                
+                if (badgesRow && !existingRating) {
+                  const ratingBadge = document.createElement('span');
+                  ratingBadge.className = 'rating-badge';
+                  ratingBadge.innerHTML = \`
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    \${rating}
+                  \`;
+                  badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
                 }
               }
             })
-            .catch(err => console.error('Error fetching TMDB rating:', err));
+            .catch(err => console.error('[RATING] Error consultando TMDB:', err));
         })();
         
         function toggleSynopsis() {
@@ -5264,26 +5267,38 @@ app.get('/series', async (req, res) => {
           const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
           if (!tmdbIdUsed) return;
           
-          // PRIORIDAD 1: Si Plex tiene rating, usar ese (ya está en el HTML)
+          // PRIORIDAD 1: Si Plex tiene rating, NO hacer nada (ya está en el HTML)
           const plexHasRating = ${seriesData && seriesData.rating !== 'N/A' ? 'true' : 'false'};
           if (plexHasRating) {
-            console.log('Rating de Plex disponible, no consultando TMDB');
-            return; // No sobrescribir el rating de Plex
+            console.log('[RATING] Usando rating de Plex, no consultando TMDB');
+            return; // El badge ya está en el HTML renderizado
           }
           
-          // PRIORIDAD 2: Buscar en localStorage
+          // PRIORIDAD 2: Verificar si YA existe el badge en el DOM
+          const badgesRow = document.querySelector('.modal-badges-row');
+          const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
+          if (existingRating) {
+            console.log('[RATING] Badge ya existe en el DOM, saltando');
+            return; // Ya hay un badge, no crear duplicado
+          }
+          
+          // PRIORIDAD 3: Buscar en localStorage
           const cacheKey = \`tmdb_rating_tv_\${tmdbIdUsed}\`;
           const cachedRating = localStorage.getItem(cacheKey);
           
           if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
-            console.log('Usando rating de localStorage:', cachedRating);
-            // Actualizar el rating en el badge si existe
-            const ratingBadge = document.querySelector('.rating-badge');
-            if (ratingBadge) {
-              const svgIcon = ratingBadge.querySelector('svg');
-              ratingBadge.innerHTML = '';
-              if (svgIcon) ratingBadge.appendChild(svgIcon);
-              ratingBadge.insertAdjacentText('beforeend', cachedRating);
+            console.log('[RATING] Encontrado en localStorage:', cachedRating);
+            // Crear badge con rating de localStorage
+            if (badgesRow) {
+              const ratingBadge = document.createElement('span');
+              ratingBadge.className = 'rating-badge';
+              ratingBadge.innerHTML = \`
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                </svg>
+                \${cachedRating}
+              \`;
+              badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
             }
             return;
           }
@@ -7179,6 +7194,8 @@ app.get('/browse', async (req, res) => {
             // Verificar localStorage primero
             const cacheKey = \`tmdb_rating_\${'${libraryType}' === 'movie' ? 'movie' : 'tv'}_\${tmdbId}\`;
             const cached = localStorage.getItem(cacheKey);
+            
+            console.log('[RATING OBSERVER] Procesando card:', { tmdbId, cacheKey, cached });
             
             if (cached) {
               updateCardRating(card, cached);
