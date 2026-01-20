@@ -7388,10 +7388,26 @@ app.get('/browse', async (req, res) => {
               // Guardar en localStorage (incluso si es 0)
               localStorage.setItem(cacheKey, rating);
               
-              // Solo actualizar card si el rating es mayor que 0
-              if (rating !== '0.0' && rating !== '0' && parseFloat(rating) > 0) {
+              // **CRÍTICO**: Actualizar itemsData e itemsIndex para que filtros usen el nuevo rating
+              const ratingFloat = parseFloat(rating);
+              if (ratingFloat > 0) {
+                // Actualizar en itemsData
+                const itemInData = itemsData.find(i => i.ratingKey === ratingKey);
+                if (itemInData) {
+                  itemInData.rating = ratingFloat;
+                  itemInData.tmdbId = tmdbId; // Guardar tmdbId también
+                }
+                
+                // Actualizar en itemsIndex
+                const itemInIndex = itemsIndex.find(i => i.ratingKey === ratingKey);
+                if (itemInIndex) {
+                  itemInIndex.rating = ratingFloat;
+                  itemInIndex.tmdbId = tmdbId; // Guardar tmdbId también
+                }
+                
+                // Actualizar card en el DOM
                 updateCardRating(card, rating);
-                console.log(\`[RATING] Rating cargado: \${tmdbId} = \${rating}\`);
+                console.log(\`[RATING] Rating cargado y guardado en datos: \${tmdbId} = \${rating}\`);
               } else {
                 console.log(\`[RATING] Película sin votos en TMDB: \${tmdbId} (guardado en cache como 0)\`);
               }
