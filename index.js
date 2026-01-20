@@ -7389,8 +7389,37 @@ app.get('/browse', async (req, res) => {
           
           // Inicializar lazy loader cuando el DOM esté listo
           window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(initRatingLazyLoader, 500);
+            setTimeout(() => {
+              initRatingLazyLoader();
+              // Procesar cards visibles inmediatamente
+              processVisibleCards();
+            }, 500);
           });
+          
+          // Función para procesar cards visibles inmediatamente (sin esperar al observer)
+          function processVisibleCards() {
+            const cardsToProcess = document.querySelectorAll('.movie-card[data-rating="0"]');
+            console.log('[RATING] Procesando cards visibles inmediatamente:', cardsToProcess.length);
+            
+            cardsToProcess.forEach(card => {
+              const rect = card.getBoundingClientRect();
+              const isVisible = (
+                rect.top >= 0 &&
+                rect.left >= 0 &&
+                rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+              );
+              
+              if (isVisible) {
+                const ratingKey = card.dataset.ratingKey;
+                const tmdbId = card.dataset.tmdbId || '';
+                if (!loadedRatings.has(ratingKey)) {
+                  console.log('[RATING] Card visible en carga inicial:', card.dataset.title);
+                  loadRatingForCard(card, tmdbId, ratingKey);
+                }
+              }
+            });
+          }
           
           // **CONTADOR DINÁMICO**: Actualizar contador en mobile search bar
           function updateMobileSearchCounter(count) {
