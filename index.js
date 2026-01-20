@@ -6751,7 +6751,10 @@ app.get('/browse', async (req, res) => {
             const htmlArray = batch.map(item => createCardHTML(item));
             grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
             
-            // Inicializar observer de ratings para las nuevas cards
+            // PRIMERO: Actualizar ratings desde localStorage inmediatamente
+            syncRatingsFromLocalStorage();
+            
+            // DESPUÉS: Inicializar observer para los que no estén en localStorage
             setTimeout(() => initRatingLazyLoader(), 100);
             
             return Array.from(grid.querySelectorAll('.movie-card'));
@@ -7184,6 +7187,27 @@ app.get('/browse', async (req, res) => {
             return textarea.value;
           }
           
+          // Sincronizar ratings desde localStorage inmediatamente después de renderizar
+          function syncRatingsFromLocalStorage() {
+            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
+            
+            document.querySelectorAll('.movie-card').forEach(card => {
+              const currentRating = card.dataset.rating;
+              const tmdbId = card.dataset.tmdbId;
+              
+              // Solo sincronizar si no tiene rating y tiene tmdbId
+              if (currentRating === '0' && tmdbId) {
+                const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
+                const cached = localStorage.getItem(cacheKey);
+                
+                // Si está en localStorage y NO es 0, actualizar inmediatamente
+                if (cached && cached !== '0' && cached !== '0.0' && parseFloat(cached) > 0) {
+                  updateCardRating(card, cached);
+                }
+              }
+            });
+          }
+          
           // Función para obtener rating de TMDB
           async function fetchTMDBRating(tmdbId, type = 'movie') {
             if (!tmdbId) return null;
@@ -7194,7 +7218,13 @@ app.get('/browse', async (req, res) => {
               if (!response.ok) return null;
               
               const data = await response.json();
-              return data.vote_average ? parseFloat(data.vote_average).toFixed(1) : null;
+              
+              // Si vote_average existe (incluso si es 0), devolverlo
+              if (data.vote_average !== undefined && data.vote_average !== null) {
+                return parseFloat(data.vote_average).toFixed(1);
+              }
+              
+              return null;
             } catch (error) {
               console.error('Error fetching TMDB rating:', error);
               return null;
@@ -7314,14 +7344,17 @@ app.get('/browse', async (req, res) => {
             // Consultar TMDB API
             const rating = await fetchTMDBRating(tmdbId, type);
             
-            if (rating && rating !== '0' && rating !== '0.0') {
-              // Guardar en localStorage
+            if (rating !== null) {
+              // Guardar en localStorage (incluso si es 0)
               localStorage.setItem(cacheKey, rating);
               
-              // Actualizar card
-              updateCardRating(card, rating);
-              
-              console.log(\`[RATING] Rating cargado: \${tmdbId} = \${rating}\`);
+              // Solo actualizar card si el rating es mayor que 0
+              if (rating !== '0.0' && rating !== '0' && parseFloat(rating) > 0) {
+                updateCardRating(card, rating);
+                console.log(\`[RATING] Rating cargado: \${tmdbId} = \${rating}\`);
+              } else {
+                console.log(\`[RATING] Película sin votos en TMDB: \${tmdbId} (guardado en cache como 0)\`);
+              }
             }
           }
           
