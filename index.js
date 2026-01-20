@@ -6675,6 +6675,33 @@ app.get('/browse', async (req, res) => {
           const libraryKey = '${libraryKey}';
           const libraryTitle = '${libraryTitle}';
           
+          // INMEDIATAMENTE: Actualizar ratings desde localStorage ANTES de cualquier render
+          (function updateRatingsFromCache() {
+            const type = libraryType === 'movie' ? 'movie' : 'tv';
+            
+            // Actualizar itemsData
+            itemsData.forEach(item => {
+              if ((item.rating === 0 || !item.rating) && item.tmdbId) {
+                const cacheKey = \`tmdb_rating_\${type}_\${item.tmdbId}\`;
+                const cached = localStorage.getItem(cacheKey);
+                if (cached && parseFloat(cached) > 0) {
+                  item.rating = parseFloat(cached);
+                }
+              }
+            });
+            
+            // Actualizar itemsIndex
+            itemsIndex.forEach(item => {
+              if ((item.rating === 0 || !item.rating) && item.tmdbId) {
+                const cacheKey = \`tmdb_rating_\${type}_\${item.tmdbId}\`;
+                const cached = localStorage.getItem(cacheKey);
+                if (cached && parseFloat(cached) > 0) {
+                  item.rating = parseFloat(cached);
+                }
+              }
+            });
+          })();
+          
           // Función para generar HTML de una tarjeta
           function createCardHTML(item) {
             const itemTitle = item.title;
@@ -7259,17 +7286,21 @@ app.get('/browse', async (req, res) => {
           function initRatingLazyLoader() {
             // Crear observer solo una vez
             if (!ratingObserver) {
+              console.log('[RATING INIT] Creando IntersectionObserver');
               ratingObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                   if (entry.isIntersecting) {
                     const card = entry.target;
-                    const tmdbId = card.dataset.tmdbId || ''; // Puede estar vacío
+                    const tmdbId = card.dataset.tmdbId || '';
                     const ratingKey = card.dataset.ratingKey;
                     const currentRating = card.dataset.rating;
                     
-                    // Procesar si no tiene rating (buscaremos tmdbId si hace falta)
+                    console.log('[RATING OBSERVER] Card visible:', card.dataset.title, 'rating:', currentRating, 'tmdbId:', tmdbId);
+                    
+                    // Procesar si no tiene rating
                     if (currentRating === '0' && !loadedRatings.has(ratingKey)) {
                       loadedRatings.add(ratingKey);
+                      console.log('[RATING OBSERVER] Llamando a loadRatingForCard para:', card.dataset.title);
                       loadRatingForCard(card, tmdbId, ratingKey);
                     }
                     
@@ -7278,18 +7309,16 @@ app.get('/browse', async (req, res) => {
                   }
                 });
               }, {
-                rootMargin: '200px' // Cargar con 200px de anticipación
+                rootMargin: '200px'
               });
             }
             
-            // Observar todas las cards actuales
-            document.querySelectorAll('.movie-card').forEach(card => {
-              const currentRating = card.dataset.rating;
-              
-              // Observar si no tiene rating (incluso sin tmdbId, lo buscaremos después)
-              if (currentRating === '0') {
-                ratingObserver.observe(card);
-              }
+            // Observar todas las cards con rating 0
+            const cardsToObserve = document.querySelectorAll('.movie-card[data-rating="0"]');
+            console.log('[RATING INIT] Cards a observar:', cardsToObserve.length);
+            
+            cardsToObserve.forEach(card => {
+              ratingObserver.observe(card);
             });
           }
           
