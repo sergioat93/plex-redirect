@@ -3749,6 +3749,11 @@ app.get('/movie', async (req, res) => {
         const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
         const xmlText = await httpsGetXML(metadataUrl);
         
+        // DEBUG: Mostrar TODO el XML para ver qué atributos tiene
+        console.log('[/movie] ========== XML COMPLETO ==========');
+        console.log(xmlText);
+        console.log('[/movie] ====================================');
+        
         // Extraer rating de Plex (puede ser audienceRating o rating)
         let plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
         if (plexRatingMatch) {
@@ -3760,6 +3765,8 @@ app.get('/movie', async (req, res) => {
           if (plexRatingMatch) {
             plexRating = parseFloat(plexRatingMatch[1]);
             console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
+          } else {
+            console.log('[/movie] ⚠️ NO se encontró rating ni audienceRating en el XML');
           }
         }
       }
