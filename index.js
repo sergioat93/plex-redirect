@@ -34,9 +34,8 @@ async function connectMongoDB() {
     serversCollection = db.collection('servers');
     
     // Crear índices
-    await serversCollection.createIndex({ machineIdentifier: 1 }, { unique: true });
+    await serversCollection.createIndex({ serverId: 1 }, { unique: true });
     await serversCollection.createIndex({ lastAccess: -1 });
-    await serversCollection.createIndex({ 'tokens.tokenHash': 1 });
     
     console.log('✅ Conectado a MongoDB Atlas');
     return mongoClient;
@@ -284,7 +283,7 @@ async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
 }
 
 // Función para obtener datos completos de película desde TMDB
-async function fetchTMDBMovieData(tmdbId, plexRating = null) {
+async function fetchTMDBMovieData(tmdbId) {
     try {
         // Obtener datos básicos de la película
         const movieUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,videos`;
@@ -335,7 +334,7 @@ async function fetchTMDBMovieData(tmdbId, plexRating = null) {
             runtimeMinutes: movieData.runtime || 0,
             genres: genres,
             genresString: genres.join(', ') || 'N/A',
-            rating: plexRating ? plexRating.toFixed(1) : (movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A'),
+            rating: movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A',
             voteCount: movieData.vote_count ? movieData.vote_count.toLocaleString('es-ES') : 'N/A',
             budget: formatCurrency(movieData.budget),
             revenue: formatCurrency(movieData.revenue),
@@ -3712,26 +3711,6 @@ app.get('/movie', async (req, res) => {
 
   let partKey = decodeURIComponent(encodedPartKey);
   
-  // Extraer accessToken del downloadURL si no viene como parámetro
-  let finalAccessToken = accessToken;
-  if (!finalAccessToken && downloadURL) {
-    const tokenMatch = downloadURL.match(/X-Plex-Token=([^&]+)/);
-    if (tokenMatch) {
-      finalAccessToken = tokenMatch[1];
-      console.log('[/movie] 🔑 AccessToken extraído del downloadURL');
-    }
-  }
-  
-  // Extraer baseURI del downloadURL si no viene como parámetro
-  let finalBaseURI = baseURI;
-  if (!finalBaseURI && downloadURL) {
-    const urlMatch = downloadURL.match(/(https?:\/\/[^\/]+)/);
-    if (urlMatch) {
-      finalBaseURI = urlMatch[1];
-      console.log('[/movie] 🌐 BaseURI extraído del downloadURL:', finalBaseURI);
-    }
-  }
-  
   // Log para debug
   console.log('[/movie] Parámetros recibidos:', {
     tmdbId,
@@ -3758,56 +3737,13 @@ app.get('/movie', async (req, res) => {
   let quality = '';
   let movieYear = '';
   let originalTitle = '';
-  let plexRating = null; // Rating de Plex (audienceRating)
   
-  // SIEMPRE intentar extraer rating de Plex si tenemos downloadURL
-  if (downloadURL && finalBaseURI && finalAccessToken) {
+  if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
     try {
       const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
       if (ratingKeyMatch) {
         const ratingKey = ratingKeyMatch[1];
-        const metadataUrl = `${finalBaseURI}/library/metadata/${ratingKey}?X-Plex-Token=${finalAccessToken}`;
-        console.log('[/movie] 📡 Obteniendo metadata de:', metadataUrl);
-        const xmlText = await httpsGetXML(metadataUrl);
-        
-        // DEBUG: Mostrar TODO el XML para ver qué atributos tiene
-        console.log('[/movie] ========== XML COMPLETO ==========');
-        console.log(xmlText);
-        console.log('[/movie] ====================================');
-        
-        // Extraer rating IGUAL que en /browse
-        const videoTagMatch = xmlText.match(/<Video[^>]*>/);
-        if (videoTagMatch) {
-          const videoTag = videoTagMatch[0];
-          const audienceRatingMatch = videoTag.match(/audienceRating="([^"]*)"/);
-          const ratingAttrMatch = videoTag.match(/rating="([^"]*)"/);
-          
-          if (audienceRatingMatch) {
-            plexRating = parseFloat(audienceRatingMatch[1]);
-            console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
-          } else if (ratingAttrMatch) {
-            plexRating = parseFloat(ratingAttrMatch[1]);
-            console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
-          } else {
-            console.log('[/movie] ⚠️ NO se encontró rating en el tag <Video>');
-          }
-        } else {
-          console.log('[/movie] ⚠️ NO se encontró tag <Video> en el XML');
-        }
-      }
-    } catch (error) {
-      console.error('[/movie] ❌ Error al extraer rating de Plex:', error);
-    }
-  } else {
-    console.log('[/movie] ⚠️ Faltan datos para extraer rating:', { downloadURL: !!downloadURL, baseURI: !!finalBaseURI, accessToken: !!finalAccessToken });
-  }
-  
-  if ((!fileSize || !partKey) && downloadURL && finalBaseURI && finalAccessToken) {
-    try {
-      const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
-      if (ratingKeyMatch) {
-        const ratingKey = ratingKeyMatch[1];
-        const metadataUrl = `${finalBaseURI}/library/metadata/${ratingKey}?X-Plex-Token=${finalAccessToken}`;
+        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
         // console.log('[/movie] Obteniendo XML de Plex para extraer datos técnicos...');
         const xmlText = await httpsGetXML(metadataUrl);
         
@@ -3886,9 +3822,7 @@ app.get('/movie', async (req, res) => {
   
   if (tmdbId && tmdbId.trim() !== '') {
     // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
-    movieData = await fetchTMDBMovieData(tmdbId, plexRating);
-    console.log('[/movie] 🎬 movieData.rating después de fetchTMDBMovieData:', movieData ? movieData.rating : 'NO DATA');
-    console.log('[/movie] 🎬 plexRating pasado a función:', plexRating);
+    movieData = await fetchTMDBMovieData(tmdbId);
     // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
     if (movieData) {
       // console.log('[/movie] movieData.title:', movieData.title);
@@ -3912,9 +3846,7 @@ app.get('/movie', async (req, res) => {
         // console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
         
         // Obtener datos completos con el ID encontrado
-        movieData = await fetchTMDBMovieData(autoSearchedTmdbId, plexRating);
-        console.log('[/movie] 🎬 movieData.rating después de búsqueda automática:', movieData ? movieData.rating : 'NO DATA');
-        console.log('[/movie] 🎬 plexRating pasado a función:', plexRating);
+        movieData = await fetchTMDBMovieData(autoSearchedTmdbId);
         // console.log('[/movie] movieData obtenido por búsqueda automática');
       } else {
         // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
@@ -4557,77 +4489,6 @@ app.get('/movie', async (req, res) => {
             ? '▼ Ocultar detalles técnicos' 
             : '▶ Mostrar detalles técnicos';
         }
-        
-        // **SINCRONIZACIÓN DE RATING CON LOCALSTORAGE**
-        (function syncRatingWithLocalStorage() {
-          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
-          if (!tmdbIdUsed) return;
-          
-          // PRIORIDAD 1: Si Plex tiene rating, NO hacer nada (ya está en el HTML)
-          const plexHasRating = ${movieData && movieData.rating !== 'N/A' ? 'true' : 'false'};
-          if (plexHasRating) {
-            console.log('[RATING] Usando rating de Plex, no consultando TMDB');
-            return; // El badge ya está en el HTML renderizado
-          }
-          
-          // PRIORIDAD 2: Verificar si YA existe el badge en el DOM
-          const badgesRow = document.querySelector('.modal-badges-row');
-          const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
-          if (existingRating) {
-            console.log('[RATING] Badge ya existe en el DOM, saltando');
-            return; // Ya hay un badge, no crear duplicado
-          }
-          
-          // PRIORIDAD 3: Si Plex NO tiene rating, buscar en localStorage
-          const cacheKey = \`tmdb_rating_movie_\${tmdbIdUsed}\`;
-          const cachedRating = localStorage.getItem(cacheKey);
-          
-          if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
-            console.log('[RATING] Encontrado en localStorage:', cachedRating);
-            // Crear badge con rating de localStorage
-            if (badgesRow) {
-              const ratingBadge = document.createElement('span');
-              ratingBadge.className = 'rating-badge';
-              ratingBadge.innerHTML = \`
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                </svg>
-                \${cachedRating}
-              \`;
-              badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-            }
-            return;
-          }
-          
-          // PRIORIDAD 4: Si no hay rating en Plex ni en cache, consultar TMDB
-          console.log('[RATING] Consultando TMDB API para:', tmdbIdUsed);
-          fetch(\`https://api.themoviedb.org/3/movie/\${tmdbIdUsed}?api_key=${TMDB_API_KEY}\`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.vote_average) {
-                const rating = data.vote_average.toFixed(1);
-                localStorage.setItem(cacheKey, rating);
-                console.log('[RATING] TMDB guardado en localStorage:', rating);
-                
-                // Crear el rating badge SOLO si no existe
-                const badgesRow = document.querySelector('.modal-badges-row');
-                const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
-                
-                if (badgesRow && !existingRating) {
-                  const ratingBadge = document.createElement('span');
-                  ratingBadge.className = 'rating-badge';
-                  ratingBadge.innerHTML = \`
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                    </svg>
-                    \${rating}
-                  \`;
-                  badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-                }
-              }
-            })
-            .catch(err => console.error('[RATING] Error consultando TMDB:', err));
-        })();
         
         function toggleSynopsis() {
           const synopsis = document.getElementById('synopsis-text');
@@ -5328,78 +5189,6 @@ app.get('/series', async (req, res) => {
             }
           }
         });
-        
-        // **SINCRONIZACIÓN DE RATING CON LOCALSTORAGE (SERIES)**
-        (function syncRatingWithLocalStorage() {
-          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
-          if (!tmdbIdUsed) return;
-          
-          // PRIORIDAD 1: Si Plex tiene rating, NO hacer nada (ya está en el HTML)
-          const plexHasRating = ${seriesData && seriesData.rating !== 'N/A' ? 'true' : 'false'};
-          if (plexHasRating) {
-            console.log('[RATING] Usando rating de Plex, no consultando TMDB');
-            return; // El badge ya está en el HTML renderizado
-          }
-          
-          // PRIORIDAD 2: Verificar si YA existe el badge en el DOM
-          const badgesRow = document.querySelector('.modal-badges-row');
-          const existingRating = badgesRow ? badgesRow.querySelector('.rating-badge') : null;
-          if (existingRating) {
-            console.log('[RATING] Badge ya existe en el DOM, saltando');
-            return; // Ya hay un badge, no crear duplicado
-          }
-          
-          // PRIORIDAD 3: Buscar en localStorage
-          const cacheKey = \`tmdb_rating_tv_\${tmdbIdUsed}\`;
-          const cachedRating = localStorage.getItem(cacheKey);
-          
-          if (cachedRating && cachedRating !== '0' && cachedRating !== '0.0') {
-            console.log('[RATING] Encontrado en localStorage:', cachedRating);
-            // Crear badge con rating de localStorage
-            if (badgesRow) {
-              const ratingBadge = document.createElement('span');
-              ratingBadge.className = 'rating-badge';
-              ratingBadge.innerHTML = \`
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                </svg>
-                \${cachedRating}
-              \`;
-              badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-            }
-            return;
-          }
-          
-          // PRIORIDAD 3: Consultar TMDB
-          console.log('Consultando rating de TMDB para serie:', tmdbIdUsed);
-          fetch(\`https://api.themoviedb.org/3/tv/\${tmdbIdUsed}?api_key=${TMDB_API_KEY}\`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.vote_average) {
-                const rating = data.vote_average.toFixed(1);
-                console.log('Rating TMDB obtenido:', rating);
-                localStorage.setItem(cacheKey, rating);
-                
-                // Crear o actualizar el rating badge
-                const badgesRow = document.querySelector('.modal-badges-row');
-                if (badgesRow) {
-                  const existingRating = badgesRow.querySelector('.rating-badge');
-                  if (!existingRating) {
-                    const ratingBadge = document.createElement('span');
-                    ratingBadge.className = 'rating-badge';
-                    ratingBadge.innerHTML = \`
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                      </svg>
-                      \${rating}
-                    \`;
-                    badgesRow.insertBefore(ratingBadge, badgesRow.querySelector('.genres-list'));
-                  }
-                }
-              }
-            })
-            .catch(err => console.error('Error fetching TMDB rating:', err));
-        })();
         
         function goToSeason(seasonRatingKey, accessToken, baseURI, seasonNumber, seriesTitle, tmdbId, parentRatingKey, libraryKey, libraryTitle) {
           // Redirigir a la página /list con los datos de la temporada
@@ -6675,41 +6464,11 @@ app.get('/browse', async (req, res) => {
           const libraryKey = '${libraryKey}';
           const libraryTitle = '${libraryTitle}';
           
-          // Helpers: hidratar rating/tmdbId desde cache
-          function hydrateItemFromCache(item, type) {
-            if (!item) return;
-            if (item.rating && parseFloat(item.rating) > 0) return;
-            let tmdbId = item.tmdbId || '';
-            if (!tmdbId && item.ratingKey) {
-              const cachedTmdbId = localStorage.getItem(`tmdb_id_${item.ratingKey}`);
-              if (cachedTmdbId) {
-                tmdbId = cachedTmdbId;
-                item.tmdbId = cachedTmdbId;
-              }
-            }
-            if (tmdbId) {
-              const cacheKey = `tmdb_rating_${type}_${tmdbId}`;
-              const cached = localStorage.getItem(cacheKey);
-              if (cached && parseFloat(cached) > 0) {
-                item.rating = parseFloat(cached);
-              }
-            }
-          }
-          
-          function refreshAllRatingsFromCache() {
-            const type = libraryType === 'movie' ? 'movie' : 'tv';
-            itemsData.forEach(item => hydrateItemFromCache(item, type));
-            itemsIndex.forEach(item => hydrateItemFromCache(item, type));
-          }
-          
-          // INMEDIATAMENTE: Actualizar ratings desde localStorage ANTES de cualquier render
-          refreshAllRatingsFromCache();
-          
           // Función para generar HTML de una tarjeta
           function createCardHTML(item) {
             const itemTitle = item.title;
             const itemYear = item.year || '';
-            let itemRating = parseFloat(item.rating) || 0;
+            const itemRating = parseFloat(item.rating) || 0;
             const posterPath = item.thumb || '';
             const tmdbId = item.tmdbId || '';
             const genres = item.genres ? item.genres.join(',') : '';
@@ -6718,33 +6477,6 @@ app.get('/browse', async (req, res) => {
             const countries = item.countries ? item.countries.join(',') : '';
             const summary = item.summary || '';
             const addedAt = item.addedAt || 0;
-            
-            // **CRÍTICO**: Consultar localStorage ANTES de renderizar
-            // Si el rating es 0, buscar en localStorage por tmdbId O por ratingKey
-            if (itemRating === 0) {
-              const type = libraryType === 'movie' ? 'movie' : 'tv';
-              
-              // Primero intentar con tmdbId si existe
-              if (tmdbId) {
-                const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
-                const cached = localStorage.getItem(cacheKey);
-                if (cached && parseFloat(cached) > 0) {
-                  itemRating = parseFloat(cached);
-                }
-              }
-              
-              // Si no tiene tmdbId o no encontró rating, buscar por ratingKey
-              if (itemRating === 0 && item.ratingKey) {
-                const tmdbIdFromCache = localStorage.getItem(\`tmdb_id_\${item.ratingKey}\`);
-                if (tmdbIdFromCache) {
-                  const cacheKey = \`tmdb_rating_\${type}_\${tmdbIdFromCache}\`;
-                  const cached = localStorage.getItem(cacheKey);
-                  if (cached && parseFloat(cached) > 0) {
-                    itemRating = parseFloat(cached);
-                  }
-                }
-              }
-            }
             
             const detailUrl = libraryType === 'movie' 
               ? \`/movie-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${item.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb)}&tmdbId=\${item.tmdbId}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`
@@ -6770,9 +6502,9 @@ app.get('/browse', async (req, res) => {
                       <div class="overlay-title">\${itemTitle}</div>
                       <div class="overlay-meta">
                         \${itemYear ? \`<span class="overlay-year">\${itemYear}</span>\` : ''}
-                        <span class="overlay-rating" data-tmdb-rating style="opacity: \${itemRating > 0 ? '1' : '0.5'}">
+                        <span class="overlay-rating" data-tmdb-rating>
                           <i class="fas fa-star"></i>
-                          <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '--'}</span>
+                          <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
                         </span>
                       </div>
                     </div>
@@ -6782,9 +6514,9 @@ app.get('/browse', async (req, res) => {
                   <div class="movie-title" title="\${itemTitle}">\${itemTitle}\${itemYear ? \` <span class="movie-year list-only">(\${itemYear})</span>\` : ''}</div>
                   \${itemYear ? \`<div class="movie-year grid-only">\${itemYear}</div>\` : ''}
                   <div class="movie-meta">
-                    <span class="movie-rating" data-tmdb-rating style="opacity: \${itemRating > 0 ? '1' : '0.5'}">
+                    <span class="movie-rating" data-tmdb-rating>
                       <i class="fas fa-star"></i>
-                      <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '--'}</span>
+                      <span class="rating-value">\${itemRating > 0 ? itemRating.toFixed(1) : '?'}</span>
                     </span>
                     \${genresDisplay ? \`<span class="movie-genres">\${genresDisplay}</span>\` : ''}
                   </div>
@@ -6807,13 +6539,6 @@ app.get('/browse', async (req, res) => {
             const batch = itemsData.slice(startIndex, endIndex);
             const htmlArray = batch.map(item => createCardHTML(item));
             grid.insertAdjacentHTML('beforeend', htmlArray.join(''));
-            
-            // PRIMERO: Actualizar ratings desde localStorage inmediatamente
-            syncRatingsFromLocalStorage();
-            
-            // DESPUÉS: Inicializar observer para los que no estén en localStorage
-            setTimeout(() => initRatingLazyLoader(), 100);
-            
             return Array.from(grid.querySelectorAll('.movie-card'));
           }
           
@@ -7232,267 +6957,6 @@ app.get('/browse', async (req, res) => {
             });
           }
           
-          // **TMDB RATINGS API**: Configuración y funciones
-          const TMDB_API_KEY = '${TMDB_API_KEY}'; // Inyectado desde el servidor
-          const TMDB_API_BASE = 'https://api.themoviedb.org/3';
-          
-          // Función para decodificar HTML entities
-          function decodeHtmlEntities(text) {
-            if (!text) return text;
-            const textarea = document.createElement('textarea');
-            textarea.innerHTML = text;
-            return textarea.value;
-          }
-          
-          // Sincronizar ratings desde localStorage inmediatamente después de renderizar
-          function syncRatingsFromLocalStorage() {
-            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
-            
-            document.querySelectorAll('.movie-card').forEach(card => {
-              const currentRating = card.dataset.rating;
-              const tmdbId = card.dataset.tmdbId;
-              
-              // Solo sincronizar si no tiene rating y tiene tmdbId
-              if (currentRating === '0' && tmdbId) {
-                const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
-                const cached = localStorage.getItem(cacheKey);
-                
-                // Si está en localStorage y NO es 0, actualizar inmediatamente
-                if (cached && cached !== '0' && cached !== '0.0' && parseFloat(cached) > 0) {
-                  updateCardRating(card, cached);
-                }
-              }
-            });
-          }
-          
-          // Función para obtener rating de TMDB
-          async function fetchTMDBRating(tmdbId, type = 'movie') {
-            if (!tmdbId) return null;
-            
-            try {
-              const url = \`\${TMDB_API_BASE}/\${type}/\${tmdbId}?api_key=\${TMDB_API_KEY}\`;
-              const response = await fetch(url);
-              if (!response.ok) return null;
-              
-              const data = await response.json();
-              
-              // Si vote_average existe (incluso si es 0), devolverlo
-              if (data.vote_average !== undefined && data.vote_average !== null) {
-                return parseFloat(data.vote_average).toFixed(1);
-              }
-              
-              return null;
-            } catch (error) {
-              console.error('Error fetching TMDB rating:', error);
-              return null;
-            }
-          }
-          
-          // Función para actualizar rating en una tarjeta
-          function updateCardRating(card, rating) {
-            if (!card || !rating) return;
-            
-            // Actualizar en .movie-info (grid/list view)
-            const ratingElement = card.querySelector('.movie-rating');
-            if (ratingElement) {
-              ratingElement.textContent = \`⭐ \${rating}\`;
-              ratingElement.style.opacity = '1';
-            }
-            
-            // Actualizar en overlay (hover)
-            const overlayRating = card.querySelector('.overlay-rating .rating-value');
-            if (overlayRating) {
-              overlayRating.textContent = rating;
-            }
-            
-            // Actualizar data-rating attribute
-            card.dataset.rating = rating;
-          }
-          
-          // Lazy loading de ratings con IntersectionObserver
-          let loadedRatings = new Set();
-          let ratingObserver = null;
-          
-          function initRatingLazyLoader() {
-            // Crear observer solo una vez
-            if (!ratingObserver) {
-              console.log('[RATING INIT] Creando IntersectionObserver');
-              ratingObserver = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                  if (entry.isIntersecting) {
-                    const card = entry.target;
-                    const tmdbId = card.dataset.tmdbId || '';
-                    const ratingKey = card.dataset.ratingKey;
-                    const currentRating = card.dataset.rating;
-                    
-                    console.log('[RATING OBSERVER] Card visible:', card.dataset.title, 'rating:', currentRating, 'tmdbId:', tmdbId);
-                    
-                    // Procesar si no tiene rating
-                    if (currentRating === '0' && !loadedRatings.has(ratingKey)) {
-                      loadedRatings.add(ratingKey);
-                      console.log('[RATING OBSERVER] Llamando a loadRatingForCard para:', card.dataset.title);
-                      loadRatingForCard(card, tmdbId, ratingKey);
-                    }
-                    
-                    // Dejar de observar esta card
-                    ratingObserver.unobserve(card);
-                  }
-                });
-              }, {
-                rootMargin: '200px'
-              });
-            }
-            
-            // Observar todas las cards con rating 0
-            const cardsToObserve = document.querySelectorAll('.movie-card[data-rating="0"]');
-            console.log('[RATING INIT] Cards a observar:', cardsToObserve.length);
-            
-            cardsToObserve.forEach(card => {
-              ratingObserver.observe(card);
-            });
-          }
-          
-          // Cargar rating para una card específica
-          async function loadRatingForCard(card, tmdbId, ratingKey) {
-            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
-            
-            // Si NO tiene tmdbId, buscar en TMDB por título + año
-            if (!tmdbId || tmdbId.trim() === '') {
-              const title = decodeHtmlEntities(card.dataset.title); // Decodificar HTML entities
-              const year = card.dataset.year;
-              
-              console.log('[RATING] Sin tmdbId, buscando en TMDB:', title, year);
-              
-              if (title && year) {
-                try {
-                  const searchUrl = \`\${TMDB_API_BASE}/search/\${type}?api_key=\${TMDB_API_KEY}&language=es-ES&query=\${encodeURIComponent(title)}&year=\${year}\`;
-                  const searchResponse = await fetch(searchUrl);
-                  const searchData = await searchResponse.json();
-                  
-                  if (searchData.results && searchData.results.length > 0) {
-                    tmdbId = searchData.results[0].id.toString();
-                    console.log('[RATING] TMDB ID encontrado:', tmdbId, 'para', title);
-                    
-                    // Guardar el tmdbId en la card para futuras búsquedas
-                    card.dataset.tmdbId = tmdbId;
-                  } else {
-                    console.log('[RATING] No se encontró en TMDB:', title, year);
-                    return;
-                  }
-                } catch (error) {
-                  console.error('[RATING] Error buscando tmdbId:', error);
-                  return;
-                }
-              } else {
-                console.log('[RATING] Faltan datos para buscar (título o año)');
-                return;
-              }
-            }
-            
-            // Verificar localStorage primero
-            const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
-            const cached = localStorage.getItem(cacheKey);
-            
-            console.log('[RATING OBSERVER] Procesando card:', { tmdbId, cacheKey, cached, type });
-            
-            if (cached) {
-              // Guardar relación ratingKey -> tmdbId para persistencia
-              if (ratingKey && tmdbId) {
-                localStorage.setItem(`tmdb_id_${ratingKey}`, tmdbId);
-              }
-              
-              const cachedFloat = parseFloat(cached);
-              if (cachedFloat > 0) {
-                // Actualizar itemsData
-                const itemInData = itemsData.find(i => i.ratingKey === ratingKey);
-                if (itemInData) {
-                  itemInData.rating = cachedFloat;
-                  itemInData.tmdbId = tmdbId;
-                }
-                
-                // Actualizar itemsIndex
-                const itemInIndex = itemsIndex.find(i => i.ratingKey === ratingKey);
-                if (itemInIndex) {
-                  itemInIndex.rating = cachedFloat;
-                  itemInIndex.tmdbId = tmdbId;
-                }
-                
-                updateCardRating(card, cached);
-              }
-              return;
-            }
-            
-            // Consultar TMDB API
-            const rating = await fetchTMDBRating(tmdbId, type);
-            
-            if (rating !== null) {
-              // Guardar en localStorage (incluso si es 0)
-              localStorage.setItem(cacheKey, rating);
-              
-              // **CRÍTICO**: Actualizar itemsData e itemsIndex para que filtros usen el nuevo rating
-              const ratingFloat = parseFloat(rating);
-              
-              // Guardar tmdbId asociado al ratingKey en localStorage (persistencia)
-              localStorage.setItem(\`tmdb_id_\${ratingKey}\`, tmdbId);
-              
-              if (ratingFloat > 0) {
-                // Actualizar en itemsData
-                const itemInData = itemsData.find(i => i.ratingKey === ratingKey);
-                if (itemInData) {
-                  itemInData.rating = ratingFloat;
-                  itemInData.tmdbId = tmdbId; // Guardar tmdbId también
-                }
-                
-                // Actualizar en itemsIndex
-                const itemInIndex = itemsIndex.find(i => i.ratingKey === ratingKey);
-                if (itemInIndex) {
-                  itemInIndex.rating = ratingFloat;
-                  itemInIndex.tmdbId = tmdbId; // Guardar tmdbId también
-                }
-                
-                // Actualizar card en el DOM
-                updateCardRating(card, rating);
-                console.log(\`[RATING] Rating cargado y guardado en datos: \${tmdbId} = \${rating}\`);
-              } else {
-                console.log(\`[RATING] Película sin votos en TMDB: \${tmdbId} (guardado en cache como 0)\`);
-              }
-            }
-          }
-          
-          // Inicializar lazy loader cuando el DOM esté listo
-          window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-              initRatingLazyLoader();
-              // Procesar cards visibles inmediatamente
-              processVisibleCards();
-            }, 500);
-          });
-          
-          // Función para procesar cards visibles inmediatamente (sin esperar al observer)
-          function processVisibleCards() {
-            const cardsToProcess = document.querySelectorAll('.movie-card[data-rating="0"]');
-            console.log('[RATING] Procesando cards visibles inmediatamente:', cardsToProcess.length);
-            
-            cardsToProcess.forEach(card => {
-              const rect = card.getBoundingClientRect();
-              const isVisible = (
-                rect.top >= 0 &&
-                rect.left >= 0 &&
-                rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-                rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-              );
-              
-              if (isVisible) {
-                const ratingKey = card.dataset.ratingKey;
-                const tmdbId = card.dataset.tmdbId || '';
-                if (!loadedRatings.has(ratingKey)) {
-                  console.log('[RATING] Card visible en carga inicial:', card.dataset.title);
-                  loadRatingForCard(card, tmdbId, ratingKey);
-                }
-              }
-            });
-          }
-          
           // **CONTADOR DINÁMICO**: Actualizar contador en mobile search bar
           function updateMobileSearchCounter(count) {
             const mobileSearchInput = document.getElementById('search-input-mobile');
@@ -7580,8 +7044,6 @@ app.get('/browse', async (req, res) => {
           
           // Filtrar y ordenar sobre el índice ligero
           function applyFilters() {
-            // Asegurar que ratings en cache se reflejen antes de filtrar
-            refreshAllRatingsFromCache();
             const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
@@ -7967,30 +7429,7 @@ app.get('/library', async (req, res) => {
         .sort({ lastAccess: -1 })
         .toArray();
       
-      // Transformar para el selector: un servidor = una entrada (no duplicados)
-      // Usar el token más reciente de cada servidor
-      const formattedServers = servers.map(server => {
-        // Ordenar tokens por lastAccess (más reciente primero)
-        const sortedTokens = server.tokens?.sort((a, b) => 
-          new Date(b.lastAccess) - new Date(a.lastAccess)
-        ) || [];
-        
-        // Usar el token más reciente como principal
-        const primaryToken = sortedTokens[0];
-        
-        return {
-          machineIdentifier: server.machineIdentifier,
-          serverName: server.serverName,
-          baseURI: server.baseURI,
-          accessToken: primaryToken?.accessToken || '',
-          lastAccess: server.lastAccess,
-          libraryCount: server.libraryCount,
-          libraryNames: server.libraryNames,
-          tokenCount: sortedTokens.length // Para debug
-        };
-      });
-      
-      return res.json({ servers: formattedServers });
+      return res.json({ servers });
     } catch (error) {
       console.error('Error obteniendo servidores:', error);
       return res.status(500).json({ error: 'Error al obtener servidores' });
@@ -8029,105 +7468,41 @@ app.get('/library', async (req, res) => {
       }
     }
     
-    // Auto-registrar servidor en MongoDB (con soporte multi-token)
+    // Auto-registrar servidor en MongoDB
     if (serversCollection || await connectMongoDB()) {
       try {
-        // Obtener machineIdentifier y nombre del servidor desde el XML
-        let machineIdentifier = null;
-        let serverName = 'Servidor Plex';
+        const serverId = crypto.createHash('md5')
+          .update(`${baseURI}-${accessToken}`)
+          .digest('hex');
         
+        // Obtener nombre del servidor
+        let serverName = 'Servidor Plex';
         try {
           const serverUrl = `${baseURI}/?X-Plex-Token=${accessToken}`;
           const serverXml = await httpsGetXML(serverUrl);
           const nameMatch = serverXml.match(/friendlyName="([^"]*)"/);
-          const idMatch = serverXml.match(/machineIdentifier="([^"]*)"/);
-          
           if (nameMatch) serverName = nameMatch[1];
-          if (idMatch) machineIdentifier = idMatch[1];
         } catch (e) {
-          console.error('Error obteniendo info del servidor:', e);
+          // Usar nombre por defecto
         }
         
-        // Si no obtuvimos machineIdentifier, generar uno basado en baseURI
-        if (!machineIdentifier) {
-          machineIdentifier = crypto.createHash('md5').update(baseURI).digest('hex');
-        }
-        
-        // Buscar si ya existe un servidor con este machineIdentifier
-        const existingServer = await serversCollection.findOne({ machineIdentifier });
-        
-        if (existingServer) {
-          // Servidor existe: agregar nuevo token a la lista de tokens
-          const tokenHash = crypto.createHash('md5').update(accessToken).digest('hex');
-          const tokenExists = existingServer.tokens?.some(t => t.tokenHash === tokenHash);
-          
-          if (!tokenExists) {
-            // Nuevo token: agregarlo a la lista
-            await serversCollection.updateOne(
-              { machineIdentifier },
-              {
-                $push: {
-                  tokens: {
-                    tokenHash,
-                    accessToken,
-                    addedAt: new Date(),
-                    lastAccess: new Date(),
-                    libraryCount: libraries.length,
-                    libraryNames: libraries.map(l => l.title)
-                  }
-                },
-                $set: { lastAccess: new Date() }
-              }
-            );
-            console.log(`🔑 Nuevo token agregado al servidor: ${serverName}`);
-          } else {
-            // Token ya existe: actualizar su información
-            await serversCollection.updateOne(
-              { machineIdentifier, 'tokens.tokenHash': tokenHash },
-              {
-                $set: {
-                  'tokens.$.lastAccess': new Date(),
-                  'tokens.$.libraryCount': libraries.length,
-                  'tokens.$.libraryNames': libraries.map(l => l.title),
-                  lastAccess: new Date()
-                }
-              }
-            );
-            console.log(`♻️ Token actualizado para: ${serverName}`);
-          }
-          
-          // Fusionar bibliotecas únicas (para el selector)
-          const allLibraries = new Set(existingServer.libraryNames || []);
-          libraries.forEach(l => allLibraries.add(l.title));
-          
-          await serversCollection.updateOne(
-            { machineIdentifier },
-            { $set: { libraryNames: Array.from(allLibraries) } }
-          );
-        } else {
-          // Servidor nuevo: crear entrada con primer token
-          const tokenHash = crypto.createHash('md5').update(accessToken).digest('hex');
-          
-          await serversCollection.insertOne({
-            machineIdentifier,
-            serverName,
-            baseURI,
-            createdAt: new Date(),
-            lastAccess: new Date(),
-            libraryCount: libraries.length,
-            libraryNames: libraries.map(l => l.title),
-            tokens: [{
-              tokenHash,
+        await serversCollection.updateOne(
+          { serverId },
+          {
+            $set: {
+              serverName,
               accessToken,
-              addedAt: new Date(),
+              baseURI,
               lastAccess: new Date(),
               libraryCount: libraries.length,
               libraryNames: libraries.map(l => l.title)
-            }]
-          });
-          
-          console.log(`✨ Nuevo servidor registrado: ${serverName}`);
-        }
+            },
+            $setOnInsert: { createdAt: new Date() }
+          },
+          { upsert: true }
+        );
+        
+        console.log(`📝 Servidor registrado: ${serverName}`);
       } catch (error) {
         console.error('Error registrando servidor:', error);
       }
