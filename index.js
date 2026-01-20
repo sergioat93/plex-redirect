@@ -6675,32 +6675,35 @@ app.get('/browse', async (req, res) => {
           const libraryKey = '${libraryKey}';
           const libraryTitle = '${libraryTitle}';
           
-          // INMEDIATAMENTE: Actualizar ratings desde localStorage ANTES de cualquier render
-          (function updateRatingsFromCache() {
+          // Helpers: hidratar rating/tmdbId desde cache
+          function hydrateItemFromCache(item, type) {
+            if (!item) return;
+            if (item.rating && parseFloat(item.rating) > 0) return;
+            let tmdbId = item.tmdbId || '';
+            if (!tmdbId && item.ratingKey) {
+              const cachedTmdbId = localStorage.getItem(`tmdb_id_${item.ratingKey}`);
+              if (cachedTmdbId) {
+                tmdbId = cachedTmdbId;
+                item.tmdbId = cachedTmdbId;
+              }
+            }
+            if (tmdbId) {
+              const cacheKey = `tmdb_rating_${type}_${tmdbId}`;
+              const cached = localStorage.getItem(cacheKey);
+              if (cached && parseFloat(cached) > 0) {
+                item.rating = parseFloat(cached);
+              }
+            }
+          }
+          
+          function refreshAllRatingsFromCache() {
             const type = libraryType === 'movie' ? 'movie' : 'tv';
-            
-            // Actualizar itemsData
-            itemsData.forEach(item => {
-              if ((item.rating === 0 || !item.rating) && item.tmdbId) {
-                const cacheKey = \`tmdb_rating_\${type}_\${item.tmdbId}\`;
-                const cached = localStorage.getItem(cacheKey);
-                if (cached && parseFloat(cached) > 0) {
-                  item.rating = parseFloat(cached);
-                }
-              }
-            });
-            
-            // Actualizar itemsIndex
-            itemsIndex.forEach(item => {
-              if ((item.rating === 0 || !item.rating) && item.tmdbId) {
-                const cacheKey = \`tmdb_rating_\${type}_\${item.tmdbId}\`;
-                const cached = localStorage.getItem(cacheKey);
-                if (cached && parseFloat(cached) > 0) {
-                  item.rating = parseFloat(cached);
-                }
-              }
-            });
-          })();
+            itemsData.forEach(item => hydrateItemFromCache(item, type));
+            itemsIndex.forEach(item => hydrateItemFromCache(item, type));
+          }
+          
+          // INMEDIATAMENTE: Actualizar ratings desde localStorage ANTES de cualquier render
+          refreshAllRatingsFromCache();
           
           // Función para generar HTML de una tarjeta
           function createCardHTML(item) {
@@ -7393,7 +7396,29 @@ app.get('/browse', async (req, res) => {
             console.log('[RATING OBSERVER] Procesando card:', { tmdbId, cacheKey, cached, type });
             
             if (cached) {
-              updateCardRating(card, cached);
+              // Guardar relación ratingKey -> tmdbId para persistencia
+              if (ratingKey && tmdbId) {
+                localStorage.setItem(`tmdb_id_${ratingKey}`, tmdbId);
+              }
+              
+              const cachedFloat = parseFloat(cached);
+              if (cachedFloat > 0) {
+                // Actualizar itemsData
+                const itemInData = itemsData.find(i => i.ratingKey === ratingKey);
+                if (itemInData) {
+                  itemInData.rating = cachedFloat;
+                  itemInData.tmdbId = tmdbId;
+                }
+                
+                // Actualizar itemsIndex
+                const itemInIndex = itemsIndex.find(i => i.ratingKey === ratingKey);
+                if (itemInIndex) {
+                  itemInIndex.rating = cachedFloat;
+                  itemInIndex.tmdbId = tmdbId;
+                }
+                
+                updateCardRating(card, cached);
+              }
               return;
             }
             
@@ -7555,6 +7580,8 @@ app.get('/browse', async (req, res) => {
           
           // Filtrar y ordenar sobre el índice ligero
           function applyFilters() {
+            // Asegurar que ratings en cache se reflejen antes de filtrar
+            refreshAllRatingsFromCache();
             const searchValue = document.getElementById('search-input').value;
             const genreValue = document.getElementById('genre-filter').value;
             const yearValue = document.getElementById('year-filter').value;
