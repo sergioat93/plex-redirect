@@ -284,7 +284,7 @@ async function fetchTMDBSeasonData(tmdbId, seasonNumber = 1) {
 }
 
 // Función para obtener datos completos de película desde TMDB
-async function fetchTMDBMovieData(tmdbId) {
+async function fetchTMDBMovieData(tmdbId, plexRating = null) {
     try {
         // Obtener datos básicos de la película
         const movieUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,videos`;
@@ -335,7 +335,7 @@ async function fetchTMDBMovieData(tmdbId) {
             runtimeMinutes: movieData.runtime || 0,
             genres: genres,
             genresString: genres.join(', ') || 'N/A',
-            rating: movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A',
+            rating: plexRating ? plexRating.toFixed(1) : (movieData.vote_average ? movieData.vote_average.toFixed(1) : 'N/A'),
             voteCount: movieData.vote_count ? movieData.vote_count.toLocaleString('es-ES') : 'N/A',
             budget: formatCurrency(movieData.budget),
             revenue: formatCurrency(movieData.revenue),
@@ -3738,6 +3738,7 @@ app.get('/movie', async (req, res) => {
   let quality = '';
   let movieYear = '';
   let originalTitle = '';
+  let plexRating = null; // Rating de Plex (audienceRating)
   
   if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
     try {
@@ -3779,6 +3780,13 @@ app.get('/movie', async (req, res) => {
         if (originalTitleMatch) {
           originalTitle = originalTitleMatch[1];
           // console.log('[/movie] Título original extraído:', originalTitle);
+        }
+        
+        // Extraer rating de Plex (audienceRating)
+        const plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
+        if (plexRatingMatch) {
+          plexRating = parseFloat(plexRatingMatch[1]);
+          console.log('[/movie] Rating de Plex extraído:', plexRating);
         }
         
         // Extraer detalles técnicos del Media
@@ -3823,7 +3831,7 @@ app.get('/movie', async (req, res) => {
   
   if (tmdbId && tmdbId.trim() !== '') {
     // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
-    movieData = await fetchTMDBMovieData(tmdbId);
+    movieData = await fetchTMDBMovieData(tmdbId, plexRating);
     // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
     if (movieData) {
       // console.log('[/movie] movieData.title:', movieData.title);
@@ -3847,7 +3855,7 @@ app.get('/movie', async (req, res) => {
         // console.log('[/movie] ✅ TMDB ID encontrado automáticamente:', autoSearchedTmdbId, '- Título:', firstResult.title);
         
         // Obtener datos completos con el ID encontrado
-        movieData = await fetchTMDBMovieData(autoSearchedTmdbId);
+        movieData = await fetchTMDBMovieData(autoSearchedTmdbId, plexRating);
         // console.log('[/movie] movieData obtenido por búsqueda automática');
       } else {
         // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
@@ -7192,10 +7200,11 @@ app.get('/browse', async (req, res) => {
           // Cargar rating para una card específica
           async function loadRatingForCard(card, tmdbId, ratingKey) {
             // Verificar localStorage primero
-            const cacheKey = \`tmdb_rating_\${'${libraryType}' === 'movie' ? 'movie' : 'tv'}_\${tmdbId}\`;
+            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
+            const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
             const cached = localStorage.getItem(cacheKey);
             
-            console.log('[RATING OBSERVER] Procesando card:', { tmdbId, cacheKey, cached });
+            console.log('[RATING OBSERVER] Procesando card:', { tmdbId, cacheKey, cached, type });
             
             if (cached) {
               updateCardRating(card, cached);
@@ -7203,7 +7212,6 @@ app.get('/browse', async (req, res) => {
             }
             
             // Consultar TMDB API
-            const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
             const rating = await fetchTMDBRating(tmdbId, type);
             
             if (rating && rating !== '0' && rating !== '0.0') {
