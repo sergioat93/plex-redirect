@@ -3740,6 +3740,34 @@ app.get('/movie', async (req, res) => {
   let originalTitle = '';
   let plexRating = null; // Rating de Plex (audienceRating)
   
+  // SIEMPRE intentar extraer rating de Plex si tenemos downloadURL
+  if (downloadURL && baseURI && accessToken) {
+    try {
+      const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
+      if (ratingKeyMatch) {
+        const ratingKey = ratingKeyMatch[1];
+        const metadataUrl = `${baseURI}/library/metadata/${ratingKey}?X-Plex-Token=${accessToken}`;
+        const xmlText = await httpsGetXML(metadataUrl);
+        
+        // Extraer rating de Plex (puede ser audienceRating o rating)
+        let plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
+        if (plexRatingMatch) {
+          plexRating = parseFloat(plexRatingMatch[1]);
+          console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
+        } else {
+          // Si no existe audienceRating, buscar rating (rating crítico)
+          plexRatingMatch = xmlText.match(/<Video[^>]*rating="([^"]*)"[^>]*>/);
+          if (plexRatingMatch) {
+            plexRating = parseFloat(plexRatingMatch[1]);
+            console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[/movie] Error al extraer rating de Plex:', error);
+    }
+  }
+  
   if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
     try {
       const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
@@ -3781,24 +3809,6 @@ app.get('/movie', async (req, res) => {
           originalTitle = originalTitleMatch[1];
           // console.log('[/movie] Título original extraído:', originalTitle);
         }
-        
-        // Extraer rating de Plex (puede ser audienceRating o rating)
-        // Primero buscar audienceRating (rating de usuarios)
-        let plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
-        if (plexRatingMatch) {
-          plexRating = parseFloat(plexRatingMatch[1]);
-          console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
-        } else {
-          // Si no existe audienceRating, buscar rating (rating crítico)
-          plexRatingMatch = xmlText.match(/<Video[^>]*rating="([^"]*)"[^>]*>/);
-          if (plexRatingMatch) {
-            plexRating = parseFloat(plexRatingMatch[1]);
-            console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
-          }
-        }
-        
-        // DEBUG: Mostrar los primeros 500 caracteres del XML para ver qué atributos tiene
-        console.log('[/movie] XML snippet:', xmlText.substring(0, 500));
         
         // Extraer detalles técnicos del Media
         const videoCodecMatch = xmlText.match(/<Media[^>]*videoCodec="([^"]*)"[^>]*>/);
