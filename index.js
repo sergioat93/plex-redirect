@@ -3782,12 +3782,23 @@ app.get('/movie', async (req, res) => {
           // console.log('[/movie] Título original extraído:', originalTitle);
         }
         
-        // Extraer rating de Plex (audienceRating)
-        const plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
+        // Extraer rating de Plex (puede ser audienceRating o rating)
+        // Primero buscar audienceRating (rating de usuarios)
+        let plexRatingMatch = xmlText.match(/<Video[^>]*audienceRating="([^"]*)"[^>]*>/);
         if (plexRatingMatch) {
           plexRating = parseFloat(plexRatingMatch[1]);
-          console.log('[/movie] Rating de Plex extraído:', plexRating);
+          console.log('[/movie] ⭐ Rating de Plex (audienceRating) extraído:', plexRating);
+        } else {
+          // Si no existe audienceRating, buscar rating (rating crítico)
+          plexRatingMatch = xmlText.match(/<Video[^>]*rating="([^"]*)"[^>]*>/);
+          if (plexRatingMatch) {
+            plexRating = parseFloat(plexRatingMatch[1]);
+            console.log('[/movie] ⭐ Rating de Plex (rating) extraído:', plexRating);
+          }
         }
+        
+        // DEBUG: Mostrar los primeros 500 caracteres del XML para ver qué atributos tiene
+        console.log('[/movie] XML snippet:', xmlText.substring(0, 500));
         
         // Extraer detalles técnicos del Media
         const videoCodecMatch = xmlText.match(/<Media[^>]*videoCodec="([^"]*)"[^>]*>/);
@@ -3832,6 +3843,8 @@ app.get('/movie', async (req, res) => {
   if (tmdbId && tmdbId.trim() !== '') {
     // console.log('[/movie] Llamando a fetchTMDBMovieData con tmdbId:', tmdbId);
     movieData = await fetchTMDBMovieData(tmdbId, plexRating);
+    console.log('[/movie] 🎬 movieData.rating después de fetchTMDBMovieData:', movieData ? movieData.rating : 'NO DATA');
+    console.log('[/movie] 🎬 plexRating pasado a función:', plexRating);
     // console.log('[/movie] movieData obtenido:', movieData ? 'SI' : 'NO');
     if (movieData) {
       // console.log('[/movie] movieData.title:', movieData.title);
@@ -3856,6 +3869,8 @@ app.get('/movie', async (req, res) => {
         
         // Obtener datos completos con el ID encontrado
         movieData = await fetchTMDBMovieData(autoSearchedTmdbId, plexRating);
+        console.log('[/movie] 🎬 movieData.rating después de búsqueda automática:', movieData ? movieData.rating : 'NO DATA');
+        console.log('[/movie] 🎬 plexRating pasado a función:', plexRating);
         // console.log('[/movie] movieData obtenido por búsqueda automática');
       } else {
         // console.log('[/movie] ⚠️ No se encontraron resultados en TMDB para:', title, movieYear);
