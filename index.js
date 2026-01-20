@@ -6717,13 +6717,29 @@ app.get('/browse', async (req, res) => {
             const addedAt = item.addedAt || 0;
             
             // **CRÍTICO**: Consultar localStorage ANTES de renderizar
-            // Si el rating es 0 y hay un rating en cache, usarlo
-            if (itemRating === 0 && tmdbId) {
+            // Si el rating es 0, buscar en localStorage por tmdbId O por ratingKey
+            if (itemRating === 0) {
               const type = libraryType === 'movie' ? 'movie' : 'tv';
-              const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
-              const cached = localStorage.getItem(cacheKey);
-              if (cached && parseFloat(cached) > 0) {
-                itemRating = parseFloat(cached);
+              
+              // Primero intentar con tmdbId si existe
+              if (tmdbId) {
+                const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
+                const cached = localStorage.getItem(cacheKey);
+                if (cached && parseFloat(cached) > 0) {
+                  itemRating = parseFloat(cached);
+                }
+              }
+              
+              // Si no tiene tmdbId o no encontró rating, buscar por ratingKey
+              if (itemRating === 0 && item.ratingKey) {
+                const tmdbIdFromCache = localStorage.getItem(\`tmdb_id_\${item.ratingKey}\`);
+                if (tmdbIdFromCache) {
+                  const cacheKey = \`tmdb_rating_\${type}_\${tmdbIdFromCache}\`;
+                  const cached = localStorage.getItem(cacheKey);
+                  if (cached && parseFloat(cached) > 0) {
+                    itemRating = parseFloat(cached);
+                  }
+                }
               }
             }
             
@@ -7390,6 +7406,10 @@ app.get('/browse', async (req, res) => {
               
               // **CRÍTICO**: Actualizar itemsData e itemsIndex para que filtros usen el nuevo rating
               const ratingFloat = parseFloat(rating);
+              
+              // Guardar tmdbId asociado al ratingKey en localStorage (persistencia)
+              localStorage.setItem(\`tmdb_id_\${ratingKey}\`, tmdbId);
+              
               if (ratingFloat > 0) {
                 // Actualizar en itemsData
                 const itemInData = itemsData.find(i => i.ratingKey === ratingKey);
