@@ -7176,6 +7176,14 @@ app.get('/browse', async (req, res) => {
           const TMDB_API_KEY = '${TMDB_API_KEY}'; // Inyectado desde el servidor
           const TMDB_API_BASE = 'https://api.themoviedb.org/3';
           
+          // Función para decodificar HTML entities
+          function decodeHtmlEntities(text) {
+            if (!text) return text;
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = text;
+            return textarea.value;
+          }
+          
           // Función para obtener rating de TMDB
           async function fetchTMDBRating(tmdbId, type = 'movie') {
             if (!tmdbId) return null;
@@ -7225,13 +7233,13 @@ app.get('/browse', async (req, res) => {
                 entries.forEach(entry => {
                   if (entry.isIntersecting) {
                     const card = entry.target;
-                    const tmdbId = card.dataset.tmdbId;
+                    const tmdbId = card.dataset.tmdbId || ''; // Puede estar vacío
                     const ratingKey = card.dataset.ratingKey;
                     const currentRating = card.dataset.rating;
                     
-                    // Solo procesar si no tiene rating (0) y tiene tmdbId
-                    if (currentRating === '0' && tmdbId && !loadedRatings.has(tmdbId)) {
-                      loadedRatings.add(tmdbId);
+                    // Procesar si no tiene rating (buscaremos tmdbId si hace falta)
+                    if (currentRating === '0' && !loadedRatings.has(ratingKey)) {
+                      loadedRatings.add(ratingKey);
                       loadRatingForCard(card, tmdbId, ratingKey);
                     }
                     
@@ -7247,10 +7255,9 @@ app.get('/browse', async (req, res) => {
             // Observar todas las cards actuales
             document.querySelectorAll('.movie-card').forEach(card => {
               const currentRating = card.dataset.rating;
-              const tmdbId = card.dataset.tmdbId;
               
-              // Solo observar si no tiene rating
-              if (currentRating === '0' && tmdbId) {
+              // Observar si no tiene rating (incluso sin tmdbId, lo buscaremos después)
+              if (currentRating === '0') {
                 ratingObserver.observe(card);
               }
             });
@@ -7258,8 +7265,42 @@ app.get('/browse', async (req, res) => {
           
           // Cargar rating para una card específica
           async function loadRatingForCard(card, tmdbId, ratingKey) {
-            // Verificar localStorage primero
             const type = '${libraryType}' === 'movie' ? 'movie' : 'tv';
+            
+            // Si NO tiene tmdbId, buscar en TMDB por título + año
+            if (!tmdbId || tmdbId.trim() === '') {
+              const title = decodeHtmlEntities(card.dataset.title); // Decodificar HTML entities
+              const year = card.dataset.year;
+              
+              console.log('[RATING] Sin tmdbId, buscando en TMDB:', title, year);
+              
+              if (title && year) {
+                try {
+                  const searchUrl = \`\${TMDB_API_BASE}/search/\${type}?api_key=\${TMDB_API_KEY}&language=es-ES&query=\${encodeURIComponent(title)}&year=\${year}\`;
+                  const searchResponse = await fetch(searchUrl);
+                  const searchData = await searchResponse.json();
+                  
+                  if (searchData.results && searchData.results.length > 0) {
+                    tmdbId = searchData.results[0].id.toString();
+                    console.log('[RATING] TMDB ID encontrado:', tmdbId, 'para', title);
+                    
+                    // Guardar el tmdbId en la card para futuras búsquedas
+                    card.dataset.tmdbId = tmdbId;
+                  } else {
+                    console.log('[RATING] No se encontró en TMDB:', title, year);
+                    return;
+                  }
+                } catch (error) {
+                  console.error('[RATING] Error buscando tmdbId:', error);
+                  return;
+                }
+              } else {
+                console.log('[RATING] Faltan datos para buscar (título o año)');
+                return;
+              }
+            }
+            
+            // Verificar localStorage primero
             const cacheKey = \`tmdb_rating_\${type}_\${tmdbId}\`;
             const cached = localStorage.getItem(cacheKey);
             
@@ -7280,7 +7321,7 @@ app.get('/browse', async (req, res) => {
               // Actualizar card
               updateCardRating(card, rating);
               
-              console.log(\`Rating cargado: \${tmdbId} = \${rating}\`);
+              console.log(\`[RATING] Rating cargado: \${tmdbId} = \${rating}\`);
             }
           }
           
