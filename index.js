@@ -8365,40 +8365,34 @@ app.get('/library', async (req, res) => {
               
               console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
-              // Usar endpoint de búsqueda nativo de Plex (mucho más rápido)
-              const searchUrl = `${server.baseURI}/library/sections/${sectionKey}/search?query=${encodeURIComponent(query)}&X-Plex-Token=${token.accessToken}`;
-              const searchXml = await httpsGetXML(searchUrl);
-              
-              console.log('[GLOBAL-SEARCH] XML respuesta (primeros 300 chars):', searchXml.substring(0, 300));
+              // Usar método original pero optimizado (procesar streaming sin cargar todo en memoria)
+              const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
+              const contentXml = await httpsGetXML(contentUrl);
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
-              const itemRegex = new RegExp(`<${tagType}[^>]*>`, 'g');
-              const itemTags = searchXml.match(itemRegex) || [];
-              console.log('[GLOBAL-SEARCH] Resultados encontrados:', itemTags.length);
               
+              // Buscar solo títulos que coincidan (más eficiente que crear array completo)
               let matchCount = 0;
-              const maxResults = 50; // Limitar a 50 resultados por biblioteca
+              const maxResults = 50;
               
-              for (const itemTag of itemTags) {
-                // Limitar resultados para evitar problemas
-                if (matchCount >= maxResults) break;
-                if (results.length >= maxTotalResults) break;
+              // Usar regex con exec para procesar uno por uno (más eficiente en memoria)
+              const itemRegex = new RegExp(`<${tagType}[^>]*title="([^"]*)"[^>]*year="([^"]*)"[^>]*thumb="([^"]*)"[^>]*ratingKey="([^"]*)"[^>]*(?:guid="[^"]*tmdb:\\/\\/(\\d+))?`, 'g');
+              
+              let match;
+              while ((match = itemRegex.exec(contentXml)) !== null && matchCount < maxResults && results.length < maxTotalResults) {
+                const title = decodeHtmlEntities(match[1]);
+                const year = match[2] || '';
+                const thumb = match[3] ? `${server.baseURI}${match[3]}?X-Plex-Token=${token.accessToken}` : '';
+                const ratingKey = match[4];
+                const tmdbId = match[5] || null;
                 
-                const titleMatch = itemTag.match(/title="([^"]*)"/);
-                const yearMatch = itemTag.match(/year="([^"]*)"/);
-                const thumbMatch = itemTag.match(/thumb="([^"]*)"/);
-                const ratingKeyMatch = itemTag.match(/ratingKey="([^"]*)"/);
-                const tmdbMatch = itemTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+                const titleNormalized = normalizeText(title);
                 
-                if (!titleMatch || !ratingKeyMatch) continue;
+                // Verificar si coincide con la búsqueda
+                if (!titleNormalized.includes(searchNormalized)) continue;
                 
-                const title = decodeHtmlEntities(titleMatch[1]);
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
-                
-                const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
-                const year = yearMatch ? yearMatch[1] : '';
-                const thumb = thumbMatch ? `${server.baseURI}${thumbMatch[1]}?X-Plex-Token=${token.accessToken}` : '';
                 
                 // Evitar duplicados por tmdbId
                 const uniqueKey = tmdbId || `${title}-${year}`;
@@ -8411,7 +8405,7 @@ app.get('/library', async (req, res) => {
                       machineIdentifier: server.machineIdentifier,
                       baseURI: server.baseURI,
                       accessToken: token.accessToken,
-                      ratingKey: ratingKeyMatch[1],
+                      ratingKey: ratingKey,
                       libraryKey: sectionKey,
                       libraryTitle: sectionTitle,
                       libraryType: sectionType
@@ -8433,9 +8427,13 @@ app.get('/library', async (req, res) => {
                     machineIdentifier: server.machineIdentifier,
                     baseURI: server.baseURI,
                     accessToken: token.accessToken,
-                    ratingKey: ratingKeyMatch[1],
+                    ratingKey: ratingKey,
                     libraryKey: sectionKey,
                     libraryTitle: sectionTitle,
+                    libraryType: sectionType
+                  }]
+                });
+              }
                     libraryType: sectionType
                   }]
                 });
