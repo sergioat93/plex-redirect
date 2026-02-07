@@ -3738,9 +3738,20 @@ app.get('/movie', async (req, res) => {
   let quality = '';
   let movieYear = '';
   let originalTitle = '';
+  let machineIdentifier = '';
   
   if ((!fileSize || !partKey) && downloadURL && baseURI && accessToken) {
     try {
+      // Obtener machineIdentifier del servidor
+      try {
+        const serverUrl = `${baseURI}/?X-Plex-Token=${accessToken}`;
+        const serverXml = await httpsGetXML(serverUrl);
+        const idMatch = serverXml.match(/machineIdentifier="([^"]*)"/);
+        if (idMatch) machineIdentifier = idMatch[1];
+      } catch (e) {
+        console.log('[/movie] No se pudo obtener machineIdentifier');
+      }
+      
       const ratingKeyMatch = downloadURL.match(/\/library\/metadata\/(\d+)/);
       if (ratingKeyMatch) {
         const ratingKey = ratingKeyMatch[1];
@@ -4587,6 +4598,137 @@ app.get('/movie', async (req, res) => {
           }
         });
       </script>
+      
+      <!-- Badge de duplicados (solo admin) -->
+      <div id="duplicatesBadge" style="display: none;"></div>
+      
+      <!-- Modal de selección de servidor -->
+      <div id="serverSelectModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div style="background: #1e1e27; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 16px; padding: 2rem; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+          <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; color: #e5a00d;" id="serverModalTitle">Seleccionar Servidor</h2>
+          <div id="serverOptionsContent"></div>
+          <div style="margin-top: 1rem; text-align: center;">
+            <button onclick="closeServerSelectModal()" style="padding: 0.75rem 2rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; cursor: pointer; font-weight: 600;">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        // Verificar duplicados (solo para admin)
+        (async function checkDuplicates() {
+          const urlParams = new URLSearchParams(window.location.search);
+          const adminPassword = urlParams.get('adminPassword');
+          
+          if (!adminPassword) return; // Solo para admin
+          
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          const title = '${movieTitle.replace(/'/g, "\\'")}';
+          const year = '${year}';
+          const currentServer = '${machineIdentifier || ''}';
+          
+          try {
+            const response = await fetch(\`/library?action=find-duplicates&adminPassword=\${encodeURIComponent(adminPassword)}&tmdbId=\${tmdbIdUsed}&title=\${encodeURIComponent(title)}&year=\${year}&currentServer=\${currentServer}\`);
+            const data = await response.json();
+            
+            if (data.duplicates && data.duplicates.length > 1) {
+              const otherServers = data.duplicates.filter(d => !d.isCurrent);
+              
+              if (otherServers.length > 0) {
+                const badge = document.getElementById('duplicatesBadge');
+                const has4K = otherServers.some(s => s.resolution.toLowerCase().includes('4k') || s.resolution === '2160');
+                
+                badge.innerHTML = \`
+                  <div style="position: fixed; bottom: 2rem; right: 2rem; padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%); color: #0f0f17; border-radius: 12px; font-weight: 700; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4); transition: all 0.2s; z-index: 100; display: flex; align-items: center; gap: 0.5rem;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(229, 160, 13, 0.6)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(229, 160, 13, 0.4)';">
+                    <span>📍</span>
+                    <span>+\${otherServers.length} servidor\${otherServers.length > 1 ? 'es' : ''}\${has4K ? ' • 4K disponible' : ''}</span>
+                  </div>
+                \`;
+                badge.style.display = 'block';
+                badge.onclick = () => openServerSelectModal(data.duplicates, title);
+              }
+            }
+          } catch (error) {
+            console.error('Error verificando duplicados:', error);
+          }
+        })();
+        
+        function openServerSelectModal(duplicates, movieTitle) {
+          const modal = document.getElementById('serverSelectModal');
+          const title = document.getElementById('serverModalTitle');
+          const content = document.getElementById('serverOptionsContent');
+          
+          title.textContent = \`Seleccionar Servidor para "\${movieTitle}"\`;
+          
+          content.innerHTML = duplicates.map(server => {
+            const resClass = server.resolution.toLowerCase().includes('4k') || server.resolution === '2160' ? 'quality-4k' : 
+                              server.resolution === '1080' ? 'quality-1080' : 
+                              server.resolution === '720' ? 'quality-720' : '';
+            
+            const qualityColor = resClass === 'quality-4k' ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' :
+                                 resClass === 'quality-1080' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
+                                 resClass === 'quality-720' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
+                                 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+            
+            const borderColor = server.isCurrent ? '#10b981' : 'rgba(229, 160, 13, 0.2)';
+            const bgColor = server.isCurrent ? 'rgba(16, 185, 129, 0.1)' : 'rgba(17, 24, 39, 0.5)';
+            const nameColor = server.isCurrent ? '#10b981' : '#e5a00d';
+            
+            return \`
+              <div style="padding: 1rem; background: \${bgColor}; border: 2px solid \${borderColor}; border-radius: 12px; margin-bottom: 1rem; cursor: pointer; transition: all 0.2s;" 
+                   onmouseover="if(!\${server.isCurrent}) { this.style.borderColor='#e5a00d'; this.style.background='rgba(17, 24, 39, 0.8)'; }" 
+                   onmouseout="this.style.borderColor='\${borderColor}'; this.style.background='\${bgColor}';"
+                   onclick="selectServerDup(\${server.ratingKey}, '\${server.serverName.replace(/'/g, "\\'")}', '\${server.baseURI}', '\${server.accessToken}', '\${server.libraryKey}', '\${server.libraryTitle.replace(/'/g, "\\'")}')">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                  <div style="font-weight: 700; color: \${nameColor}; font-size: 1.1rem;">
+                    \${server.serverName} \${server.isCurrent ? '(Actual)' : ''}
+                  </div>
+                  <div style="padding: 0.25rem 0.75rem; background: \${qualityColor}; color: white; border-radius: 6px; font-weight: 700; font-size: 0.875rem;">
+                    \${server.resolution.toUpperCase()}
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.875rem; color: #9ca3af;">
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Biblioteca</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.libraryTitle}</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Tamaño</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.size} GB</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Codec</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.codec.toUpperCase()}</div>
+                  </div>
+                </div>
+              </div>
+            \`;
+          }).join('');
+          
+          modal.style.display = 'flex';
+        }
+        
+        function selectServerDup(ratingKey, serverName, baseURI, accessToken, libraryKey, libraryTitle) {
+          const title = '${movieTitle.replace(/'/g, "\\'")}';
+          const posterUrl = '${posterUrl}';
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          
+          const url = \`/movie-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${ratingKey}&title=\${encodeURIComponent(title)}&posterUrl=\${encodeURIComponent(posterUrl)}&tmdbId=\${tmdbIdUsed}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
+          window.location.href = url;
+        }
+        
+        function closeServerSelectModal() {
+          document.getElementById('serverSelectModal').style.display = 'none';
+        }
+        
+        // Cerrar modal con click fuera
+        document.getElementById('serverSelectModal').addEventListener('click', (e) => {
+          if (e.target.id === 'serverSelectModal') {
+            closeServerSelectModal();
+          }
+        });
+      </script>
     </body>
     </html>
   `);
@@ -4607,6 +4749,19 @@ app.get('/series', async (req, res) => {
   
   let libraryKey = req.query.libraryKey || '';
   let libraryTitle = req.query.libraryTitle || '';
+  let machineIdentifier = '';
+  
+  // Obtener machineIdentifier del servidor
+  if (accessToken && baseURI) {
+    try {
+      const serverUrl = `${baseURI}/?X-Plex-Token=${accessToken}`;
+      const serverXml = await httpsGetXML(serverUrl);
+      const idMatch = serverXml.match(/machineIdentifier="([^"]*)"/);
+      if (idMatch) machineIdentifier = idMatch[1];
+    } catch (e) {
+      console.log('[/series] No se pudo obtener machineIdentifier');
+    }
+  }
   
   // console.log('[/series] libraryKey recibido:', libraryKey);
   // console.log('[/series] libraryTitle recibido:', libraryTitle);
@@ -5349,6 +5504,136 @@ app.get('/series', async (req, res) => {
           
           window.location.href = '/list?' + params.toString();
         }
+      </script>
+      
+      <!-- Badge de duplicados (solo admin) -->
+      <div id="duplicatesBadge" style="display: none;"></div>
+      
+      <!-- Modal de selección de servidor -->
+      <div id="serverSelectModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div style="background: #1e1e27; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 16px; padding: 2rem; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+          <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; color: #e5a00d;" id="serverModalTitle">Seleccionar Servidor</h2>
+          <div id="serverOptionsContent"></div>
+          <div style="margin-top: 1rem; text-align: center;">
+            <button onclick="closeServerSelectModal()" style="padding: 0.75rem 2rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; cursor: pointer; font-weight: 600;">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        // Verificar duplicados (solo para admin)
+        (async function checkDuplicates() {
+          const urlParams = new URLSearchParams(window.location.search);
+          const adminPassword = urlParams.get('adminPassword');
+          
+          if (!adminPassword) return; // Solo para admin
+          
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          const title = '${seriesTitle.replace(/'/g, "\\'")}';
+          const currentServer = '${machineIdentifier || ''}';
+          
+          try {
+            const response = await fetch(\`/library?action=find-duplicates&adminPassword=\${encodeURIComponent(adminPassword)}&tmdbId=\${tmdbIdUsed}&title=\${encodeURIComponent(title)}&currentServer=\${currentServer}\`);
+            const data = await response.json();
+            
+            if (data.duplicates && data.duplicates.length > 1) {
+              const otherServers = data.duplicates.filter(d => !d.isCurrent);
+              
+              if (otherServers.length > 0) {
+                const badge = document.getElementById('duplicatesBadge');
+                const has4K = otherServers.some(s => s.resolution.toLowerCase().includes('4k') || s.resolution === '2160');
+                
+                badge.innerHTML = \`
+                  <div style="position: fixed; bottom: 2rem; right: 2rem; padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%); color: #0f0f17; border-radius: 12px; font-weight: 700; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4); transition: all 0.2s; z-index: 100; display: flex; align-items: center; gap: 0.5rem;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(229, 160, 13, 0.6)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(229, 160, 13, 0.4)';">
+                    <span>📍</span>
+                    <span>+\${otherServers.length} servidor\${otherServers.length > 1 ? 'es' : ''}\${has4K ? ' • 4K disponible' : ''}</span>
+                  </div>
+                \`;
+                badge.style.display = 'block';
+                badge.onclick = () => openServerSelectModal(data.duplicates, title);
+              }
+            }
+          } catch (error) {
+            console.error('Error verificando duplicados:', error);
+          }
+        })();
+        
+        function openServerSelectModal(duplicates, seriesTitle) {
+          const modal = document.getElementById('serverSelectModal');
+          const title = document.getElementById('serverModalTitle');
+          const content = document.getElementById('serverOptionsContent');
+          
+          title.textContent = \`Seleccionar Servidor para "\${seriesTitle}"\`;
+          
+          content.innerHTML = duplicates.map(server => {
+            const resClass = server.resolution.toLowerCase().includes('4k') || server.resolution === '2160' ? 'quality-4k' : 
+                              server.resolution === '1080' ? 'quality-1080' : 
+                              server.resolution === '720' ? 'quality-720' : '';
+            
+            const qualityColor = resClass === 'quality-4k' ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' :
+                                 resClass === 'quality-1080' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
+                                 resClass === 'quality-720' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
+                                 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+            
+            const borderColor = server.isCurrent ? '#10b981' : 'rgba(229, 160, 13, 0.2)';
+            const bgColor = server.isCurrent ? 'rgba(16, 185, 129, 0.1)' : 'rgba(17, 24, 39, 0.5)';
+            const nameColor = server.isCurrent ? '#10b981' : '#e5a00d';
+            
+            return \`
+              <div style="padding: 1rem; background: \${bgColor}; border: 2px solid \${borderColor}; border-radius: 12px; margin-bottom: 1rem; cursor: pointer; transition: all 0.2s;" 
+                   onmouseover="if(!\${server.isCurrent}) { this.style.borderColor='#e5a00d'; this.style.background='rgba(17, 24, 39, 0.8)'; }" 
+                   onmouseout="this.style.borderColor='\${borderColor}'; this.style.background='\${bgColor}';"
+                   onclick="selectServerDup('\${server.ratingKey}', '\${server.serverName.replace(/'/g, "\\'")}', '\${server.baseURI}', '\${server.accessToken}', '\${server.libraryKey}', '\${server.libraryTitle.replace(/'/g, "\\'")}')">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                  <div style="font-weight: 700; color: \${nameColor}; font-size: 1.1rem;">
+                    \${server.serverName} \${server.isCurrent ? '(Actual)' : ''}
+                  </div>
+                  <div style="padding: 0.25rem 0.75rem; background: \${qualityColor}; color: white; border-radius: 6px; font-weight: 700; font-size: 0.875rem;">
+                    \${server.resolution.toUpperCase()}
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; font-size: 0.875rem; color: #9ca3af;">
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Biblioteca</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.libraryTitle}</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Tamaño</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.size} GB</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem;">Codec</div>
+                    <div style="color: #f3f4f6; font-weight: 600;">\${server.codec.toUpperCase()}</div>
+                  </div>
+                </div>
+              </div>
+            \`;
+          }).join('');
+          
+          modal.style.display = 'flex';
+        }
+        
+        function selectServerDup(ratingKey, serverName, baseURI, accessToken, libraryKey, libraryTitle) {
+          const title = '${seriesTitle.replace(/'/g, "\\'")}';
+          const posterUrl = '${seriesPoster}';
+          const tmdbIdUsed = '${tmdbId || autoSearchedTmdbId}';
+          
+          const url = \`/series-redirect?accessToken=\${encodeURIComponent(accessToken)}&baseURI=\${encodeURIComponent(baseURI)}&ratingKey=\${ratingKey}&title=\${encodeURIComponent(title)}&posterUrl=\${encodeURIComponent(posterUrl)}&tmdbId=\${tmdbIdUsed}&libraryKey=\${libraryKey}&libraryTitle=\${encodeURIComponent(libraryTitle)}\`;
+          window.location.href = url;
+        }
+        
+        function closeServerSelectModal() {
+          document.getElementById('serverSelectModal').style.display = 'none';
+        }
+        
+        // Cerrar modal con click fuera
+        document.getElementById('serverSelectModal').addEventListener('click', (e) => {
+          if (e.target.id === 'serverSelectModal') {
+            closeServerSelectModal();
+          }
+        });
       </script>
     </body>
     </html>
@@ -7994,11 +8279,296 @@ app.get('/library', async (req, res) => {
     }
   }
   
+  // Búsqueda global en todos los servidores
+  if (action === 'global-search') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const { query, type } = req.query; // type: 'all', 'movie', 'show'
+    
+    if (!query) {
+      return res.json({ results: [] });
+    }
+    
+    try {
+      if (!serversCollection) {
+        await connectMongoDB();
+      }
+      
+      const servers = await serversCollection.find({}).toArray();
+      const results = [];
+      const seenTmdbIds = new Set();
+      
+      // Función de normalización (igual que /browse)
+      const normalizeText = (text) => {
+        return text
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s]/g, '');
+      };
+      
+      const searchNormalized = normalizeText(query);
+      
+      // Buscar en cada servidor
+      for (const server of servers) {
+        for (const token of (server.tokens || [])) {
+          try {
+            // Obtener bibliotecas del servidor
+            const sectionsUrl = `${server.baseURI}/library/sections?X-Plex-Token=${token.accessToken}`;
+            const sectionsXml = await httpsGetXML(sectionsUrl);
+            
+            const sectionMatches = sectionsXml.matchAll(/<Directory[^>]*key="([^"]*)"[^>]*title="([^"]*)"[^>]*type="([^"]*)"[^>]*>/g);
+            
+            for (const sectionMatch of sectionMatches) {
+              const [, sectionKey, sectionTitle, sectionType] = sectionMatch;
+              
+              // Filtrar por tipo si se especifica
+              if (type !== 'all' && type !== sectionType) continue;
+              if (sectionType !== 'movie' && sectionType !== 'show') continue;
+              
+              // Buscar en la biblioteca
+              const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
+              const contentXml = await httpsGetXML(contentUrl);
+              
+              const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
+              const itemMatches = contentXml.matchAll(new RegExp(`<${tagType}[^>]*>`, 'g'));
+              
+              for (const itemMatch of itemMatches) {
+                const itemTag = itemMatch[0];
+                const titleMatch = itemTag.match(/title="([^"]*)"/);
+                const yearMatch = itemTag.match(/year="([^"]*)"/);
+                const thumbMatch = itemTag.match(/thumb="([^"]*)"/);
+                const ratingKeyMatch = itemTag.match(/ratingKey="([^"]*)"/);
+                const tmdbMatch = itemTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+                
+                if (!titleMatch || !ratingKeyMatch) continue;
+                
+                const title = titleMatch[1];
+                const titleNormalized = normalizeText(title);
+                
+                // Verificar si coincide con la búsqueda
+                if (!titleNormalized.includes(searchNormalized)) continue;
+                
+                const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
+                const year = yearMatch ? yearMatch[1] : '';
+                const thumb = thumbMatch ? `${server.baseURI}${thumbMatch[1]}?X-Plex-Token=${token.accessToken}` : '';
+                
+                // Evitar duplicados por tmdbId
+                const uniqueKey = tmdbId || `${title}-${year}`;
+                if (seenTmdbIds.has(uniqueKey)) {
+                  // Ya existe, añadir este servidor a la lista
+                  const existing = results.find(r => (r.tmdbId && r.tmdbId === tmdbId) || (r.title === title && r.year === year));
+                  if (existing) {
+                    existing.servers.push({
+                      serverName: server.serverName,
+                      machineIdentifier: server.machineIdentifier,
+                      baseURI: server.baseURI,
+                      accessToken: token.accessToken,
+                      ratingKey: ratingKeyMatch[1],
+                      libraryKey: sectionKey,
+                      libraryTitle: sectionTitle,
+                      libraryType: sectionType
+                    });
+                  }
+                  continue;
+                }
+                
+                seenTmdbIds.add(uniqueKey);
+                
+                results.push({
+                  title,
+                  year,
+                  thumb,
+                  tmdbId,
+                  type: sectionType,
+                  servers: [{
+                    serverName: server.serverName,
+                    machineIdentifier: server.machineIdentifier,
+                    baseURI: server.baseURI,
+                    accessToken: token.accessToken,
+                    ratingKey: ratingKeyMatch[1],
+                    libraryKey: sectionKey,
+                    libraryTitle: sectionTitle,
+                    libraryType: sectionType
+                  }]
+                });
+              }
+            }
+            
+            break; // Si un token funciona, no probar más tokens de este servidor
+          } catch (e) {
+            continue; // Token no válido, probar el siguiente
+          }
+        }
+      }
+      
+      // Ordenar resultados por relevancia
+      results.sort((a, b) => {
+        const aNorm = normalizeText(a.title);
+        const bNorm = normalizeText(b.title);
+        const aExact = aNorm === searchNormalized;
+        const bExact = bNorm === searchNormalized;
+        
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        
+        // Por año (más recientes primero)
+        return (parseInt(b.year) || 0) - (parseInt(a.year) || 0);
+      });
+      
+      return res.json({ results, totalServers: servers.length });
+    } catch (error) {
+      console.error('Error en búsqueda global:', error);
+      return res.status(500).json({ error: 'Error en la búsqueda' });
+    }
+  }
+  
+  // Buscar duplicados de un contenido
+  if (action === 'find-duplicates') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const { tmdbId, title, year, currentServer } = req.query;
+    
+    if (!tmdbId && !title) {
+      return res.json({ duplicates: [] });
+    }
+    
+    try {
+      if (!serversCollection) {
+        await connectMongoDB();
+      }
+      
+      const servers = await serversCollection.find({}).toArray();
+      const duplicates = [];
+      
+      for (const server of servers) {
+        for (const token of (server.tokens || [])) {
+          try {
+            const sectionsUrl = `${server.baseURI}/library/sections?X-Plex-Token=${token.accessToken}`;
+            const sectionsXml = await httpsGetXML(sectionsUrl);
+            
+            const sectionMatches = sectionsXml.matchAll(/<Directory[^>]*key="([^"]*)"[^>]*title="([^"]*)"[^>]*type="([^"]*)"[^>]*>/g);
+            
+            for (const sectionMatch of sectionMatches) {
+              const [, sectionKey, sectionTitle, sectionType] = sectionMatch;
+              
+              if (sectionType !== 'movie' && sectionType !== 'show') continue;
+              
+              const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
+              const contentXml = await httpsGetXML(contentUrl);
+              
+              const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
+              const itemMatches = contentXml.matchAll(new RegExp(`<${tagType}[^>]*>`, 'g'));
+              
+              for (const itemMatch of itemMatches) {
+                const itemTag = itemMatch[0];
+                const titleMatch = itemTag.match(/title="([^"]*)"/);
+                const yearMatch = itemTag.match(/year="([^"]*)"/);
+                const ratingKeyMatch = itemTag.match(/ratingKey="([^"]*)"/);
+                const tmdbMatchItem = itemTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+                
+                if (!titleMatch || !ratingKeyMatch) continue;
+                
+                // Verificar coincidencia por tmdbId o título+año
+                const matches = tmdbId 
+                  ? (tmdbMatchItem && tmdbMatchItem[1] === tmdbId)
+                  : (titleMatch[1] === title && (!year || yearMatch && yearMatch[1] === year));
+                
+                if (!matches) continue;
+                
+                // Extraer calidad y tamaño
+                const mediaUrl = `${server.baseURI}/library/metadata/${ratingKeyMatch[1]}?X-Plex-Token=${token.accessToken}`;
+                const mediaXml = await httpsGetXML(mediaUrl);
+                
+                const resolutionMatch = mediaXml.match(/videoResolution="([^"]*)"/);
+                const sizeMatch = mediaXml.match(/<Part[^>]*size="([^"]*)"/);
+                const codecMatch = mediaXml.match(/videoCodec="([^"]*)"/);
+                
+                const resolution = resolutionMatch ? resolutionMatch[1] : 'SD';
+                const sizeBytes = sizeMatch ? parseInt(sizeMatch[1]) : 0;
+                const sizeGB = (sizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+                const codec = codecMatch ? codecMatch[1] : '';
+                
+                duplicates.push({
+                  serverName: server.serverName,
+                  machineIdentifier: server.machineIdentifier,
+                  baseURI: server.baseURI,
+                  accessToken: token.accessToken,
+                  ratingKey: ratingKeyMatch[1],
+                  libraryKey: sectionKey,
+                  libraryTitle: sectionTitle,
+                  libraryType: sectionType,
+                  resolution,
+                  size: sizeGB,
+                  sizeBytes,
+                  codec,
+                  isCurrent: server.machineIdentifier === currentServer
+                });
+              }
+            }
+            
+            break;
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+      
+      // Ordenar por calidad (4K > 1080 > 720 > SD) y luego por tamaño (menor primero)
+      duplicates.sort((a, b) => {
+        const resOrder = { '4k': 4, '2160': 4, '1080': 3, '720': 2, 'sd': 1 };
+        const aRes = resOrder[a.resolution.toLowerCase()] || 0;
+        const bRes = resOrder[b.resolution.toLowerCase()] || 0;
+        
+        if (aRes !== bRes) return bRes - aRes;
+        return a.sizeBytes - b.sizeBytes;
+      });
+      
+      return res.json({ duplicates });
+    } catch (error) {
+      console.error('Error buscando duplicados:', error);
+      return res.status(500).json({ error: 'Error buscando duplicados' });
+    }
+  }
+  
+  // Obtener información de media (calidad, tamaño, codec)
+  if (action === 'get-media-info') {
+    const { mediaUrl } = req.query;
+    
+    if (!mediaUrl) {
+      return res.json({ resolution: 'SD', size: '0', codec: 'Desconocido' });
+    }
+    
+    try {
+      const mediaXml = await httpsGetXML(mediaUrl);
+      
+      const resolutionMatch = mediaXml.match(/videoResolution="([^"]*)"/);
+      const sizeMatch = mediaXml.match(/<Part[^>]*size="([^"]*)"/);
+      const codecMatch = mediaXml.match(/videoCodec="([^"]*)"/);
+      
+      const resolution = resolutionMatch ? resolutionMatch[1] : 'SD';
+      const sizeBytes = sizeMatch ? parseInt(sizeMatch[1]) : 0;
+      const sizeGB = (sizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+      const codec = codecMatch ? codecMatch[1].toUpperCase() : 'Desconocido';
+      
+      return res.json({ resolution, size: sizeGB, codec });
+    } catch (error) {
+      console.error('Error obteniendo info de media:', error);
+      return res.json({ resolution: 'SD', size: '0', codec: 'Desconocido' });
+    }
+  }
+  
   // Mostrar panel de administración HTML
   if (action === 'show-admin-panel') {
     if (adminPassword !== ADMIN_PASSWORD) {
       return res.status(403).send('No autorizado');
     }
+    
+    const tab = req.query.tab || 'servers'; // 'servers' o 'search'
     
     // Renderizar HTML del panel de control
     return res.send(`
@@ -8017,11 +8587,77 @@ app.get('/library', async (req, res) => {
             background: #0f0f17;
             color: #f3f4f6;
             min-height: 100vh;
-            padding: 2rem;
+            padding: 0;
           }
           .container {
             max-width: 1400px;
             margin: 0 auto;
+          }
+          
+          /* Tabs Navigation */
+          .admin-tabs {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 0 2rem;
+            display: flex;
+            align-items: stretch;
+            gap: 0.5rem;
+          }
+          
+          .admin-tab-home {
+            padding: 1rem 1.5rem;
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: #e5a00d;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            background: transparent;
+          }
+          
+          .admin-tab-home:hover {
+            color: #ffa500;
+            background: rgba(229, 160, 13, 0.1);
+          }
+          
+          .admin-tab {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+            font-size: 1rem;
+            color: #8b949e;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          }
+          
+          .admin-tab:hover {
+            color: #f3f4f6;
+            background: rgba(255, 255, 255, 0.05);
+          }
+          
+          .admin-tab.active {
+            color: #e5a00d;
+            border-bottom-color: #e5a00d;
+          }
+          
+          .tab-content {
+            padding: 2rem;
+          }
+          
+          .tab-pane {
+            display: none;
+          }
+          
+          .tab-pane.active {
+            display: block;
           }
           
           /* Header */
@@ -8403,18 +9039,261 @@ app.get('/library', async (req, res) => {
               flex-direction: column;
               align-items: stretch;
             }
+            .admin-tabs {
+              padding: 0 1rem;
+              overflow-x: auto;
+            }
+          }
+          
+          /* Global Search Styles */
+          .search-container {
+            margin-bottom: 2rem;
+          }
+          
+          .search-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+          }
+          
+          .search-input {
+            flex: 1;
+            padding: 1rem;
+            background: rgba(17, 24, 39, 0.8);
+            border: 2px solid rgba(229, 160, 13, 0.2);
+            border-radius: 12px;
+            color: #f3f4f6;
+            font-size: 1rem;
+          }
+          
+          .search-input:focus {
+            outline: none;
+            border-color: #e5a00d;
+          }
+          
+          .search-btn {
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border: none;
+            border-radius: 12px;
+            color: #0f0f17;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          
+          .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(229, 160, 13, 0.4);
+          }
+          
+          .filter-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+          }
+          
+          .filter-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(17, 24, 39, 0.8);
+            border: 2px solid rgba(229, 160, 13, 0.2);
+            border-radius: 8px;
+            color: #9ca3af;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          
+          .filter-btn:hover {
+            border-color: #e5a00d;
+            color: #f3f4f6;
+          }
+          
+          .filter-btn.active {
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            border-color: #e5a00d;
+            color: #0f0f17;
+          }
+          
+          .search-status {
+            padding: 1rem;
+            background: rgba(17, 24, 39, 0.5);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            text-align: center;
+            color: #9ca3af;
+          }
+          
+          .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1.5rem;
+          }
+          
+          .result-card {
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(17, 24, 39, 0.5);
+            position: relative;
+          }
+          
+          .result-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(229, 160, 13, 0.3);
+          }
+          
+          .result-poster {
+            width: 100%;
+            aspect-ratio: 2/3;
+            object-fit: cover;
+            background: #1e1e27;
+          }
+          
+          .result-info {
+            padding: 1rem;
+          }
+          
+          .result-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+            color: #f3f4f6;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+          }
+          
+          .result-year {
+            font-size: 0.8rem;
+            color: #9ca3af;
+          }
+          
+          .result-servers-badge {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: rgba(229, 160, 13, 0.9);
+            color: #0f0f17;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+          }
+          
+          /* Server Selection Modal */
+          .server-modal {
+            max-width: 600px;
+          }
+          
+          .server-option {
+            padding: 1rem;
+            background: rgba(17, 24, 39, 0.8);
+            border: 2px solid rgba(229, 160, 13, 0.2);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          
+          .server-option:hover {
+            border-color: #e5a00d;
+            background: rgba(17, 24, 39, 1);
+          }
+          
+          .server-option-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+          }
+          
+          .server-name {
+            font-weight: 700;
+            color: #e5a00d;
+            font-size: 1.1rem;
+          }
+          
+          .server-quality {
+            padding: 0.25rem 0.75rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.875rem;
+          }
+          
+          .server-quality.quality-4k {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+          }
+          
+          .server-quality.quality-1080 {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          }
+          
+          .server-quality.quality-720 {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          }
+          
+          .server-option-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #9ca3af;
+          }
+          
+          .info-item {
+            display: flex;
+            flex-direction: column;
+          }
+          
+          .info-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+          }
+          
+          .info-value {
+            color: #f3f4f6;
+            font-weight: 600;
           }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="header">
-            <div class="header-left">
-              <span class="header-icon">👥</span>
-              <h1 class="header-title">Gestión de Servidores</h1>
-            </div>
-            <a href="javascript:history.back()" class="btn-back">← Volver</a>
-          </div>
+        <!-- Tabs Navigation -->
+        <div class="admin-tabs">
+          <a href="/library" class="admin-tab-home">
+            <span>🏠</span>
+            <span>Infinity Scrap</span>
+          </a>
+          <button class="admin-tab active" data-tab="servers">
+            <span>🖥️</span>
+            <span>Servidores</span>
+          </button>
+          <button class="admin-tab" data-tab="search">
+            <span>🔍</span>
+            <span>Búsqueda Global</span>
+          </button>
+        </div>
+        
+        <!-- Tab Content Container -->
+        <div class="tab-content">
+          
+          <!-- Servers Tab -->
+          <div class="tab-pane active" id="tab-servers">
+            <div class="container">
+              <div class="header">
+                <div class="header-left">
+                  <span class="header-icon">👥</span>
+                  <h1 class="header-title">Gestión de Servidores</h1>
+                </div>
+                <a href="javascript:history.back()" class="btn-back">← Volver</a>
+              </div>
           
           <div class="stats-grid" id="statsGrid">
             <div class="stat-card">
@@ -8484,8 +9363,242 @@ app.get('/library', async (req, res) => {
           </div>
         </div>
         
+        </div> <!-- Cierre tab-servers -->
+        
+        <!-- Global Search Tab -->
+        <div class="tab-pane" id="tab-search">
+          <div class="container">
+            <div class="header">
+              <div class="header-left">
+                <span class="header-icon">🔍</span>
+                <h1 class="header-title">Búsqueda Global</h1>
+              </div>
+            </div>
+            
+            <div class="search-container">
+              <div class="search-bar">
+                <input
+                  type="text"
+                  id="searchInput"
+                  class="search-input"
+                  placeholder="Buscar películas o series en todos los servidores..."
+                  onkeypress="if(event.key==='Enter') performSearch()"
+                />
+                <button class="search-btn" onclick="performSearch()">Buscar</button>
+              </div>
+              
+              <div class="filter-buttons">
+                <button class="filter-btn active" data-type="all" onclick="setSearchType('all')">
+                  📦 Todo
+                </button>
+                <button class="filter-btn" data-type="movie" onclick="setSearchType('movie')">
+                  🎬 Películas
+                </button>
+                <button class="filter-btn" data-type="show" onclick="setSearchType('show')">
+                  📺 Series
+                </button>
+              </div>
+            </div>
+            
+            <div id="searchStatus" class="search-status" style="display: none;"></div>
+            
+            <div id="searchResults" class="results-grid"></div>
+          </div>
+        </div>
+        
+        </div> <!-- Cierre tab-content -->
+        
+        <!-- Modal: Server Selection -->
+        <div id="modalServerSelect" class="modal-overlay">
+          <div class="modal server-modal">
+            <h2 class="modal-title" id="serverModalTitle">Seleccionar Servidor</h2>
+            <div id="serverOptions"></div>
+            <div style="margin-top: 1rem; text-align: center;">
+              <button onclick="closeServerModal()" style="padding: 0.75rem 2rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; cursor: pointer;">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <script>
           const adminPassword = '${adminPassword}';
+          let currentSearchType = 'all';
+          
+          // Tab switching
+          document.querySelectorAll('.admin-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+              const tabName = tab.dataset.tab;
+              
+              // Update active tab
+              document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+              
+              // Update active pane
+              document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+              document.getElementById('tab-' + tabName).classList.add('active');
+            });
+          });
+          
+          // Global search functions
+          function setSearchType(type) {
+            currentSearchType = type;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+              btn.classList.toggle('active', btn.dataset.type === type);
+            });
+          }
+          
+          async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const status = document.getElementById('searchStatus');
+            const results = document.getElementById('searchResults');
+            
+            if (!query) {
+              status.style.display = 'block';
+              status.textContent = 'Por favor, ingresa un término de búsqueda';
+              results.innerHTML = '';
+              return;
+            }
+            
+            status.style.display = 'block';
+            status.textContent = '🔍 Buscando en todos los servidores...';
+            results.innerHTML = '';
+            
+            try {
+              const response = await fetch(\`/library?action=global-search&adminPassword=\${encodeURIComponent(adminPassword)}&query=\${encodeURIComponent(query)}&type=\${currentSearchType}\`);
+              const data = await response.json();
+              
+              if (data.error) {
+                status.textContent = '❌ Error: ' + data.error;
+                return;
+              }
+              
+              if (data.results.length === 0) {
+                status.textContent = \`No se encontraron resultados para "\${query}"\`;
+                return;
+              }
+              
+              status.textContent = \`✓ Encontrados \${data.results.length} resultados en \${data.totalServers} servidores\`;
+              
+              // Render results
+              results.innerHTML = data.results.map(item => \`
+                <div class="result-card" onclick='openServerModal(\${JSON.stringify(item).replace(/'/g, "\\\\'")})'>
+                  \${item.servers.length > 1 ? \`<div class="result-servers-badge">+\${item.servers.length}</div>\` : ''}
+                  <img class="result-poster" src="\${item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster'}" alt="\${item.title}" onerror="this.src='https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster'"/>
+                  <div class="result-info">
+                    <div class="result-title">\${item.title}</div>
+                    <div class="result-year">\${item.year || 'Año desconocido'} • \${item.type === 'movie' ? 'Película' : 'Serie'}</div>
+                  </div>
+                </div>
+              \`).join('');
+              
+            } catch (error) {
+              console.error('Error en búsqueda:', error);
+              status.textContent = '❌ Error de conexión';
+            }
+          }
+          
+          async function openServerModal(item) {
+            const modal = document.getElementById('modalServerSelect');
+            const title = document.getElementById('serverModalTitle');
+            const options = document.getElementById('serverOptions');
+            
+            title.textContent = \`Seleccionar Servidor para "\${item.title}"\`;
+            
+            // Si solo hay un servidor, redirigir directamente
+            if (item.servers.length === 1) {
+              redirectToContent(item, item.servers[0]);
+              return;
+            }
+            
+            // Obtener detalles de calidad para cada servidor
+            options.innerHTML = '<div style="text-align: center; color: #9ca3af;">Cargando información...</div>';
+            modal.classList.add('active');
+            
+            try {
+              // Obtener info de calidad para cada servidor
+              const serverDetails = await Promise.all(item.servers.map(async server => {
+                try {
+                  const mediaUrl = \`\${server.baseURI}/library/metadata/\${server.ratingKey}?X-Plex-Token=\${server.accessToken}\`;
+                  const response = await fetch(\`/library?action=get-media-info&mediaUrl=\${encodeURIComponent(mediaUrl)}\`);
+                  const data = await response.json();
+                  
+                  return {
+                    ...server,
+                    resolution: data.resolution || 'SD',
+                    size: data.size || '0',
+                    codec: data.codec || 'Desconocido'
+                  };
+                } catch (e) {
+                  return {
+                    ...server,
+                    resolution: 'SD',
+                    size: '0',
+                    codec: 'Desconocido'
+                  };
+                }
+              }));
+              
+              // Ordenar por calidad y tamaño
+              serverDetails.sort((a, b) => {
+                const resOrder = { '4k': 4, '2160': 4, '1080': 3, '720': 2, 'sd': 1 };
+                const aRes = resOrder[a.resolution.toLowerCase()] || 0;
+                const bRes = resOrder[b.resolution.toLowerCase()] || 0;
+                
+                if (aRes !== bRes) return bRes - aRes;
+                return parseFloat(a.size) - parseFloat(b.size);
+              });
+              
+              // Renderizar opciones
+              options.innerHTML = serverDetails.map(server => {
+                const resClass = server.resolution.toLowerCase().includes('4k') || server.resolution === '2160' ? 'quality-4k' : 
+                                  server.resolution === '1080' ? 'quality-1080' : 
+                                  server.resolution === '720' ? 'quality-720' : '';
+                
+                return \`
+                  <div class="server-option" onclick='selectServer(\${JSON.stringify(item).replace(/'/g, "\\\\'")}, \${JSON.stringify(server).replace(/'/g, "\\\\'")})'> 
+                    <div class="server-option-header">
+                      <div class="server-name">\${server.serverName}</div>
+                      <div class="server-quality \${resClass}">\${server.resolution.toUpperCase()}</div>
+                    </div>
+                    <div class="server-option-info">
+                      <div class="info-item">
+                        <div class="info-label">Biblioteca</div>
+                        <div class="info-value">\${server.libraryTitle}</div>
+                      </div>
+                      <div class="info-item">
+                        <div class="info-label">Tamaño</div>
+                        <div class="info-value">\${server.size} GB</div>
+                      </div>
+                      <div class="info-item">
+                        <div class="info-label">Codec</div>
+                        <div class="info-value">\${server.codec}</div>
+                      </div>
+                    </div>
+                  </div>
+                \`;
+              }).join('');
+              
+            } catch (error) {
+              console.error('Error obteniendo detalles:', error);
+              options.innerHTML = '<div style="color: #f87171; text-align: center;">Error cargando detalles</div>';
+            }
+          }
+          
+          function selectServer(item, server) {
+            closeServerModal();
+            redirectToContent(item, server);
+          }
+          
+          function redirectToContent(item, server) {
+            const type = item.type === 'movie' ? 'movie-redirect' : 'series-redirect';
+            const url = \`/\${type}?accessToken=\${encodeURIComponent(server.accessToken)}&baseURI=\${encodeURIComponent(server.baseURI)}&ratingKey=\${server.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb || '')}&tmdbId=\${item.tmdbId || ''}&libraryKey=\${server.libraryKey}&libraryTitle=\${encodeURIComponent(server.libraryTitle)}\`;
+            window.location.href = url;
+          }
+          
+          function closeServerModal() {
+            document.getElementById('modalServerSelect').classList.remove('active');
+          }
           
           // Cargar datos al iniciar
           document.addEventListener('DOMContentLoaded', () => {
