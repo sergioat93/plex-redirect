@@ -8325,16 +8325,19 @@ app.get('/library', async (req, res) => {
       const searchNormalized = normalizeText(query);
       console.log('[GLOBAL-SEARCH] Búsqueda normalizada:', searchNormalized);
       
+      const maxTotalResults = 100; // Límite total de resultados únicos
+      
       // Buscar en cada servidor
       for (const server of servers) {
+        // Si ya tenemos suficientes resultados, parar
+        if (results.length >= maxTotalResults) break;
+        
         console.log('[GLOBAL-SEARCH] Buscando en servidor:', server.serverName);
         for (const token of (server.tokens || [])) {
           try {
             // Obtener bibliotecas del servidor
             const sectionsUrl = `${server.baseURI}/library/sections?X-Plex-Token=${token.accessToken}`;
             const sectionsXml = await httpsGetXML(sectionsUrl);
-            
-            console.log('[GLOBAL-SEARCH] XML de secciones (primeros 500 chars):', sectionsXml.substring(0, 500));
             
             // Parsear secciones de forma más flexible (atributos en cualquier orden)
             const sectionRegex = /<Directory[^>]*>/g;
@@ -8343,6 +8346,9 @@ app.get('/library', async (req, res) => {
             console.log('[GLOBAL-SEARCH] Tags Directory encontrados:', sectionTags.length);
             
             for (const sectionTag of sectionTags) {
+              // Si ya tenemos suficientes resultados, parar
+              if (results.length >= maxTotalResults) break;
+              
               const keyMatch = sectionTag.match(/key="([^"]*)"/);
               const titleMatch = sectionTag.match(/title="([^"]*)"/);
               const typeMatch = sectionTag.match(/type="([^"]*)"/);
@@ -8359,18 +8365,22 @@ app.get('/library', async (req, res) => {
               
               console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
-              // Buscar en la biblioteca
+              // Buscar en la biblioteca (limitar a primeros 2000 caracteres para evitar heap overflow)
               const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
               const contentXml = await httpsGetXML(contentUrl);
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
-              const itemMatches = contentXml.matchAll(new RegExp(`<${tagType}[^>]*>`, 'g'));
-              const itemsArray = Array.from(itemMatches);
-              console.log('[GLOBAL-SEARCH] Items en biblioteca:', itemsArray.length);
+              const itemRegex = new RegExp(`<${tagType}[^>]*>`, 'g');
+              const itemTags = contentXml.match(itemRegex) || [];
+              console.log('[GLOBAL-SEARCH] Items en biblioteca:', itemTags.length);
               
               let matchCount = 0;
-              for (const itemMatch of itemsArray) {
-                const itemTag = itemMatch[0];
+              const maxResults = 50; // Limitar a 50 resultados por biblioteca
+              
+              for (const itemTag of itemTags) {
+                // Limitar resultados para evitar heap overflow
+                if (matchCount >= maxResults) break;
+                
                 const titleMatch = itemTag.match(/title="([^"]*)"/);
                 const yearMatch = itemTag.match(/year="([^"]*)"/);
                 const thumbMatch = itemTag.match(/thumb="([^"]*)"/);
