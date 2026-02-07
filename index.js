@@ -9489,6 +9489,8 @@ app.get('/library', async (req, res) => {
         <script>
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
+          let currentServerFilter = 'all';
+          let availableServers = [];
           let searchTimeout = null;
           
           // Wait for DOM to be ready
@@ -9560,10 +9562,6 @@ app.get('/library', async (req, res) => {
           });
           
           // Global search functions
-          let currentSearchType = 'all';
-          let currentServerFilter = 'all';
-          let availableServers = [];
-          
           function setSearchType(type) {
             currentSearchType = type;
             document.querySelectorAll('.filter-type').forEach(btn => {
