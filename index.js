@@ -8279,15 +8279,39 @@ app.get('/library', async (req, res) => {
     }
   }
   
+  // Listar servidores disponibles (para filtros)
+  if (action === 'list-servers') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    try {
+      if (!serversCollection) {
+        await connectMongoDB();
+      }
+      
+      const servers = await serversCollection.find({}).toArray();
+      return res.json({
+        servers: servers.map(s => ({
+          serverName: s.serverName,
+          machineIdentifier: s.machineIdentifier
+        }))
+      });
+    } catch (error) {
+      console.error('Error listando servidores:', error);
+      return res.status(500).json({ error: 'Error listando servidores' });
+    }
+  }
+  
   // Búsqueda global en todos los servidores
   if (action === 'global-search') {
     if (adminPassword !== ADMIN_PASSWORD) {
       return res.status(403).json({ error: 'No autorizado' });
     }
     
-    const { query, type } = req.query; // type: 'all', 'movie', 'show'
+    const { query, type, servers: serversFilter } = req.query; // type: 'all', 'movie', 'show'
     
-    console.log('[GLOBAL-SEARCH] Iniciando búsqueda:', { query, type });
+    console.log('[GLOBAL-SEARCH] Iniciando búsqueda:', { query, type, serversFilter });
     
     if (!query) {
       return res.json({ results: [] });
@@ -8298,8 +8322,22 @@ app.get('/library', async (req, res) => {
         await connectMongoDB();
       }
       
-      const servers = await serversCollection.find({}).toArray();
-      console.log('[GLOBAL-SEARCH] Servidores encontrados:', servers.length);
+      let servers = await serversCollection.find({}).toArray();
+      
+      // Filtrar servidores si se especifica
+      if (serversFilter) {
+        try {
+          const selectedServers = JSON.parse(serversFilter);
+          if (Array.isArray(selectedServers) && selectedServers.length > 0) {
+            servers = servers.filter(s => selectedServers.includes(s.serverName));
+            console.log('[GLOBAL-SEARCH] Filtrando a servidores:', selectedServers);
+          }
+        } catch (e) {
+          console.error('[GLOBAL-SEARCH] Error parseando filtro de servidores:', e);
+        }
+      }
+      
+      console.log('[GLOBAL-SEARCH] Servidores a buscar:', servers.length);
       const results = [];
       const seenTmdbIds = new Set();
       
@@ -9460,8 +9498,14 @@ app.get('/library', async (req, res) => {
                 </button>
               </div>
               
+              <div class="filter-buttons" id="preSearchServersContainer" style="margin-top: 0.5rem;">
+                <div class="filter-label">Buscar en:</div>
+                <button class="filter-btn filter-pre-server active" data-server="all">🌐 Todos los Servidores</button>
+                <!-- Los servidores se cargan dinámicamente -->
+              </div>
+              
               <div class="filter-buttons" id="serverFiltersContainer" style="display: none; margin-top: 0.5rem;">
-                <!-- Filtros de servidores se agregan dinámicamente -->
+                <!-- Filtros de resultados se agregan dinámicamente -->
               </div>
             </div>
             
@@ -9490,6 +9534,7 @@ app.get('/library', async (req, res) => {
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
           let currentServerFilter = 'all';
+          let preSearchServers = []; // Servidores seleccionados ANTES de buscar
           let availableServers = [];
           let searchTimeout = null;
           
@@ -9557,9 +9602,54 @@ app.get('/library', async (req, res) => {
             if (filterMovie) filterMovie.addEventListener('click', () => setSearchType('movie'));
             if (filterShow) filterShow.addEventListener('click', () => setSearchType('show'));
             
+            // Cargar servidores para filtros pre-búsqueda
+            loadPreSearchServers();
+            
             // Cargar datos del panel
             loadData();
           });
+          
+          // Cargar lista de servidores disponibles para filtros pre-búsqueda
+          async function loadPreSearchServers() {
+            try {
+              const response = await fetch('/library?action=list-servers&adminPassword=' + encodeURIComponent(adminPassword));
+              const data = await response.json();
+              
+              if (data.servers && data.servers.length > 0) {
+                const container = document.getElementById('preSearchServersContainer');
+                const serverButtons = data.servers.map(server => 
+                  '<button class="filter-btn filter-pre-server" data-server="' + server.serverName + '">🖥️ ' + server.serverName + '</button>'
+                ).join('');
+                
+                container.innerHTML = '<div class="filter-label">Buscar en:</div>' +
+                  '<button class="filter-btn filter-pre-server active" data-server="all">🌐 Todos</button>' +
+                  serverButtons;
+                
+                // Event listeners
+                document.querySelectorAll('.filter-pre-server').forEach(btn => {
+                  btn.addEventListener('click', function() {
+                    document.querySelectorAll('.filter-pre-server').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const selectedServer = this.dataset.server;
+                    if (selectedServer === 'all') {
+                      preSearchServers = [];
+                    } else {
+                      preSearchServers = [selectedServer];
+                    }
+                    
+                    // Re-ejecutar búsqueda si hay texto
+                    const searchInput = document.getElementById('searchInput');
+                    if (searchInput && searchInput.value.trim().length >= 3) {
+                      performSearch();
+                    }
+                  });
+                });
+              }
+            } catch (error) {
+              console.error('Error cargando servidores:', error);
+            }
+          }
           
           // Global search functions
           function setSearchType(type) {
@@ -9603,7 +9693,13 @@ app.get('/library', async (req, res) => {
             results.innerHTML = '';
             
             try {
-              const url = '/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType;
+              let url = '/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType;
+              
+              // Agregar servidores seleccionados si no es "todos"
+              if (preSearchServers.length > 0) {
+                url += '&servers=' + encodeURIComponent(JSON.stringify(preSearchServers));
+              }
+              
               console.log('[SEARCH] Fetching:', url);
               const response = await fetch(url);
               const data = await response.json();
