@@ -8371,6 +8371,12 @@ app.get('/library', async (req, res) => {
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
               
+              // Debug: mostrar primer item para ver formato
+              const firstItemMatch = contentXml.match(new RegExp(`<${tagType}[^>]*>`, ''));
+              if (firstItemMatch) {
+                console.log('[GLOBAL-SEARCH] Ejemplo de tag:', firstItemMatch[0].substring(0, 200));
+              }
+              
               // Buscar solo títulos que coincidan (más eficiente que crear array completo)
               let matchCount = 0;
               const maxResults = 50;
