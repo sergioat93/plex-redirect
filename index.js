@@ -8953,6 +8953,37 @@ app.get('/library', async (req, res) => {
             border-color: #f5b81d;
           }
           
+          /* Botón Panel Admin - A la izquierda del icono admin */
+          .btn-admin-panel-header {
+            position: fixed;
+            top: 1.5rem;
+            right: 5rem;
+            width: 48px;
+            height: 48px;
+            background: rgba(31, 41, 55, 0.9);
+            border: 2px solid rgba(229, 160, 13, 0.3);
+            border-radius: 12px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            color: #e5a00d;
+          }
+          .btn-admin-panel-header.active {
+            display: flex;
+          }
+          .btn-admin-panel-header:hover {
+            border-color: rgba(229, 160, 13, 0.8);
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
+            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+            color: #000;
+          }
+          
           /* Dropdown Servidores - Arriba izquierda (solo admin) */
           .server-selector {
             position: fixed;
@@ -8961,7 +8992,6 @@ app.get('/library', async (req, res) => {
             z-index: 100;
             display: none;
             max-width: 350px;
-            display: flex;
             gap: 0.75rem;
             align-items: flex-end;
           }
@@ -8969,29 +8999,7 @@ app.get('/library', async (req, res) => {
             display: flex;
           }
           .server-dropdown-container {
-            flex: 1;
-          }
-          .btn-admin-panel {
-            width: 50px;
-            height: 50px;
-            background: rgba(31, 41, 55, 0.95);
-            border: 2px solid rgba(229, 160, 13, 0.3);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(20px);
-            font-size: 1.5rem;
-            color: #e5a00d;
-          }
-          .btn-admin-panel:hover {
-            border-color: rgba(229, 160, 13, 0.8);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(229, 160, 13, 0.3);
-            background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
-            color: #000;
+            width: 100%;
           }
           .server-selector-label {
             color: #9ca3af;
@@ -9196,6 +9204,13 @@ app.get('/library', async (req, res) => {
               height: 40px;
               font-size: 1.25rem;
             }
+            .btn-admin-panel-header {
+              top: 1rem;
+              right: 4rem;
+              width: 40px;
+              height: 40px;
+              font-size: 1.25rem;
+            }
             .server-selector {
               position: relative;
               top: auto;
@@ -9244,6 +9259,11 @@ app.get('/library', async (req, res) => {
         </style>
       </head>
       <body>
+        <!-- Botón Panel Admin (solo visible en modo admin) -->
+        <div class="btn-admin-panel-header" id="btnAdminPanel" onclick="openAdminPanel()" title="Panel de Control">
+          ⚙️
+        </div>
+        
         <!-- Icono Admin (esquina superior derecha) -->
         <div class="admin-icon" id="adminIcon" onclick="toggleAdminLogin()">
           🔐
@@ -9282,13 +9302,10 @@ app.get('/library', async (req, res) => {
             
             <!-- Dropdown Servidores (solo visible en modo admin) -->
             <div class="server-selector" id="serverSelector">
-              <div class="server-dropdown-container">
-                <label class="server-selector-label">🌐 SERVIDOR ACTIVO</label>
-                <select id="serverDropdown" onchange="switchServer()">
-                  <option value="">Cargando servidores...</option>
-                </select>
-              </div>
-              <button class="btn-admin-panel" onclick="openAdminPanel()" title="Panel de Control">⚙️</button>
+              <label class="server-selector-label">🌐 SERVIDOR ACTIVO</label>
+              <select id="serverDropdown" onchange="switchServer()">
+                <option value="">Cargando servidores...</option>
+              </select>
             </div>
           </div>
           
@@ -9382,6 +9399,7 @@ app.get('/library', async (req, res) => {
           async function activateAdminMode() {
             isAdminMode = true;
             document.getElementById('adminIcon').classList.add('active');
+            document.getElementById('btnAdminPanel').classList.add('active');
             document.getElementById('serverSelector').classList.add('active');
             
             // Cargar lista de servidores
@@ -9447,6 +9465,7 @@ app.get('/library', async (req, res) => {
             sessionStorage.removeItem('adminMode');
             sessionStorage.removeItem('adminPassword');
             document.getElementById('adminIcon').classList.remove('active');
+            document.getElementById('btnAdminPanel').classList.remove('active');
             document.getElementById('serverSelector').classList.remove('active');
             console.log('🔒 Modo admin desactivado');
           }
