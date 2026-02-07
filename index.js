@@ -9146,6 +9146,14 @@ app.get('/library', async (req, res) => {
             display: flex;
             gap: 0.5rem;
             flex-wrap: wrap;
+            align-items: center;
+          }
+          
+          .filter-label {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
           }
           
           .filter-btn {
@@ -9440,15 +9448,20 @@ app.get('/library', async (req, res) => {
               </div>
               
               <div class="filter-buttons">
-                <button class="filter-btn active" data-type="all" id="filter-all">
+                <div class="filter-label">Tipo:</div>
+                <button class="filter-btn filter-type active" data-type="all" id="filter-all">
                   📦 Todo
                 </button>
-                <button class="filter-btn" data-type="movie" id="filter-movie">
+                <button class="filter-btn filter-type" data-type="movie" id="filter-movie">
                   🎬 Películas
                 </button>
-                <button class="filter-btn" data-type="show" id="filter-show">
+                <button class="filter-btn filter-type" data-type="show" id="filter-show">
                   📺 Series
                 </button>
+              </div>
+              
+              <div class="filter-buttons" id="serverFiltersContainer" style="display: none; margin-top: 0.5rem;">
+                <!-- Filtros de servidores se agregan dinámicamente -->
               </div>
             </div>
             
@@ -9547,9 +9560,13 @@ app.get('/library', async (req, res) => {
           });
           
           // Global search functions
+          let currentSearchType = 'all';
+          let currentServerFilter = 'all';
+          let availableServers = [];
+          
           function setSearchType(type) {
             currentSearchType = type;
-            document.querySelectorAll('.filter-btn').forEach(btn => {
+            document.querySelectorAll('.filter-type').forEach(btn => {
               btn.classList.toggle('active', btn.dataset.type === type);
             });
             // Re-ejecutar búsqueda si hay texto
@@ -9605,38 +9622,89 @@ app.get('/library', async (req, res) => {
                 return;
               }
               
+              // Extraer servidores únicos y crear filtros
+              const serversSet = new Set();
+              data.results.forEach(item => {
+                item.servers.forEach(server => {
+                  serversSet.add(server.serverName);
+                });
+              });
+              availableServers = Array.from(serversSet).sort();
+              
+              // Actualizar filtros de servidores
+              const serverFiltersContainer = document.getElementById('serverFiltersContainer');
+              if (availableServers.length > 1) {
+                serverFiltersContainer.style.display = 'flex';
+                serverFiltersContainer.innerHTML = '<div class="filter-label">Servidores:</div>' +
+                  '<button class="filter-btn filter-server active" data-server="all">🌐 Todos</button>' +
+                  availableServers.map(server => 
+                    '<button class="filter-btn filter-server" data-server="' + server + '">🖥️ ' + server + '</button>'
+                  ).join('');
+                
+                // Event listeners para filtros de servidor
+                document.querySelectorAll('.filter-server').forEach(btn => {
+                  btn.addEventListener('click', function() {
+                    document.querySelectorAll('.filter-server').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentServerFilter = this.dataset.server;
+                    renderFilteredResults(data.results);
+                  });
+                });
+              } else {
+                serverFiltersContainer.style.display = 'none';
+              }
+              
+              currentServerFilter = 'all';
+              window.searchResultsData = data.results;
+              renderFilteredResults(data.results);
+              
               status.textContent = '✓ Encontrados ' + data.results.length + ' resultados en ' + data.totalServers + ' servidores';
               console.log('[SEARCH] Renderizando', data.results.length, 'resultados');
               
-              // Render results
-              results.innerHTML = data.results.map((item, index) => {
-                const badge = item.servers.length > 1 ? '<div class="result-servers-badge">+' + item.servers.length + '</div>' : '';
-                const poster = item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster';
-                const year = item.year || 'Año desconocido';
-                const typeText = item.type === 'movie' ? 'Película' : 'Serie';
-                const titleSafe = item.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                
-                return '<div class="result-card" data-item-index="' + index + '">' +
-                  badge +
-                  '<img class="result-poster" src="' + poster + '" alt="' + titleSafe + '" onerror="this.src=&quot;https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster&quot;"/>' +
-                  '<div class="result-info">' +
-                    '<div class="result-title">' + item.title + '</div>' +
-                    '<div class="result-year">' + year + ' • ' + typeText + '</div>' +
-                  '</div>' +
-                '</div>';
-              }).join('');
+          }
+          
+          function renderFilteredResults(allResults) {
+            const results = document.getElementById('searchResults');
+            
+            // Filtrar por servidor si no es "all"
+            let filteredResults = allResults;
+            if (currentServerFilter !== 'all') {
+              filteredResults = allResults.filter(item => 
+                item.servers.some(server => server.serverName === currentServerFilter)
+              );
+            }
+            
+            if (filteredResults.length === 0) {
+              results.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 2rem;">No se encontraron resultados con estos filtros</div>';
+              return;
+            }
+            
+            // Render results
+            results.innerHTML = filteredResults.map((item, index) => {
+              const badge = item.servers.length > 1 ? '<div class="result-servers-badge">+' + item.servers.length + '</div>' : '';
+              const poster = item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster';
+              const year = item.year || 'Año desconocido';
+              const typeText = item.type === 'movie' ? 'Película' : 'Serie';
+              const titleSafe = item.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
               
-              // Guardar los resultados para el event delegation
-              window.searchResultsData = data.results;
-              
-              // Agregar event listeners a las cards
-              document.querySelectorAll('.result-card').forEach(card => {
-                card.addEventListener('click', function() {
-                  const index = parseInt(this.dataset.itemIndex);
-                  const item = window.searchResultsData[index];
-                  openServerModal(item);
-                });
+              return '<div class="result-card" data-item-index="' + allResults.indexOf(item) + '">' +
+                badge +
+                '<img class="result-poster" src="' + poster + '" alt="' + titleSafe + '" onerror="this.src=&quot;https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster&quot;"/>' +
+                '<div class="result-info">' +
+                  '<div class="result-title">' + item.title + '</div>' +
+                  '<div class="result-year">' + year + ' • ' + typeText + '</div>' +
+                '</div>' +
+              '</div>';
+            }).join('');
+            
+            // Agregar event listeners a las cards
+            document.querySelectorAll('.result-card').forEach(card => {
+              card.addEventListener('click', function() {
+                const index = parseInt(this.dataset.itemIndex);
+                const item = window.searchResultsData[index];
+                openServerModal(item);
               });
+            });
               
             } catch (error) {
               console.error('Error en búsqueda:', error);
@@ -9649,11 +9717,29 @@ app.get('/library', async (req, res) => {
             const title = document.getElementById('serverModalTitle');
             const options = document.getElementById('serverOptions');
             
-            title.textContent = \`Seleccionar Servidor para "\${item.title}"\`;
+            // Filtrar servidores si hay filtro activo
+            let serversToShow = item.servers;
+            if (currentServerFilter !== 'all') {
+              serversToShow = item.servers.filter(server => server.serverName === currentServerFilter);
+            }
+            
+            // Crear encabezado con poster, título y año (estilo Plex)
+            const poster = item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster';
+            const year = item.year || '';
+            const titleSafe = item.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            
+            title.innerHTML = '<div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem 0;">' +
+              '<img src="' + poster + '" alt="' + titleSafe + '" style="width: 100px; height: 150px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);" onerror="this.src=\\'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster\\'\" />' +
+              '<div>' +
+                '<div style="font-size: 1.5rem; font-weight: 600; color: #fff; margin-bottom: 0.5rem;">' + item.title + '</div>' +
+                '<div style="font-size: 1rem; color: #9ca3af;">' + (year ? year + ' • ' : '') + (item.type === 'movie' ? 'Película' : 'Serie') + '</div>' +
+                '<div style="font-size: 0.875rem; color: #6b7280; margin-top: 0.5rem;">Selecciona un servidor:</div>' +
+              '</div>' +
+            '</div>';
             
             // Si solo hay un servidor, redirigir directamente
-            if (item.servers.length === 1) {
-              redirectToContent(item, item.servers[0]);
+            if (serversToShow.length === 1) {
+              redirectToContent(item, serversToShow[0]);
               return;
             }
             
@@ -9663,7 +9749,7 @@ app.get('/library', async (req, res) => {
             
             try {
               // Obtener info de calidad para cada servidor
-              const serverDetails = await Promise.all(item.servers.map(async server => {
+              const serverDetails = await Promise.all(serversToShow.map(async server => {
                 try {
                   const mediaUrl = server.baseURI + '/library/metadata/' + server.ratingKey + '?X-Plex-Token=' + server.accessToken;
                   const response = await fetch('/library?action=get-media-info&mediaUrl=' + encodeURIComponent(mediaUrl));
