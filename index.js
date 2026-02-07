@@ -8434,10 +8434,6 @@ app.get('/library', async (req, res) => {
                   }]
                 });
               }
-                    libraryType: sectionType
-                  }]
-                });
-              }
             }
             
             break; // Si un token funciona, no probar más tokens de este servidor
