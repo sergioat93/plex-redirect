@@ -8312,6 +8312,16 @@ app.get('/library', async (req, res) => {
           .replace(/[^a-z0-9\s]/g, '');
       };
       
+      // Decodificar entidades HTML
+      const decodeHtmlEntities = (text) => {
+        return text
+          .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>');
+      };
+      
       const searchNormalized = normalizeText(query);
       console.log('[GLOBAL-SEARCH] Búsqueda normalizada:', searchNormalized);
       
@@ -8340,7 +8350,7 @@ app.get('/library', async (req, res) => {
               if (!keyMatch || !titleMatch || !typeMatch) continue;
               
               const sectionKey = keyMatch[1];
-              const sectionTitle = titleMatch[1];
+              const sectionTitle = decodeHtmlEntities(titleMatch[1]);
               const sectionType = typeMatch[1];
               
               // Filtrar por tipo si se especifica
@@ -8369,7 +8379,7 @@ app.get('/library', async (req, res) => {
                 
                 if (!titleMatch || !ratingKeyMatch) continue;
                 
-                const title = titleMatch[1];
+                const title = decodeHtmlEntities(titleMatch[1]);
                 const titleNormalized = normalizeText(title);
                 
                 // Verificar si coincide con la búsqueda
