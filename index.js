@@ -8365,7 +8365,7 @@ app.get('/library', async (req, res) => {
               
               console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
-              // Optimización: buscar directamente en el XML sin parsear todo
+              // Buscar igual que /browse: capturar todos los tags y filtrar con normalización
               const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
               const contentXml = await httpsGetXML(contentUrl);
               
@@ -8374,19 +8374,24 @@ app.get('/library', async (req, res) => {
               let matchCount = 0;
               const maxResults = 50;
               
-              // Estrategia eficiente: buscar tags que contengan title con el término buscado
-              const tagRegex = new RegExp(`<${tagType}[^>]*title="([^"]*${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*)"[^>]*>`, 'gi');
+              // Capturar todos los tags del tipo correcto
+              const tagRegex = new RegExp(`<${tagType}[^>]*>`, 'g');
               
               let match;
               while ((match = tagRegex.exec(contentXml)) !== null && matchCount < maxResults && results.length < maxTotalResults) {
                 const fullTag = match[0];
-                const title = decodeHtmlEntities(match[1]);
                 
-                // Verificar con normalización (para acentos, etc)
+                // Extraer título primero
+                const titleMatch = fullTag.match(/title="([^"]*)"/);
+                if (!titleMatch) continue;
+                
+                const title = decodeHtmlEntities(titleMatch[1]);
                 const titleNormalized = normalizeText(title);
+                
+                // Verificar si coincide con la búsqueda (IGUAL que /browse)
                 if (!titleNormalized.includes(searchNormalized)) continue;
                 
-                // Ahora sí, extraer el resto de atributos de este tag específico
+                // Match encontrado, extraer el resto de atributos
                 const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
                 const yearMatch = fullTag.match(/year="([^"]*)"/);
                 const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
