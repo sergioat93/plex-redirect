@@ -8365,21 +8365,22 @@ app.get('/library', async (req, res) => {
               
               console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
-              // Buscar en la biblioteca (limitar a primeros 2000 caracteres para evitar heap overflow)
-              const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
-              const contentXml = await httpsGetXML(contentUrl);
+              // Usar endpoint de búsqueda nativo de Plex (mucho más rápido)
+              const searchUrl = `${server.baseURI}/library/sections/${sectionKey}/search?query=${encodeURIComponent(query)}&X-Plex-Token=${token.accessToken}`;
+              const searchXml = await httpsGetXML(searchUrl);
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
               const itemRegex = new RegExp(`<${tagType}[^>]*>`, 'g');
-              const itemTags = contentXml.match(itemRegex) || [];
-              console.log('[GLOBAL-SEARCH] Items en biblioteca:', itemTags.length);
+              const itemTags = searchXml.match(itemRegex) || [];
+              console.log('[GLOBAL-SEARCH] Resultados encontrados:', itemTags.length);
               
               let matchCount = 0;
               const maxResults = 50; // Limitar a 50 resultados por biblioteca
               
               for (const itemTag of itemTags) {
-                // Limitar resultados para evitar heap overflow
+                // Limitar resultados para evitar problemas
                 if (matchCount >= maxResults) break;
+                if (results.length >= maxTotalResults) break;
                 
                 const titleMatch = itemTag.match(/title="([^"]*)"/);
                 const yearMatch = itemTag.match(/year="([^"]*)"/);
@@ -8390,11 +8391,6 @@ app.get('/library', async (req, res) => {
                 if (!titleMatch || !ratingKeyMatch) continue;
                 
                 const title = decodeHtmlEntities(titleMatch[1]);
-                const titleNormalized = normalizeText(title);
-                
-                // Verificar si coincide con la búsqueda
-                if (!titleNormalized.includes(searchNormalized)) continue;
-                
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
                 
