@@ -8447,10 +8447,19 @@ app.get('/library', async (req, res) => {
                 const endTagMatch = remainingXml.match(new RegExp(`</${tagType}>`));
                 const itemContent = endTagMatch ? remainingXml.substring(0, endTagMatch.index) : remainingXml.substring(0, 2000);
                 
-                // Buscar tag Media para obtener resolución
-                const mediaMatch = itemContent.match(/<Media[^>]*videoResolution="([^"]*)"[^>]*audioCodec="([^"]*)"/);
-                const resolution = mediaMatch ? mediaMatch[1] : 'SD';
-                const audioCodec = mediaMatch ? mediaMatch[2] : 'Unknown';
+                // Buscar tag Media y extraer atributos por separado
+                const mediaTagMatch = itemContent.match(/<Media[^>]*>/);
+                let resolution = 'SD';
+                let audioCodec = 'unknown';
+                
+                if (mediaTagMatch) {
+                  const mediaTag = mediaTagMatch[0];
+                  const resMatch = mediaTag.match(/videoResolution="([^"]*)"/);
+                  const audioMatch = mediaTag.match(/audioCodec="([^"]*)"/);
+                  
+                  if (resMatch) resolution = resMatch[1];
+                  if (audioMatch) audioCodec = audioMatch[1];
+                }
                 
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
@@ -9513,9 +9522,18 @@ app.get('/library', async (req, res) => {
                   </div>
                   <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <span style="color: #9ca3af; font-size: 0.875rem;">Buscar en:</span>
-                    <select id="preSearchServersSelect" multiple style="min-width: 250px; max-width: 400px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                      <option value="all" selected>🌐 Todos los Servidores</option>
-                    </select>
+                    <div class="custom-dropdown" id="preSearchServersDropdown" style="position: relative; min-width: 250px;">
+                      <div class="dropdown-selected" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="preSearchServersLabel">🌐 Todos los Servidores</span>
+                        <span style="margin-left: 0.5rem;">▼</span>
+                      </div>
+                      <div class="dropdown-options" id="preSearchServersOptions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                        <label style="display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(229,160,13,0.1)'" onmouseout="this.style.background='transparent'">
+                          <input type="checkbox" value="all" checked style="margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;">
+                          <span style="color: #f3f4f6; font-size: 0.875rem;">🌐 Todos los Servidores</span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -9523,17 +9541,35 @@ app.get('/library', async (req, res) => {
               <!-- Filtros POST-búsqueda -->
               <div id="postSearchFilters" style="display: none; background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                 <div style="color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">🔍 Filtrar Resultados</div>
-                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                  <select id="serverFilter" multiple style="min-width: 200px; max-width: 350px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all" selected>🖥️ Todos los Servidores</option>
-                  </select>
-                  <select id="qualityFilter" multiple style="min-width: 150px; max-width: 300px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all" selected>📺 Todas las Calidades</option>
-                  </select>
-                  <select id="languageFilter" multiple style="min-width: 150px; max-width: 300px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all" selected>🌍 Todos los Idiomas</option>
-                  </select>
-                  <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar Filtros</button>
+                <div style="display: flex; gap: 0.75rem; align-items: flex-start; flex-wrap: wrap;">
+                  <!-- Dropdown Servidores -->
+                  <div class="custom-dropdown" style="position: relative; min-width: 200px;">
+                    <div class="dropdown-selected" onclick="toggleDropdown('serverFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                      <span id="serverFilterLabel">🖥️ Todos los Servidores</span>
+                      <span style="margin-left: 0.5rem;">▼</span>
+                    </div>
+                    <div class="dropdown-options" id="serverFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+                  </div>
+                  
+                  <!-- Dropdown Calidad -->
+                  <div class="custom-dropdown" style="position: relative; min-width: 180px;">
+                    <div class="dropdown-selected" onclick="toggleDropdown('qualityFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                      <span id="qualityFilterLabel">📺 Todas las Calidades</span>
+                      <span style="margin-left: 0.5rem;">▼</span>
+                    </div>
+                    <div class="dropdown-options" id="qualityFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+                  </div>
+                  
+                  <!-- Dropdown Audio -->
+                  <div class="custom-dropdown" style="position: relative; min-width: 180px;">
+                    <div class="dropdown-selected" onclick="toggleDropdown('audioFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                      <span id="audioFilterLabel">🔊 Todos los Audios</span>
+                      <span style="margin-left: 0.5rem;">▼</span>
+                    </div>
+                    <div class="dropdown-options" id="audioFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+                  </div>
+                  
+                  <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar</button>
                 </div>
               </div>
             </div>
@@ -9633,12 +9669,182 @@ app.get('/library', async (req, res) => {
             if (filterMovie) filterMovie.addEventListener('click', () => setSearchType('movie'));
             if (filterShow) filterShow.addEventListener('click', () => setSearchType('show'));
             
+            // Event listener para cerrar dropdowns al hacer click fuera
+            document.addEventListener('click', function(e) {
+              if (!e.target.closest('.custom-dropdown')) {
+                document.querySelectorAll('.dropdown-options').forEach(dropdown => {
+                  dropdown.style.display = 'none';
+                });
+              }
+            });
+            
             // Cargar servidores para filtros pre-búsqueda
             loadPreSearchServers();
             
             // Cargar datos del panel
             loadData();
           });
+          
+          // Función para toggle dropdowns
+          function toggleDropdown(dropdownId) {
+            const dropdown = document.getElementById(dropdownId);
+            if (!dropdown) return;
+            
+            // Cerrar otros dropdowns
+            document.querySelectorAll('.dropdown-options').forEach(d => {
+              if (d.id !== dropdownId) d.style.display = 'none';
+            });
+            
+            // Toggle este dropdown
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+          }
+          
+          // Función para poblar dropdown personalizado
+          function populateCustomDropdown(dropdownId, labelId, items, icon, typeName, changeHandler) {
+            const dropdown = document.getElementById(dropdownId);
+            const label = document.getElementById(labelId);
+            
+            if (!dropdown || !label || items.length === 0) return;
+            
+            dropdown.innerHTML = '';
+            
+            // Opción "Todos"
+            const allLabel = document.createElement('label');
+            allLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+            allLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+            allLabel.onmouseout = function() { this.style.background = 'transparent'; };
+            
+            const allCheckbox = document.createElement('input');
+            allCheckbox.type = 'checkbox';
+            allCheckbox.value = 'all';
+            allCheckbox.checked = true;
+            allCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+            allCheckbox.onchange = changeHandler;
+            
+            const allText = document.createElement('span');
+            allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+            allText.textContent = icon + ' Todos los ' + typeName;
+            
+            allLabel.appendChild(allCheckbox);
+            allLabel.appendChild(allText);
+            dropdown.appendChild(allLabel);
+            
+            // Opciones individuales
+            items.forEach(item => {
+              const itemLabel = document.createElement('label');
+              itemLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+              itemLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+              itemLabel.onmouseout = function() { this.style.background = 'transparent'; };
+              
+              const itemCheckbox = document.createElement('input');
+              itemCheckbox.type = 'checkbox';
+              itemCheckbox.value = item;
+              itemCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+              itemCheckbox.onchange = changeHandler;
+              
+              const itemText = document.createElement('span');
+              itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+              itemText.textContent = icon + ' ' + item.toUpperCase();
+              
+              itemLabel.appendChild(itemCheckbox);
+              itemLabel.appendChild(itemText);
+              dropdown.appendChild(itemLabel);
+            });
+          }
+          
+          // Función para limpiar dropdown
+          function clearDropdown(dropdownId, labelId, defaultText) {
+            const dropdown = document.getElementById(dropdownId);
+            const label = document.getElementById(labelId);
+            
+            if (!dropdown || !label) return;
+            
+            const allCheckbox = dropdown.querySelector('input[value="all"]');
+            const otherCheckboxes = dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])');
+            
+            if (allCheckbox) allCheckbox.checked = true;
+            otherCheckboxes.forEach(cb => cb.checked = false);
+            label.textContent = defaultText;
+          }
+          
+          // Handlers para filtros POST-búsqueda
+          function handleServerFilterChange() {
+            const dropdown = document.getElementById('serverFilterDropdown');
+            const label = document.getElementById('serverFilterLabel');
+            const allCheckbox = dropdown.querySelector('input[value="all"]');
+            const serverCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
+            
+            if (allCheckbox.checked) {
+              serverCheckboxes.forEach(cb => cb.checked = false);
+              currentServerFilter = [];
+              label.textContent = '🖥️ Todos los Servidores';
+            } else {
+              const selected = serverCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+              
+              if (selected.length === 0) {
+                allCheckbox.checked = true;
+                currentServerFilter = [];
+                label.textContent = '🖥️ Todos los Servidores';
+              } else {
+                currentServerFilter = selected;
+                label.textContent = selected.length === 1 ? '🖥️ ' + selected[0] : '🖥️ ' + selected.length + ' servidores';
+              }
+            }
+            
+            renderFilteredResults(window.searchResultsData);
+          }
+          
+          function handleQualityFilterChange() {
+            const dropdown = document.getElementById('qualityFilterDropdown');
+            const label = document.getElementById('qualityFilterLabel');
+            const allCheckbox = dropdown.querySelector('input[value="all"]');
+            const qualityCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
+            
+            if (allCheckbox.checked) {
+              qualityCheckboxes.forEach(cb => cb.checked = false);
+              currentQualityFilter = [];
+              label.textContent = '📺 Todas las Calidades';
+            } else {
+              const selected = qualityCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+              
+              if (selected.length === 0) {
+                allCheckbox.checked = true;
+                currentQualityFilter = [];
+                label.textContent = '📺 Todas las Calidades';
+              } else {
+                currentQualityFilter = selected;
+                label.textContent = selected.length === 1 ? '📺 ' + selected[0].toUpperCase() : '📺 ' + selected.length + ' calidades';
+              }
+            }
+            
+            renderFilteredResults(window.searchResultsData);
+          }
+          
+          function handleAudioFilterChange() {
+            const dropdown = document.getElementById('audioFilterDropdown');
+            const label = document.getElementById('audioFilterLabel');
+            const allCheckbox = dropdown.querySelector('input[value="all"]');
+            const audioCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
+            
+            if (allCheckbox.checked) {
+              audioCheckboxes.forEach(cb => cb.checked = false);
+              currentLanguageFilter = [];
+              label.textContent = '🔊 Todos los Audios';
+            } else {
+              const selected = audioCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+              
+              if (selected.length === 0) {
+                allCheckbox.checked = true;
+                currentLanguageFilter = [];
+                label.textContent = '🔊 Todos los Audios';
+              } else {
+                currentLanguageFilter = selected;
+                label.textContent = selected.length === 1 ? '🔊 ' + selected[0].toUpperCase() : '🔊 ' + selected.length + ' audios';
+              }
+            }
+            
+            renderFilteredResults(window.searchResultsData);
+          }
           
           // Cargar lista de servidores disponibles para filtros pre-búsqueda
           async function loadPreSearchServers() {
@@ -9647,51 +9853,79 @@ app.get('/library', async (req, res) => {
               const data = await response.json();
               
               if (data.servers && data.servers.length > 0) {
-                const select = document.getElementById('preSearchServersSelect');
+                const dropdown = document.getElementById('preSearchServersDropdown');
+                const optionsContainer = document.getElementById('preSearchServersOptions');
+                const label = document.getElementById('preSearchServersLabel');
+                
+                if (!dropdown || !optionsContainer || !label) return;
+                
+                // Agregar servidores al dropdown
                 data.servers.forEach(server => {
-                  const option = document.createElement('option');
-                  option.value = server.serverName;
-                  option.textContent = '🖥️ ' + server.serverName;
-                  select.appendChild(option);
+                  const checkboxLabel = document.createElement('label');
+                  checkboxLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+                  checkboxLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+                  checkboxLabel.onmouseout = function() { this.style.background = 'transparent'; };
+                  
+                  const checkbox = document.createElement('input');
+                  checkbox.type = 'checkbox';
+                  checkbox.value = server.serverName;
+                  checkbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+                  checkbox.onchange = handlePreSearchServerChange;
+                  
+                  const text = document.createElement('span');
+                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+                  text.textContent = '🖥️ ' + server.serverName;
+                  
+                  checkboxLabel.appendChild(checkbox);
+                  checkboxLabel.appendChild(text);
+                  optionsContainer.appendChild(checkboxLabel);
                 });
                 
-                // Event listener para multi-select
-                select.addEventListener('change', function() {
-                  const selectedOptions = Array.from(this.selectedOptions);
-                  const hasAll = selectedOptions.some(opt => opt.value === 'all');
-                  
-                  // Si se seleccionó "Todos", limpiar todo lo demás
-                  if (hasAll) {
-                    preSearchServers = [];
-                    Array.from(this.options).forEach(opt => {
-                      opt.selected = opt.value === 'all';
-                    });
-                  } 
-                  // Si no hay nada seleccionado, forzar "Todos"
-                  else if (selectedOptions.length === 0) {
-                    preSearchServers = [];
-                    Array.from(this.options).forEach(opt => {
-                      opt.selected = opt.value === 'all';
-                    });
-                  }
-                  // Si hay servidores específicos seleccionados
-                  else {
-                    preSearchServers = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
-                    // Deseleccionar "Todos"
-                    Array.from(this.options).forEach(opt => {
-                      if (opt.value === 'all') opt.selected = false;
-                    });
-                  }
-                  
-                  // Re-ejecutar búsqueda si hay texto
-                  const searchInput = document.getElementById('searchInput');
-                  if (searchInput && searchInput.value.trim().length >= 3) {
-                    performSearch();
-                  }
-                });
+                // Toggle dropdown al hacer click
+                dropdown.querySelector('.dropdown-selected').onclick = function(e) {
+                  e.stopPropagation();
+                  toggleDropdown('preSearchServersOptions');
+                };
+                
+                // Checkbox "Todos"
+                const allCheckbox = optionsContainer.querySelector('input[value="all"]');
+                if (allCheckbox) {
+                  allCheckbox.onchange = handlePreSearchServerChange;
+                }
               }
             } catch (error) {
               console.error('Error cargando servidores:', error);
+            }
+          }
+          
+          function handlePreSearchServerChange() {
+            const optionsContainer = document.getElementById('preSearchServersOptions');
+            const label = document.getElementById('preSearchServersLabel');
+            const allCheckbox = optionsContainer.querySelector('input[value="all"]');
+            const serverCheckboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
+            
+            // Si se marcó "Todos"
+            if (allCheckbox.checked) {
+              serverCheckboxes.forEach(cb => cb.checked = false);
+              preSearchServers = [];
+              label.textContent = '🌐 Todos los Servidores';
+            } else {
+              const selected = serverCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+              
+              if (selected.length === 0) {
+                allCheckbox.checked = true;
+                preSearchServers = [];
+                label.textContent = '🌐 Todos los Servidores';
+              } else {
+                preSearchServers = selected;
+                label.textContent = selected.length === 1 ? '🖥️ ' + selected[0] : '🖥️ ' + selected.length + ' servidores';
+              }
+            }
+            
+            // Re-ejecutar búsqueda si hay texto
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput && searchInput.value.trim().length >= 3) {
+              performSearch();
             }
           }
           
@@ -9786,100 +10020,25 @@ app.get('/library', async (req, res) => {
               console.log('[SEARCH] Calidades únicas:', availableQualities);
               console.log('[SEARCH] Audios únicos:', availableAudio);
               
-              // Actualizar filtros POST-búsqueda
-              const postSearchFilters = document.getElementById('postSearchFilters');
-              const serverFilter = document.getElementById('serverFilter');
-              const qualityFilter = document.getElementById('qualityFilter');
-              const languageFilter = document.getElementById('languageFilter');
-              
-              // Servidor filter
-              serverFilter.innerHTML = '<option value="all" selected>🖥️ Todos los Servidores (' + availableServers.length + ')</option>' +
-                availableServers.map(s => '<option value="' + s + '">🖥️ ' + s + '</option>').join('');
-              
-              // Calidad filter
-              if (availableQualities.length > 0) {
-                qualityFilter.innerHTML = '<option value="all" selected>📺 Todas las Calidades</option>' +
-                  availableQualities.map(q => '<option value="' + q + '">📺 ' + q.toUpperCase() + '</option>').join('');
-                qualityFilter.style.display = 'block';
-              } else {
-                qualityFilter.style.display = 'none';
-              }
-              
-              // Audio filter
-              if (availableAudio.length > 0) {
-                languageFilter.innerHTML = '<option value="all" selected>🔊 Todos los Audios</option>' +
-                  availableAudio.map(a => '<option value="' + a + '">🔊 ' + a.toUpperCase() + '</option>').join('');
-                languageFilter.style.display = 'block';
-              } else {
-                languageFilter.style.display = 'none';
-              }
+              // Poblar dropdowns personalizados POST-búsqueda
+              populateCustomDropdown('serverFilterDropdown', 'serverFilterLabel', availableServers, '🖥️', 'Servidores', handleServerFilterChange);
+              populateCustomDropdown('qualityFilterDropdown', 'qualityFilterLabel', availableQualities, '📺', 'Calidades', handleQualityFilterChange);
+              populateCustomDropdown('audioFilterDropdown', 'audioFilterLabel', availableAudio, '🔊', 'Audios', handleAudioFilterChange);
               
               // Mostrar filtros
-              postSearchFilters.style.display = 'block';
-              
-              // Event listeners para filtros POST-BÚSQUEDA con multi-select
-              serverFilter.onchange = function() {
-                const selectedOptions = Array.from(this.selectedOptions);
-                const hasAll = selectedOptions.some(opt => opt.value === 'all');
-                
-                if (hasAll || selectedOptions.length === 0) {
-                  currentServerFilter = [];
-                  Array.from(this.options).forEach(opt => {
-                    opt.selected = opt.value === 'all';
-                  });
-                } else {
-                  currentServerFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
-                  Array.from(this.options).forEach(opt => {
-                    if (opt.value === 'all') opt.selected = false;
-                  });
-                }
-                renderFilteredResults(data.results);
-              };
-              
-              qualityFilter.onchange = function() {
-                const selectedOptions = Array.from(this.selectedOptions);
-                const hasAll = selectedOptions.some(opt => opt.value === 'all');
-                
-                if (hasAll || selectedOptions.length === 0) {
-                  currentQualityFilter = [];
-                  Array.from(this.options).forEach(opt => {
-                    opt.selected = opt.value === 'all';
-                  });
-                } else {
-                  currentQualityFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
-                  Array.from(this.options).forEach(opt => {
-                    if (opt.value === 'all') opt.selected = false;
-                  });
-                }
-                renderFilteredResults(data.results);
-              };
-              
-              languageFilter.onchange = function() {
-                const selectedOptions = Array.from(this.selectedOptions);
-                const hasAll = selectedOptions.some(opt => opt.value === 'all');
-                
-                if (hasAll || selectedOptions.length === 0) {
-                  currentLanguageFilter = [];
-                  Array.from(this.options).forEach(opt => {
-                    opt.selected = opt.value === 'all';
-                  });
-                } else {
-                  currentLanguageFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
-                  Array.from(this.options).forEach(opt => {
-                    if (opt.value === 'all') opt.selected = false;
-                  });
-                }
-                renderFilteredResults(data.results);
-              };
+              document.getElementById('postSearchFilters').style.display = 'block';
               
               // Botón limpiar filtros
               document.getElementById('clearFiltersBtn').onclick = () => {
                 currentServerFilter = [];
                 currentQualityFilter = [];
                 currentLanguageFilter = [];
-                Array.from(serverFilter.options).forEach(opt => opt.selected = opt.value === 'all');
-                Array.from(qualityFilter.options).forEach(opt => opt.selected = opt.value === 'all');
-                Array.from(languageFilter.options).forEach(opt => opt.selected = opt.value === 'all');
+                
+                // Limpiar todos los checkboxes
+                clearDropdown('serverFilterDropdown', 'serverFilterLabel', '🖥️ Todos los Servidores');
+                clearDropdown('qualityFilterDropdown', 'qualityFilterLabel', '📺 Todas las Calidades');
+                clearDropdown('audioFilterDropdown', 'audioFilterLabel', '🔊 Todos los Audios');
+                
                 renderFilteredResults(data.results);
               };
               
