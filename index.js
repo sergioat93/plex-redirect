@@ -9661,6 +9661,10 @@ app.get('/library', async (req, res) => {
               status.textContent = '✓ Encontrados ' + data.results.length + ' resultados en ' + data.totalServers + ' servidores';
               console.log('[SEARCH] Renderizando', data.results.length, 'resultados');
               
+            } catch (error) {
+              console.error('Error en búsqueda:', error);
+              status.textContent = '❌ Error de conexión';
+            }
           }
           
           function renderFilteredResults(allResults) {
@@ -9705,11 +9709,6 @@ app.get('/library', async (req, res) => {
                 openServerModal(item);
               });
             });
-              
-            } catch (error) {
-              console.error('Error en búsqueda:', error);
-              status.textContent = '❌ Error de conexión';
-            }
           }
           
           async function openServerModal(item) {
