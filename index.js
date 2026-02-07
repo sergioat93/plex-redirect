@@ -9423,19 +9423,72 @@ app.get('/library', async (req, res) => {
           let currentSearchType = 'all';
           let searchTimeout = null;
           
-          // Tab switching
-          document.querySelectorAll('.admin-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-              const tabName = tab.dataset.tab;
-              
-              // Update active tab
-              document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-              tab.classList.add('active');
-              
-              // Update active pane
-              document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-              document.getElementById('tab-' + tabName).classList.add('active');
+          // Wait for DOM to be ready
+          document.addEventListener('DOMContentLoaded', function() {
+            // Tab switching
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+              tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                
+                // Update active tab
+                document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Update active pane
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                document.getElementById('tab-' + tabName).classList.add('active');
+              });
             });
+            
+            // Event listeners para búsqueda (verificar que existan)
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchInput');
+            const filterAll = document.getElementById('filter-all');
+            const filterMovie = document.getElementById('filter-movie');
+            const filterShow = document.getElementById('filter-show');
+            
+            if (searchBtn) {
+              searchBtn.addEventListener('click', performSearch);
+            }
+            
+            if (searchInput) {
+              searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                  performSearch();
+                }
+              });
+              
+              // Búsqueda en tiempo real mientras escribe
+              searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                
+                // Limpiar timeout anterior
+                if (searchTimeout) {
+                  clearTimeout(searchTimeout);
+                }
+                
+                // Si hay al menos 3 caracteres, buscar después de 500ms de inactividad
+                if (query.length >= 3) {
+                  searchTimeout = setTimeout(() => {
+                    performSearch();
+                  }, 500);
+                } else if (query.length === 0) {
+                  // Limpiar resultados si se borra todo
+                  const status = document.getElementById('searchStatus');
+                  const results = document.getElementById('searchResults');
+                  if (status) status.style.display = 'none';
+                  if (results) results.innerHTML = '';
+                }
+              });
+            }
+            
+            // Event listeners para filtros
+            if (filterAll) filterAll.addEventListener('click', () => setSearchType('all'));
+            if (filterMovie) filterMovie.addEventListener('click', () => setSearchType('movie'));
+            if (filterShow) filterShow.addEventListener('click', () => setSearchType('show'));
+            
+            // Cargar datos del panel
+            loadData();
           });
           
           // Global search functions
@@ -9445,50 +9498,28 @@ app.get('/library', async (req, res) => {
               btn.classList.toggle('active', btn.dataset.type === type);
             });
             // Re-ejecutar búsqueda si hay texto
-            const query = document.getElementById('searchInput').value.trim();
-            if (query.length >= 3) {
-              performSearch();
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+              const query = searchInput.value.trim();
+              if (query.length >= 3) {
+                performSearch();
+              }
             }
           }
           
-          // Event listeners para búsqueda
-          document.getElementById('searchBtn').addEventListener('click', performSearch);
-          document.getElementById('searchInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-              performSearch();
-            }
-          });
-          
-          // Búsqueda en tiempo real mientras escribe
-          document.getElementById('searchInput').addEventListener('input', (e) => {
-            const query = e.target.value.trim();
-            
-            // Limpiar timeout anterior
-            if (searchTimeout) {
-              clearTimeout(searchTimeout);
-            }
-            
-            // Si hay al menos 3 caracteres, buscar después de 500ms de inactividad
-            if (query.length >= 3) {
-              searchTimeout = setTimeout(() => {
-                performSearch();
-              }, 500);
-            } else if (query.length === 0) {
-              // Limpiar resultados si se borra todo
-              document.getElementById('searchStatus').style.display = 'none';
-              document.getElementById('searchResults').innerHTML = '';
-            }
-          });
-          
-          // Event listeners para filtros
-          document.getElementById('filter-all').addEventListener('click', () => setSearchType('all'));
-          document.getElementById('filter-movie').addEventListener('click', () => setSearchType('movie'));
-          document.getElementById('filter-show').addEventListener('click', () => setSearchType('show'));
-          
           async function performSearch() {
-            const query = document.getElementById('searchInput').value.trim();
+            console.log('[SEARCH] performSearch llamada');
+            const searchInput = document.getElementById('searchInput');
             const status = document.getElementById('searchStatus');
             const results = document.getElementById('searchResults');
+            
+            if (!searchInput || !status || !results) {
+              console.error('[SEARCH] Elementos no encontrados:', { searchInput, status, results });
+              return;
+            }
+            
+            const query = searchInput.value.trim();
+            console.log('[SEARCH] Query:', query);
             
             if (!query) {
               status.style.display = 'block';
@@ -9502,11 +9533,15 @@ app.get('/library', async (req, res) => {
             results.innerHTML = '';
             
             try {
-              const response = await fetch('/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType);
+              const url = '/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType;
+              console.log('[SEARCH] Fetching:', url);
+              const response = await fetch(url);
               const data = await response.json();
+              console.log('[SEARCH] Respuesta:', data);
               
               if (data.error) {
                 status.textContent = '❌ Error: ' + data.error;
+                console.error('[SEARCH] Error en respuesta:', data.error);
                 return;
               }
               
@@ -9516,6 +9551,7 @@ app.get('/library', async (req, res) => {
               }
               
               status.textContent = '✓ Encontrados ' + data.results.length + ' resultados en ' + data.totalServers + ' servidores';
+              console.log('[SEARCH] Renderizando', data.results.length, 'resultados');
               
               // Render results
               results.innerHTML = data.results.map((item, index) => {
@@ -9676,14 +9712,9 @@ app.get('/library', async (req, res) => {
             document.getElementById('modalServerSelect').classList.remove('active');
           }
           
-          // Cargar datos al iniciar
-          document.addEventListener('DOMContentLoaded', () => {
-            loadData();
-          });
-          
           async function loadData() {
             const btn = document.getElementById('btnRefresh');
-            btn.classList.add('loading');
+            if (btn) btn.classList.add('loading');
             
             try {
               const response = await fetch('/library?action=get-admin-panel&adminPassword=' + encodeURIComponent(adminPassword));
