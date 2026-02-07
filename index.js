@@ -8324,12 +8324,24 @@ app.get('/library', async (req, res) => {
             const sectionsUrl = `${server.baseURI}/library/sections?X-Plex-Token=${token.accessToken}`;
             const sectionsXml = await httpsGetXML(sectionsUrl);
             
-            const sectionMatches = sectionsXml.matchAll(/<Directory[^>]*key="([^"]*)"[^>]*title="([^"]*)"[^>]*type="([^"]*)"[^>]*>/g);
-            const sectionsArray = Array.from(sectionMatches);
-            console.log('[GLOBAL-SEARCH] Bibliotecas encontradas:', sectionsArray.length);
+            console.log('[GLOBAL-SEARCH] XML de secciones (primeros 500 chars):', sectionsXml.substring(0, 500));
             
-            for (const sectionMatch of sectionsArray) {
-              const [, sectionKey, sectionTitle, sectionType] = sectionMatch;
+            // Parsear secciones de forma más flexible (atributos en cualquier orden)
+            const sectionRegex = /<Directory[^>]*>/g;
+            const sectionTags = sectionsXml.match(sectionRegex) || [];
+            
+            console.log('[GLOBAL-SEARCH] Tags Directory encontrados:', sectionTags.length);
+            
+            for (const sectionTag of sectionTags) {
+              const keyMatch = sectionTag.match(/key="([^"]*)"/);
+              const titleMatch = sectionTag.match(/title="([^"]*)"/);
+              const typeMatch = sectionTag.match(/type="([^"]*)"/);
+              
+              if (!keyMatch || !titleMatch || !typeMatch) continue;
+              
+              const sectionKey = keyMatch[1];
+              const sectionTitle = titleMatch[1];
+              const sectionType = typeMatch[1];
               
               // Filtrar por tipo si se especifica
               if (type !== 'all' && type !== sectionType) continue;
