@@ -9513,8 +9513,8 @@ app.get('/library', async (req, res) => {
                   </div>
                   <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <span style="color: #9ca3af; font-size: 0.875rem;">Buscar en:</span>
-                    <select id="preSearchServersSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                      <option value="all">🌐 Todos los Servidores</option>
+                    <select id="preSearchServersSelect" multiple style="min-width: 250px; max-width: 400px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                      <option value="all" selected>🌐 Todos los Servidores</option>
                     </select>
                   </div>
                 </div>
@@ -9524,14 +9524,14 @@ app.get('/library', async (req, res) => {
               <div id="postSearchFilters" style="display: none; background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                 <div style="color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">🔍 Filtrar Resultados</div>
                 <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                  <select id="serverFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all">🖥️ Todos los Servidores</option>
+                  <select id="serverFilter" multiple style="min-width: 200px; max-width: 350px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all" selected>🖥️ Todos los Servidores</option>
                   </select>
-                  <select id="qualityFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all">📺 Todas las Calidades</option>
+                  <select id="qualityFilter" multiple style="min-width: 150px; max-width: 300px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all" selected>📺 Todas las Calidades</option>
                   </select>
-                  <select id="languageFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
-                    <option value="all">🌍 Todos los Idiomas</option>
+                  <select id="languageFilter" multiple style="min-width: 150px; max-width: 300px; height: 120px; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all" selected>🌍 Todos los Idiomas</option>
                   </select>
                   <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar Filtros</button>
                 </div>
@@ -9562,9 +9562,9 @@ app.get('/library', async (req, res) => {
         <script>
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
-          let currentServerFilter = 'all';
-          let currentQualityFilter = 'all';
-          let currentLanguageFilter = 'all';
+          let currentServerFilter = []; // Array para multi-select
+          let currentQualityFilter = []; // Array para multi-select
+          let currentLanguageFilter = []; // Array para multi-select
           let preSearchServers = []; // Servidores seleccionados ANTES de buscar
           let availableServers = [];
           let searchTimeout = null;
@@ -9655,13 +9655,32 @@ app.get('/library', async (req, res) => {
                   select.appendChild(option);
                 });
                 
-                // Event listener
+                // Event listener para multi-select
                 select.addEventListener('change', function() {
-                  const selectedServer = this.value;
-                  if (selectedServer === 'all') {
+                  const selectedOptions = Array.from(this.selectedOptions);
+                  const hasAll = selectedOptions.some(opt => opt.value === 'all');
+                  
+                  // Si se seleccionó "Todos", limpiar todo lo demás
+                  if (hasAll) {
                     preSearchServers = [];
-                  } else {
-                    preSearchServers = [selectedServer];
+                    Array.from(this.options).forEach(opt => {
+                      opt.selected = opt.value === 'all';
+                    });
+                  } 
+                  // Si no hay nada seleccionado, forzar "Todos"
+                  else if (selectedOptions.length === 0) {
+                    preSearchServers = [];
+                    Array.from(this.options).forEach(opt => {
+                      opt.selected = opt.value === 'all';
+                    });
+                  }
+                  // Si hay servidores específicos seleccionados
+                  else {
+                    preSearchServers = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
+                    // Deseleccionar "Todos"
+                    Array.from(this.options).forEach(opt => {
+                      if (opt.value === 'all') opt.selected = false;
+                    });
                   }
                   
                   // Re-ejecutar búsqueda si hay texto
@@ -9747,6 +9766,7 @@ app.get('/library', async (req, res) => {
               const qualitiesSet = new Set();
               const audioSet = new Set();
               
+              // IMPORTANTE: Extraer de TODOS los servidores de TODOS los resultados
               data.results.forEach(item => {
                 item.servers.forEach(server => {
                   serversSet.add(server.serverName);
@@ -9762,6 +9782,10 @@ app.get('/library', async (req, res) => {
               });
               const availableAudio = Array.from(audioSet).sort();
               
+              console.log('[SEARCH] Servidores únicos:', availableServers);
+              console.log('[SEARCH] Calidades únicas:', availableQualities);
+              console.log('[SEARCH] Audios únicos:', availableAudio);
+              
               // Actualizar filtros POST-búsqueda
               const postSearchFilters = document.getElementById('postSearchFilters');
               const serverFilter = document.getElementById('serverFilter');
@@ -9769,22 +9793,22 @@ app.get('/library', async (req, res) => {
               const languageFilter = document.getElementById('languageFilter');
               
               // Servidor filter
-              serverFilter.innerHTML = '<option value="all">🖥️ Todos los Servidores (' + availableServers.length + ')</option>' +
-                availableServers.map(s => '<option value="' + s + '">' + s + '</option>').join('');
+              serverFilter.innerHTML = '<option value="all" selected>🖥️ Todos los Servidores (' + availableServers.length + ')</option>' +
+                availableServers.map(s => '<option value="' + s + '">🖥️ ' + s + '</option>').join('');
               
               // Calidad filter
               if (availableQualities.length > 0) {
-                qualityFilter.innerHTML = '<option value="all">📺 Todas las Calidades</option>' +
-                  availableQualities.map(q => '<option value="' + q + '">' + q.toUpperCase() + '</option>').join('');
+                qualityFilter.innerHTML = '<option value="all" selected>📺 Todas las Calidades</option>' +
+                  availableQualities.map(q => '<option value="' + q + '">📺 ' + q.toUpperCase() + '</option>').join('');
                 qualityFilter.style.display = 'block';
               } else {
                 qualityFilter.style.display = 'none';
               }
               
-              // Audio filter (renombrado de idioma)
+              // Audio filter
               if (availableAudio.length > 0) {
-                languageFilter.innerHTML = '<option value="all">🔊 Todos los Audios</option>' +
-                  availableAudio.map(a => '<option value="' + a + '">' + a.toUpperCase() + '</option>').join('');
+                languageFilter.innerHTML = '<option value="all" selected>🔊 Todos los Audios</option>' +
+                  availableAudio.map(a => '<option value="' + a + '">🔊 ' + a.toUpperCase() + '</option>').join('');
                 languageFilter.style.display = 'block';
               } else {
                 languageFilter.style.display = 'none';
@@ -9793,22 +9817,73 @@ app.get('/library', async (req, res) => {
               // Mostrar filtros
               postSearchFilters.style.display = 'block';
               
-              // Event listeners para filtros
-              serverFilter.onchange = () => { currentServerFilter = serverFilter.value; renderFilteredResults(data.results); };
-              qualityFilter.onchange = () => { currentQualityFilter = qualityFilter.value; renderFilteredResults(data.results); };
-              languageFilter.onchange = () => { currentLanguageFilter = languageFilter.value; renderFilteredResults(data.results); };
-              
-              document.getElementById('clearFiltersBtn').onclick = () => {
-                serverFilter.value = 'all';
-                qualityFilter.value = 'all';
-                languageFilter.value = 'all';
-                currentServerFilter = 'all';
-                currentQualityFilter = 'all';
-                currentLanguageFilter = 'all';
+              // Event listeners para filtros POST-BÚSQUEDA con multi-select
+              serverFilter.onchange = function() {
+                const selectedOptions = Array.from(this.selectedOptions);
+                const hasAll = selectedOptions.some(opt => opt.value === 'all');
+                
+                if (hasAll || selectedOptions.length === 0) {
+                  currentServerFilter = [];
+                  Array.from(this.options).forEach(opt => {
+                    opt.selected = opt.value === 'all';
+                  });
+                } else {
+                  currentServerFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
+                  Array.from(this.options).forEach(opt => {
+                    if (opt.value === 'all') opt.selected = false;
+                  });
+                }
                 renderFilteredResults(data.results);
               };
               
-              currentServerFilter = 'all';
+              qualityFilter.onchange = function() {
+                const selectedOptions = Array.from(this.selectedOptions);
+                const hasAll = selectedOptions.some(opt => opt.value === 'all');
+                
+                if (hasAll || selectedOptions.length === 0) {
+                  currentQualityFilter = [];
+                  Array.from(this.options).forEach(opt => {
+                    opt.selected = opt.value === 'all';
+                  });
+                } else {
+                  currentQualityFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
+                  Array.from(this.options).forEach(opt => {
+                    if (opt.value === 'all') opt.selected = false;
+                  });
+                }
+                renderFilteredResults(data.results);
+              };
+              
+              languageFilter.onchange = function() {
+                const selectedOptions = Array.from(this.selectedOptions);
+                const hasAll = selectedOptions.some(opt => opt.value === 'all');
+                
+                if (hasAll || selectedOptions.length === 0) {
+                  currentLanguageFilter = [];
+                  Array.from(this.options).forEach(opt => {
+                    opt.selected = opt.value === 'all';
+                  });
+                } else {
+                  currentLanguageFilter = selectedOptions.filter(opt => opt.value !== 'all').map(opt => opt.value);
+                  Array.from(this.options).forEach(opt => {
+                    if (opt.value === 'all') opt.selected = false;
+                  });
+                }
+                renderFilteredResults(data.results);
+              };
+              
+              // Botón limpiar filtros
+              document.getElementById('clearFiltersBtn').onclick = () => {
+                currentServerFilter = [];
+                currentQualityFilter = [];
+                currentLanguageFilter = [];
+                Array.from(serverFilter.options).forEach(opt => opt.selected = opt.value === 'all');
+                Array.from(qualityFilter.options).forEach(opt => opt.selected = opt.value === 'all');
+                Array.from(languageFilter.options).forEach(opt => opt.selected = opt.value === 'all');
+                renderFilteredResults(data.results);
+              };
+              
+              currentServerFilter = [];
               window.searchResultsData = data.results;
               renderFilteredResults(data.results);
               
@@ -9824,21 +9899,21 @@ app.get('/library', async (req, res) => {
           function renderFilteredResults(allResults) {
             const results = document.getElementById('searchResults');
             
-            // Aplicar todos los filtros
+            // Aplicar todos los filtros (ahora con arrays)
             let filteredResults = allResults.filter(item => {
-              // Filtro de servidor
-              if (currentServerFilter !== 'all') {
-                if (!item.servers.some(s => s.serverName === currentServerFilter)) return false;
+              // Filtro de servidor (multi-select)
+              if (currentServerFilter.length > 0) {
+                if (!item.servers.some(s => currentServerFilter.includes(s.serverName))) return false;
               }
               
-              // Filtro de calidad
-              if (currentQualityFilter !== 'all') {
-                if (!item.servers.some(s => s.resolution === currentQualityFilter)) return false;
+              // Filtro de calidad (multi-select)
+              if (currentQualityFilter.length > 0) {
+                if (!item.servers.some(s => currentQualityFilter.includes(s.resolution))) return false;
               }
               
-              // Filtro de audio
-              if (currentLanguageFilter !== 'all') {
-                if (!item.servers.some(s => s.audioCodec === currentLanguageFilter)) return false;
+              // Filtro de audio (multi-select)
+              if (currentLanguageFilter.length > 0) {
+                if (!item.servers.some(s => currentLanguageFilter.includes(s.audioCodec))) return false;
               }
               
               return true;
@@ -9882,10 +9957,10 @@ app.get('/library', async (req, res) => {
             const title = document.getElementById('serverModalTitle');
             const options = document.getElementById('serverOptions');
             
-            // Filtrar servidores si hay filtro activo
+            // Filtrar servidores si hay filtro activo (multi-select)
             let serversToShow = item.servers;
-            if (currentServerFilter !== 'all') {
-              serversToShow = item.servers.filter(server => server.serverName === currentServerFilter);
+            if (currentServerFilter.length > 0) {
+              serversToShow = item.servers.filter(server => currentServerFilter.includes(server.serverName));
             }
             
             // Crear encabezado con poster, título y año (estilo Plex)
@@ -9945,6 +10020,11 @@ app.get('/library', async (req, res) => {
                 if (aRes !== bRes) return bRes - aRes;
                 return parseFloat(a.size) - parseFloat(b.size);
               });
+              
+              // Agregar scroll al contenedor si hay muchos servidores
+              options.style.maxHeight = '400px';
+              options.style.overflowY = 'auto';
+              options.style.overflowX = 'hidden';
               
               // Renderizar opciones
               options.innerHTML = serverDetails.map(server => {
