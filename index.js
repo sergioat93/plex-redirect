@@ -8365,37 +8365,39 @@ app.get('/library', async (req, res) => {
               
               console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
-              // Usar método original pero optimizado (procesar streaming sin cargar todo en memoria)
+              // Optimización: buscar directamente en el XML sin parsear todo
               const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
               const contentXml = await httpsGetXML(contentUrl);
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
               
-              // Debug: mostrar primer item para ver formato
-              const firstItemMatch = contentXml.match(new RegExp(`<${tagType}[^>]*>`, ''));
-              if (firstItemMatch) {
-                console.log('[GLOBAL-SEARCH] Ejemplo de tag:', firstItemMatch[0].substring(0, 200));
-              }
-              
-              // Buscar solo títulos que coincidan (más eficiente que crear array completo)
               let matchCount = 0;
               const maxResults = 50;
               
-              // Usar regex con exec para procesar uno por uno (más eficiente en memoria)
-              const itemRegex = new RegExp(`<${tagType}[^>]*title="([^"]*)"[^>]*year="([^"]*)"[^>]*thumb="([^"]*)"[^>]*ratingKey="([^"]*)"[^>]*(?:guid="[^"]*tmdb:\\/\\/(\\d+))?`, 'g');
+              // Estrategia eficiente: buscar tags que contengan title con el término buscado
+              const tagRegex = new RegExp(`<${tagType}[^>]*title="([^"]*${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*)"[^>]*>`, 'gi');
               
               let match;
-              while ((match = itemRegex.exec(contentXml)) !== null && matchCount < maxResults && results.length < maxTotalResults) {
+              while ((match = tagRegex.exec(contentXml)) !== null && matchCount < maxResults && results.length < maxTotalResults) {
+                const fullTag = match[0];
                 const title = decodeHtmlEntities(match[1]);
-                const year = match[2] || '';
-                const thumb = match[3] ? `${server.baseURI}${match[3]}?X-Plex-Token=${token.accessToken}` : '';
-                const ratingKey = match[4];
-                const tmdbId = match[5] || null;
                 
+                // Verificar con normalización (para acentos, etc)
                 const titleNormalized = normalizeText(title);
-                
-                // Verificar si coincide con la búsqueda
                 if (!titleNormalized.includes(searchNormalized)) continue;
+                
+                // Ahora sí, extraer el resto de atributos de este tag específico
+                const ratingKeyMatch = fullTag.match(/ratingKey="([^"]*)"/);
+                const yearMatch = fullTag.match(/year="([^"]*)"/);
+                const thumbMatch = fullTag.match(/thumb="([^"]*)"/);
+                const guidMatch = fullTag.match(/guid="[^"]*tmdb:\/\/(\d+)/i);
+                
+                if (!ratingKeyMatch) continue;
+                
+                const ratingKey = ratingKeyMatch[1];
+                const year = yearMatch ? yearMatch[1] : '';
+                const thumb = thumbMatch ? `${server.baseURI}${thumbMatch[1]}?X-Plex-Token=${token.accessToken}` : '';
+                const tmdbId = guidMatch ? guidMatch[1] : null;
                 
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
