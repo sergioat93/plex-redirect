@@ -8454,11 +8454,23 @@ app.get('/library', async (req, res) => {
                 
                 if (mediaTagMatch) {
                   const mediaTag = mediaTagMatch[0];
+                  console.log('[XML DEBUG] Media tag:', mediaTag);
                   const resMatch = mediaTag.match(/videoResolution="([^"]*)"/);
                   const audioMatch = mediaTag.match(/languageCode="([^"]*)"/);
                   
                   if (resMatch) resolution = resMatch[1];
                   if (audioMatch) audioLanguage = audioMatch[1].toLowerCase();
+                  
+                  console.log('[XML DEBUG] Resolution:', resolution, 'AudioLanguage:', audioLanguage);
+                } else {
+                  // Si no hay Media tag, buscar en Stream tags
+                  const streamMatch = itemContent.match(/<Stream[^>]*streamType="2"[^>]*>/);
+                  if (streamMatch) {
+                    console.log('[XML DEBUG] Stream tag:', streamMatch[0]);
+                    const langMatch = streamMatch[0].match(/languageCode="([^"]*)"/);  
+                    if (langMatch) audioLanguage = langMatch[1].toLowerCase();
+                    console.log('[XML DEBUG] AudioLanguage from Stream:', audioLanguage);
+                  }
                 }
                 
                 matchCount++;
@@ -9719,7 +9731,10 @@ app.get('/library', async (req, res) => {
             allCheckbox.value = 'all';
             allCheckbox.checked = true;
             allCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
-            allCheckbox.onchange = changeHandler;
+            allCheckbox.onchange = function(e) {
+              console.log('[CHECKBOX DEBUG] All checkbox clicked:', dropdownId, 'checked:', this.checked);
+              changeHandler.call(this, e);
+            };
             
             const allText = document.createElement('span');
             allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
@@ -9740,7 +9755,10 @@ app.get('/library', async (req, res) => {
               itemCheckbox.type = 'checkbox';
               itemCheckbox.value = item;
               itemCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
-              itemCheckbox.onchange = changeHandler;
+              itemCheckbox.onchange = function(e) {
+                console.log('[CHECKBOX DEBUG] Item checkbox clicked:', dropdownId, 'value:', this.value, 'checked:', this.checked);
+                changeHandler.call(this, e);
+              };
               
               const itemText = document.createElement('span');
               itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
@@ -9769,6 +9787,7 @@ app.get('/library', async (req, res) => {
           
           // Handlers para filtros POST-búsqueda
           function handleServerFilterChange() {
+            console.log('[HANDLER] handleServerFilterChange called');
             const dropdown = document.getElementById('serverFilterDropdown');
             const label = document.getElementById('serverFilterLabel');
             const allCheckbox = dropdown.querySelector('input[value="all"]');
@@ -9800,6 +9819,7 @@ app.get('/library', async (req, res) => {
           }
           
           function handleQualityFilterChange() {
+            console.log('[HANDLER] handleQualityFilterChange called');
             const dropdown = document.getElementById('qualityFilterDropdown');
             const label = document.getElementById('qualityFilterLabel');
             const allCheckbox = dropdown.querySelector('input[value="all"]');
@@ -9827,6 +9847,7 @@ app.get('/library', async (req, res) => {
           }
           
           function handleAudioFilterChange() {
+            console.log('[HANDLER] handleAudioFilterChange called');
             const dropdown = document.getElementById('audioFilterDropdown');
             const label = document.getElementById('audioFilterLabel');
             const allCheckbox = dropdown.querySelector('input[value="all"]');
