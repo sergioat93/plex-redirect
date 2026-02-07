@@ -9291,7 +9291,6 @@ app.get('/library', async (req, res) => {
                   <span class="header-icon">👥</span>
                   <h1 class="header-title">Gestión de Servidores</h1>
                 </div>
-                <a href="javascript:history.back()" class="btn-back">← Volver</a>
               </div>
           
           <div class="stats-grid" id="statsGrid">
@@ -9524,10 +9523,11 @@ app.get('/library', async (req, res) => {
                 const poster = item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster';
                 const year = item.year || 'Año desconocido';
                 const typeText = item.type === 'movie' ? 'Película' : 'Serie';
+                const titleSafe = item.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 
                 return '<div class="result-card" data-item-index="' + index + '">' +
                   badge +
-                  '<img class="result-poster" src="' + poster + '" alt="' + item.title + '" onerror="this.src=\'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster\'"/>' +
+                  '<img class="result-poster" src="' + poster + '" alt="' + titleSafe + '" onerror="this.src=&quot;https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster&quot;"/>' +
                   '<div class="result-info">' +
                     '<div class="result-title">' + item.title + '</div>' +
                     '<div class="result-year">' + year + ' • ' + typeText + '</div>' +
@@ -9574,8 +9574,8 @@ app.get('/library', async (req, res) => {
               // Obtener info de calidad para cada servidor
               const serverDetails = await Promise.all(item.servers.map(async server => {
                 try {
-                  const mediaUrl = \`\${server.baseURI}/library/metadata/\${server.ratingKey}?X-Plex-Token=\${server.accessToken}\`;
-                  const response = await fetch(\`/library?action=get-media-info&mediaUrl=\${encodeURIComponent(mediaUrl)}\`);
+                  const mediaUrl = server.baseURI + '/library/metadata/' + server.ratingKey + '?X-Plex-Token=' + server.accessToken;
+                  const response = await fetch('/library?action=get-media-info&mediaUrl=' + encodeURIComponent(mediaUrl));
                   const data = await response.json();
                   
                   return {
@@ -9610,29 +9610,43 @@ app.get('/library', async (req, res) => {
                                   server.resolution === '1080' ? 'quality-1080' : 
                                   server.resolution === '720' ? 'quality-720' : '';
                 
-                return \`
-                  <div class="server-option" onclick='selectServer(\${JSON.stringify(item).replace(/'/g, "\\\\'")}, \${JSON.stringify(server).replace(/'/g, "\\\\'")})'> 
-                    <div class="server-option-header">
-                      <div class="server-name">\${server.serverName}</div>
-                      <div class="server-quality \${resClass}">\${server.resolution.toUpperCase()}</div>
-                    </div>
-                    <div class="server-option-info">
-                      <div class="info-item">
-                        <div class="info-label">Biblioteca</div>
-                        <div class="info-value">\${server.libraryTitle}</div>
-                      </div>
-                      <div class="info-item">
-                        <div class="info-label">Tamaño</div>
-                        <div class="info-value">\${server.size} GB</div>
-                      </div>
-                      <div class="info-item">
-                        <div class="info-label">Codec</div>
-                        <div class="info-value">\${server.codec}</div>
-                      </div>
-                    </div>
-                  </div>
-                \`;
+                const qualityColor = resClass === 'quality-4k' ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' :
+                                     resClass === 'quality-1080' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
+                                     resClass === 'quality-720' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
+                                     'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+                
+                return '<div class="server-option" data-server-index="' + serverDetails.indexOf(server) + '">' +
+                  '<div class="server-option-header">' +
+                    '<div class="server-name">' + server.serverName + '</div>' +
+                    '<div class="server-quality ' + resClass + '">' + server.resolution.toUpperCase() + '</div>' +
+                  '</div>' +
+                  '<div class="server-option-info">' +
+                    '<div class="info-item">' +
+                      '<div class="info-label">Biblioteca</div>' +
+                      '<div class="info-value">' + server.libraryTitle + '</div>' +
+                    '</div>' +
+                    '<div class="info-item">' +
+                      '<div class="info-label">Tamaño</div>' +
+                      '<div class="info-value">' + server.size + ' GB</div>' +
+                    '</div>' +
+                    '<div class="info-item">' +
+                      '<div class="info-label">Codec</div>' +
+                      '<div class="info-value">' + server.codec.toUpperCase() + '</div>' +
+                    '</div>' +
+                  '</div>' +
+                '</div>';
               }).join('');
+              
+              // Agregar event listeners
+              window.currentModalItem = item;
+              window.currentModalServers = serverDetails;
+              document.querySelectorAll('.server-option').forEach(option => {
+                option.addEventListener('click', function() {
+                  const index = parseInt(this.dataset.serverIndex);
+                  const server = window.currentModalServers[index];
+                  selectServer(window.currentModalItem, server);
+                });
+              });
               
             } catch (error) {
               console.error('Error obteniendo detalles:', error);
@@ -9647,7 +9661,14 @@ app.get('/library', async (req, res) => {
           
           function redirectToContent(item, server) {
             const type = item.type === 'movie' ? 'movie-redirect' : 'series-redirect';
-            const url = \`/\${type}?accessToken=\${encodeURIComponent(server.accessToken)}&baseURI=\${encodeURIComponent(server.baseURI)}&ratingKey=\${server.ratingKey}&title=\${encodeURIComponent(item.title)}&posterUrl=\${encodeURIComponent(item.thumb || '')}&tmdbId=\${item.tmdbId || ''}&libraryKey=\${server.libraryKey}&libraryTitle=\${encodeURIComponent(server.libraryTitle)}\`;
+            const url = '/' + type + '?accessToken=' + encodeURIComponent(server.accessToken) + 
+                        '&baseURI=' + encodeURIComponent(server.baseURI) + 
+                        '&ratingKey=' + server.ratingKey + 
+                        '&title=' + encodeURIComponent(item.title) + 
+                        '&posterUrl=' + encodeURIComponent(item.thumb || '') + 
+                        '&tmdbId=' + (item.tmdbId || '') + 
+                        '&libraryKey=' + server.libraryKey + 
+                        '&libraryTitle=' + encodeURIComponent(server.libraryTitle);
             window.location.href = url;
           }
           
