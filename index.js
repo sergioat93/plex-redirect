@@ -8287,6 +8287,8 @@ app.get('/library', async (req, res) => {
     
     const { query, type } = req.query; // type: 'all', 'movie', 'show'
     
+    console.log('[GLOBAL-SEARCH] Iniciando búsqueda:', { query, type });
+    
     if (!query) {
       return res.json({ results: [] });
     }
@@ -8297,6 +8299,7 @@ app.get('/library', async (req, res) => {
       }
       
       const servers = await serversCollection.find({}).toArray();
+      console.log('[GLOBAL-SEARCH] Servidores encontrados:', servers.length);
       const results = [];
       const seenTmdbIds = new Set();
       
@@ -8310,9 +8313,11 @@ app.get('/library', async (req, res) => {
       };
       
       const searchNormalized = normalizeText(query);
+      console.log('[GLOBAL-SEARCH] Búsqueda normalizada:', searchNormalized);
       
       // Buscar en cada servidor
       for (const server of servers) {
+        console.log('[GLOBAL-SEARCH] Buscando en servidor:', server.serverName);
         for (const token of (server.tokens || [])) {
           try {
             // Obtener bibliotecas del servidor
@@ -8320,13 +8325,17 @@ app.get('/library', async (req, res) => {
             const sectionsXml = await httpsGetXML(sectionsUrl);
             
             const sectionMatches = sectionsXml.matchAll(/<Directory[^>]*key="([^"]*)"[^>]*title="([^"]*)"[^>]*type="([^"]*)"[^>]*>/g);
+            const sectionsArray = Array.from(sectionMatches);
+            console.log('[GLOBAL-SEARCH] Bibliotecas encontradas:', sectionsArray.length);
             
-            for (const sectionMatch of sectionMatches) {
+            for (const sectionMatch of sectionsArray) {
               const [, sectionKey, sectionTitle, sectionType] = sectionMatch;
               
               // Filtrar por tipo si se especifica
               if (type !== 'all' && type !== sectionType) continue;
               if (sectionType !== 'movie' && sectionType !== 'show') continue;
+              
+              console.log('[GLOBAL-SEARCH] Buscando en biblioteca:', sectionTitle, '(' + sectionType + ')');
               
               // Buscar en la biblioteca
               const contentUrl = `${server.baseURI}/library/sections/${sectionKey}/all?X-Plex-Token=${token.accessToken}`;
@@ -8334,8 +8343,11 @@ app.get('/library', async (req, res) => {
               
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
               const itemMatches = contentXml.matchAll(new RegExp(`<${tagType}[^>]*>`, 'g'));
+              const itemsArray = Array.from(itemMatches);
+              console.log('[GLOBAL-SEARCH] Items en biblioteca:', itemsArray.length);
               
-              for (const itemMatch of itemMatches) {
+              let matchCount = 0;
+              for (const itemMatch of itemsArray) {
                 const itemTag = itemMatch[0];
                 const titleMatch = itemTag.match(/title="([^"]*)"/);
                 const yearMatch = itemTag.match(/year="([^"]*)"/);
@@ -8350,6 +8362,9 @@ app.get('/library', async (req, res) => {
                 
                 // Verificar si coincide con la búsqueda
                 if (!titleNormalized.includes(searchNormalized)) continue;
+                
+                matchCount++;
+                console.log('[GLOBAL-SEARCH] Match encontrado:', title);
                 
                 const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
                 const year = yearMatch ? yearMatch[1] : '';
@@ -8399,10 +8414,13 @@ app.get('/library', async (req, res) => {
             
             break; // Si un token funciona, no probar más tokens de este servidor
           } catch (e) {
+            console.log('[GLOBAL-SEARCH] Error con token:', e.message);
             continue; // Token no válido, probar el siguiente
           }
         }
       }
+      
+      console.log('[GLOBAL-SEARCH] Total resultados:', results.length);
       
       // Ordenar resultados por relevancia
       results.sort((a, b) => {
