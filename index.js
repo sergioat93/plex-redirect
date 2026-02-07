@@ -8991,15 +8991,12 @@ app.get('/library', async (req, res) => {
             left: 1.5rem;
             z-index: 100;
             display: none;
-            max-width: 350px;
-            gap: 0.75rem;
-            align-items: flex-end;
+            max-width: 400px;
+            flex-direction: column;
+            gap: 0.5rem;
           }
           .server-selector.active {
             display: flex;
-          }
-          .server-dropdown-container {
-            width: 100%;
           }
           .server-selector-label {
             color: #9ca3af;
@@ -9012,13 +9009,13 @@ app.get('/library', async (req, res) => {
           }
           .server-selector select {
             width: 100%;
-            padding: 1rem 3rem 1rem 3.5rem;
+            padding: 1rem 2.5rem 1rem 2.5rem;
             background: rgba(31, 41, 55, 0.95);
             background-image: 
               url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23e5a00d' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 6v6l4 2'/%3E%3C/svg%3E"),
               url("data:text/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23e5a00d' d='M8 11L3 6h10z'/%3E%3C/svg%3E");
             background-repeat: no-repeat, no-repeat;
-            background-position: 1rem center, right 1rem center;
+            background-position: 0.5rem center, right 0.75rem center;
             border: 2px solid rgba(229, 160, 13, 0.3);
             border-radius: 16px;
             color: #f3f4f6;
@@ -9181,7 +9178,8 @@ app.get('/library', async (req, res) => {
           /* Responsive */
           @media (max-width: 768px) {
             body {
-              padding: 1rem;
+              padding: 0.5rem;
+              padding-top: 4rem;
             }
             .logo-text {
               font-size: 1.75rem;
@@ -9198,25 +9196,25 @@ app.get('/library', async (req, res) => {
               font-size: 1rem;
             }
             .admin-icon {
-              top: 1rem;
-              right: 1rem;
-              width: 40px;
-              height: 40px;
-              font-size: 1.25rem;
+              top: 0.5rem;
+              right: 0.5rem;
+              width: 36px;
+              height: 36px;
+              font-size: 1.1rem;
             }
             .btn-admin-panel-header {
-              top: 1rem;
-              right: 4rem;
-              width: 40px;
-              height: 40px;
-              font-size: 1.25rem;
+              top: 0.5rem;
+              right: 3rem;
+              width: 36px;
+              height: 36px;
+              font-size: 1.1rem;
             }
             .server-selector {
               position: relative;
               top: auto;
               left: auto;
               max-width: 100%;
-              margin: 2rem auto 2rem auto;
+              margin: 1.5rem auto 1.5rem auto;
               padding: 0;
             }
             .server-selector select {
@@ -9224,6 +9222,12 @@ app.get('/library', async (req, res) => {
               font-size: 0.875rem;
               background-position: 0.75rem center, right 0.75rem center;
               background-size: 18px, 14px;
+            }
+            .header {
+              margin-bottom: 1.5rem;
+            }
+            .container {
+              padding-top: 0.5rem;
             }
             .btn-refresh {
               bottom: 1rem;
