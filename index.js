@@ -9267,8 +9267,7 @@ app.get('/library', async (req, res) => {
       <body>
         <!-- Tabs Navigation -->
         <div class="admin-tabs">
-          <a href="/library" class="admin-tab-home">
-            <span>🏠</span>
+          <a href="javascript:history.back()" class="admin-tab-home">
             <span>Infinity Scrap</span>
           </a>
           <button class="admin-tab active" data-tab="servers">
@@ -9382,19 +9381,18 @@ app.get('/library', async (req, res) => {
                   id="searchInput"
                   class="search-input"
                   placeholder="Buscar películas o series en todos los servidores..."
-                  onkeypress="if(event.key==='Enter') performSearch()"
                 />
-                <button class="search-btn" onclick="performSearch()">Buscar</button>
+                <button class="search-btn" id="searchBtn">Buscar</button>
               </div>
               
               <div class="filter-buttons">
-                <button class="filter-btn active" data-type="all" onclick="setSearchType('all')">
+                <button class="filter-btn active" data-type="all" id="filter-all">
                   📦 Todo
                 </button>
-                <button class="filter-btn" data-type="movie" onclick="setSearchType('movie')">
+                <button class="filter-btn" data-type="movie" id="filter-movie">
                   🎬 Películas
                 </button>
-                <button class="filter-btn" data-type="show" onclick="setSearchType('show')">
+                <button class="filter-btn" data-type="show" id="filter-show">
                   📺 Series
                 </button>
               </div>
@@ -9424,6 +9422,7 @@ app.get('/library', async (req, res) => {
         <script>
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
+          let searchTimeout = null;
           
           // Tab switching
           document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -9446,7 +9445,46 @@ app.get('/library', async (req, res) => {
             document.querySelectorAll('.filter-btn').forEach(btn => {
               btn.classList.toggle('active', btn.dataset.type === type);
             });
+            // Re-ejecutar búsqueda si hay texto
+            const query = document.getElementById('searchInput').value.trim();
+            if (query.length >= 3) {
+              performSearch();
+            }
           }
+          
+          // Event listeners para búsqueda
+          document.getElementById('searchBtn').addEventListener('click', performSearch);
+          document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+              performSearch();
+            }
+          });
+          
+          // Búsqueda en tiempo real mientras escribe
+          document.getElementById('searchInput').addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            
+            // Limpiar timeout anterior
+            if (searchTimeout) {
+              clearTimeout(searchTimeout);
+            }
+            
+            // Si hay al menos 3 caracteres, buscar después de 500ms de inactividad
+            if (query.length >= 3) {
+              searchTimeout = setTimeout(() => {
+                performSearch();
+              }, 500);
+            } else if (query.length === 0) {
+              // Limpiar resultados si se borra todo
+              document.getElementById('searchStatus').style.display = 'none';
+              document.getElementById('searchResults').innerHTML = '';
+            }
+          });
+          
+          // Event listeners para filtros
+          document.getElementById('filter-all').addEventListener('click', () => setSearchType('all'));
+          document.getElementById('filter-movie').addEventListener('click', () => setSearchType('movie'));
+          document.getElementById('filter-show').addEventListener('click', () => setSearchType('show'));
           
           async function performSearch() {
             const query = document.getElementById('searchInput').value.trim();
@@ -9465,7 +9503,7 @@ app.get('/library', async (req, res) => {
             results.innerHTML = '';
             
             try {
-              const response = await fetch(\`/library?action=global-search&adminPassword=\${encodeURIComponent(adminPassword)}&query=\${encodeURIComponent(query)}&type=\${currentSearchType}\`);
+              const response = await fetch('/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType);
               const data = await response.json();
               
               if (data.error) {
@@ -9474,23 +9512,40 @@ app.get('/library', async (req, res) => {
               }
               
               if (data.results.length === 0) {
-                status.textContent = \`No se encontraron resultados para "\${query}"\`;
+                status.textContent = 'No se encontraron resultados para "' + query + '"';
                 return;
               }
               
-              status.textContent = \`✓ Encontrados \${data.results.length} resultados en \${data.totalServers} servidores\`;
+              status.textContent = '✓ Encontrados ' + data.results.length + ' resultados en ' + data.totalServers + ' servidores';
               
               // Render results
-              results.innerHTML = data.results.map(item => \`
-                <div class="result-card" onclick='openServerModal(\${JSON.stringify(item).replace(/'/g, "\\\\'")})'>
-                  \${item.servers.length > 1 ? \`<div class="result-servers-badge">+\${item.servers.length}</div>\` : ''}
-                  <img class="result-poster" src="\${item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster'}" alt="\${item.title}" onerror="this.src='https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster'"/>
-                  <div class="result-info">
-                    <div class="result-title">\${item.title}</div>
-                    <div class="result-year">\${item.year || 'Año desconocido'} • \${item.type === 'movie' ? 'Película' : 'Serie'}</div>
-                  </div>
-                </div>
-              \`).join('');
+              results.innerHTML = data.results.map((item, index) => {
+                const badge = item.servers.length > 1 ? '<div class="result-servers-badge">+' + item.servers.length + '</div>' : '';
+                const poster = item.thumb || 'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster';
+                const year = item.year || 'Año desconocido';
+                const typeText = item.type === 'movie' ? 'Película' : 'Serie';
+                
+                return '<div class="result-card" data-item-index="' + index + '">' +
+                  badge +
+                  '<img class="result-poster" src="' + poster + '" alt="' + item.title + '" onerror="this.src=\'https://via.placeholder.com/300x450/1e1e27/9ca3af?text=Sin+Poster\'"/>' +
+                  '<div class="result-info">' +
+                    '<div class="result-title">' + item.title + '</div>' +
+                    '<div class="result-year">' + year + ' • ' + typeText + '</div>' +
+                  '</div>' +
+                '</div>';
+              }).join('');
+              
+              // Guardar los resultados para el event delegation
+              window.searchResultsData = data.results;
+              
+              // Agregar event listeners a las cards
+              document.querySelectorAll('.result-card').forEach(card => {
+                card.addEventListener('click', function() {
+                  const index = parseInt(this.dataset.itemIndex);
+                  const item = window.searchResultsData[index];
+                  openServerModal(item);
+                });
+              });
               
             } catch (error) {
               console.error('Error en búsqueda:', error);
