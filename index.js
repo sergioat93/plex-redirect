@@ -6754,36 +6754,48 @@ app.get('/browse', async (req, res) => {
                 // Esperar 2 frames para que se renderice y calcule bien
                 requestAnimationFrame(() => {
                   requestAnimationFrame(() => {
+                    const navContent = document.querySelector('.nav-content');
+                    const navbarBrand = document.querySelector('.navbar-brand');
+                    const navbarControls = document.querySelector('.navbar-controls');
                     const navbarLinks = document.getElementById('navbar-links');
-                    if (!navbarLinks) return;
                     
-                    // Calcular espacio disponible (ancho del navbar-links menos espacio del botón Más)
-                    const navbarRect = navbarLinks.getBoundingClientRect();
-                    const moreBtnWidth = 100; // Espacio reservado para el botón Más
-                    const availableWidth = navbarRect.width - moreBtnWidth;
+                    if (!navContent || !navbarBrand || !navbarControls || !navbarLinks) return;
+                    
+                    // Calcular espacio REAL disponible
+                    const navContentWidth = navContent.getBoundingClientRect().width;
+                    const brandWidth = navbarBrand.getBoundingClientRect().width;
+                    const controlsWidth = navbarControls.getBoundingClientRect().width;
+                    const gaps = 32; // gaps entre elementos (1rem * 2)
+                    const moreBtnWidth = 80; // Espacio reservado para el botón Más
+                    const padding = 40; // Padding de seguridad
+                    
+                    // Espacio disponible = ancho total - logo - búsqueda - gaps - padding
+                    const availableWidth = navContentWidth - brandWidth - controlsWidth - gaps - padding;
                     
                     // Calcular ancho total de todos los links
                     const links = Array.from(libraryLinksContainer.children);
                     let totalWidth = 0;
                     const libWidths = links.map(link => {
-                      const width = link.offsetWidth;
+                      const width = link.offsetWidth + 4; // +4 por el gap entre links
                       totalWidth += width;
                       return width;
                     });
                     
                     // Verificar si caben todas las bibliotecas
-                    if (totalWidth <= navbarRect.width - 20) {
+                    if (totalWidth <= availableWidth) {
                       // Caben todas sin necesidad del botón "Más"
                       moreLibrariesContainer.style.display = 'none';
-                      console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ' bibliotecas, ' + totalWidth + 'px de ' + navbarRect.width + 'px)');
+                      console.log('✅ Todas las bibliotecas caben (' + allLibraries.length + ' bibliotecas, ' + Math.round(totalWidth) + 'px de ' + Math.round(availableWidth) + 'px disponibles)');
                       return;
                     }
                     
                     // No caben todas - mostrar botón "Más" y reorganizar
-                    console.log('⚠️ Overflow detectado (' + totalWidth + 'px > ' + navbarRect.width + 'px)');
+                    console.log('⚠️ Overflow detectado (' + Math.round(totalWidth) + 'px > ' + Math.round(availableWidth) + 'px disponibles)');
+                    console.log('   navContent: ' + Math.round(navContentWidth) + 'px, brand: ' + Math.round(brandWidth) + 'px, controls: ' + Math.round(controlsWidth) + 'px');
                     moreLibrariesContainer.style.display = 'inline-flex';
                     
-                    // Determinar qué bibliotecas mostrar
+                    // Determinar qué bibliotecas mostrar (restar espacio del botón Más)
+                    const spaceForLinks = availableWidth - moreBtnWidth;
                     const visibleIndices = [];
                     const hiddenIndices = [];
                     let accumulatedWidth = 0;
@@ -6801,7 +6813,7 @@ app.get('/browse', async (req, res) => {
                       .sort((a, b) => a.width - b.width);
                     
                     for (const item of sortedByWidth) {
-                      if (accumulatedWidth + item.width <= availableWidth) {
+                      if (accumulatedWidth + item.width <= spaceForLinks) {
                         visibleIndices.push(item.index);
                         accumulatedWidth += item.width;
                       } else {
@@ -6830,7 +6842,7 @@ app.get('/browse', async (req, res) => {
                       dropdownMenu.appendChild(createLibraryLink(allLibraries[i]));
                     });
                     
-                    console.log('📚 Resultado: ' + visibleIndices.length + ' visibles, ' + hiddenIndices.length + ' en dropdown');
+                    console.log('📚 Resultado: ' + visibleIndices.length + ' visibles (' + Math.round(accumulatedWidth) + 'px), ' + hiddenIndices.length + ' en dropdown');
                   });
                 });
               }
