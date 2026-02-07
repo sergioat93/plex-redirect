@@ -8480,7 +8480,7 @@ app.get('/library', async (req, res) => {
                       libraryTitle: sectionTitle,
                       libraryType: sectionType,
                       resolution: resolution,
-                      audioCodec: audioCodec
+                      audioLanguage: audioLanguage
                     });
                   }
                   continue;
@@ -8504,7 +8504,7 @@ app.get('/library', async (req, res) => {
                     libraryTitle: sectionTitle,
                     libraryType: sectionType,
                     resolution: resolution,
-                    audioCodec: audioCodec
+                    audioLanguage: audioLanguage
                   }]
                 });
               }
@@ -9529,8 +9529,8 @@ app.get('/library', async (req, res) => {
                       </div>
                       <div class="dropdown-options" id="preSearchServersOptions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                         <div style="display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(229,160,13,0.1)'" onmouseout="this.style.background='transparent'">
-                          <input type="checkbox" value="all" checked style="margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;">
-                          <span style="color: #f3f4f6; font-size: 0.875rem;">🌐 Todos los Servidores</span>
+                          <input type="checkbox" value="all" checked style="margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;">
+                          <span style="color: #f3f4f6; font-size: 0.875rem; user-select: none;">🌐 Todos los Servidores</span>
                         </div>
                       </div>
                     </div>
@@ -9560,10 +9560,10 @@ app.get('/library', async (req, res) => {
                     <div class="dropdown-options" id="qualityFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
                   </div>
                   
-                  <!-- Dropdown Audio -->
+                  <!-- Dropdown Idiomas -->
                   <div class="custom-dropdown" style="position: relative; min-width: 180px;">
                     <div class="dropdown-selected" onclick="toggleDropdown('audioFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                      <span id="audioFilterLabel">🔊 Todos los Audios</span>
+                      <span id="audioFilterLabel">🌍 Todos los Idiomas</span>
                       <span style="margin-left: 0.5rem;">▼</span>
                     </div>
                     <div class="dropdown-options" id="audioFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
@@ -9709,60 +9709,54 @@ app.get('/library', async (req, res) => {
             dropdown.innerHTML = '';
             
             // Opción "Todos"
-            const allLabel = document.createElement('div');
-            allLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-            allLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-            allLabel.onmouseout = function() { this.style.background = 'transparent'; };
+            const allDiv = document.createElement('div');
+            allDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+            allDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+            allDiv.onmouseout = function() { this.style.background = 'transparent'; };
             
             const allCheckbox = document.createElement('input');
             allCheckbox.type = 'checkbox';
             allCheckbox.value = 'all';
             allCheckbox.checked = true;
-            allCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+            allCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;';
             
             const allText = document.createElement('span');
-            allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+            allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
             allText.textContent = icon + ' Todos los ' + typeName;
             
-            // Click en toda la fila marca/desmarca el checkbox
-            allLabel.onclick = function(e) {
-              if (e.target !== allCheckbox) {
-                allCheckbox.checked = !allCheckbox.checked;
-              }
-              changeHandler.call(allCheckbox);
+            allDiv.onclick = function() {
+              allCheckbox.checked = !allCheckbox.checked;
+              changeHandler();
             };
             
-            allLabel.appendChild(allCheckbox);
-            allLabel.appendChild(allText);
-            dropdown.appendChild(allLabel);
+            allDiv.appendChild(allCheckbox);
+            allDiv.appendChild(allText);
+            dropdown.appendChild(allDiv);
             
             // Opciones individuales
             items.forEach(item => {
-              const itemLabel = document.createElement('div');
-              itemLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-              itemLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-              itemLabel.onmouseout = function() { this.style.background = 'transparent'; };
+              const itemDiv = document.createElement('div');
+              itemDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+              itemDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+              itemDiv.onmouseout = function() { this.style.background = 'transparent'; };
               
               const itemCheckbox = document.createElement('input');
               itemCheckbox.type = 'checkbox';
               itemCheckbox.value = item;
-              itemCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+              itemCheckbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;';
               
               const itemText = document.createElement('span');
-              itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+              itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
               itemText.textContent = icon + ' ' + item.toUpperCase();
               
-              // Click en toda la fila marca/desmarca el checkbox
-              itemLabel.onclick = function(e) {
-                if (e.target !== itemCheckbox) {
-                  itemCheckbox.checked = !itemCheckbox.checked;
-                }
-                changeHandler.call(itemCheckbox);
+              itemDiv.onclick = function() {
+                itemCheckbox.checked = !itemCheckbox.checked;
+                changeHandler();
               };
               
-              itemLabel.appendChild(itemCheckbox);
-              itemLabel.appendChild(itemText);
-              dropdown.appendChild(itemLabel);
+              itemDiv.appendChild(itemCheckbox);
+              itemDiv.appendChild(itemText);
+              dropdown.appendChild(itemDiv);
             });
           }
           
@@ -9843,17 +9837,17 @@ app.get('/library', async (req, res) => {
             if (allCheckbox.checked) {
               audioCheckboxes.forEach(cb => cb.checked = false);
               currentLanguageFilter = [];
-              label.textContent = '🔊 Todos los Audios';
+              label.textContent = '🌍 Todos los Idiomas';
             } else {
               const selected = audioCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
               
               if (selected.length === 0) {
                 allCheckbox.checked = true;
                 currentLanguageFilter = [];
-                label.textContent = '🔊 Todos los Audios';
+                label.textContent = '🌍 Todos los Idiomas';
               } else {
                 currentLanguageFilter = selected;
-                label.textContent = selected.length === 1 ? '🔊 ' + selected[0].toUpperCase() : '🔊 ' + selected.length + ' audios';
+                label.textContent = selected.length === 1 ? '🌍 ' + selected[0].toUpperCase() : '🌍 ' + selected.length + ' idiomas';
               }
             }
             
@@ -9875,31 +9869,28 @@ app.get('/library', async (req, res) => {
                 
                 // Agregar servidores al dropdown
                 data.servers.forEach(server => {
-                  const checkboxDiv = document.createElement('div');
-                  checkboxDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-                  checkboxDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-                  checkboxDiv.onmouseout = function() { this.style.background = 'transparent'; };
+                  const serverDiv = document.createElement('div');
+                  serverDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+                  serverDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+                  serverDiv.onmouseout = function() { this.style.background = 'transparent'; };
                   
                   const checkbox = document.createElement('input');
                   checkbox.type = 'checkbox';
                   checkbox.value = server.serverName;
-                  checkbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;';
+                  checkbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;';
                   
                   const text = document.createElement('span');
-                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
+                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
                   text.textContent = '🖥️ ' + server.serverName;
                   
-                  // Click en toda la fila marca/desmarca el checkbox
-                  checkboxDiv.onclick = function(e) {
-                    if (e.target !== checkbox) {
-                      checkbox.checked = !checkbox.checked;
-                    }
+                  serverDiv.onclick = function() {
+                    checkbox.checked = !checkbox.checked;
                     handlePreSearchServerChange();
                   };
                   
-                  checkboxDiv.appendChild(checkbox);
-                  checkboxDiv.appendChild(text);
-                  optionsContainer.appendChild(checkboxDiv);
+                  serverDiv.appendChild(checkbox);
+                  serverDiv.appendChild(text);
+                  optionsContainer.appendChild(serverDiv);
                 });
                 
                 // Toggle dropdown al hacer click
@@ -9908,15 +9899,14 @@ app.get('/library', async (req, res) => {
                   toggleDropdown('preSearchServersOptions');
                 };
                 
-                // Checkbox "Todos" - actualizar su onclick también
-                const allCheckboxDiv = optionsContainer.querySelector('div');
-                if (allCheckboxDiv) {
-                  const allCheckbox = allCheckboxDiv.querySelector('input[value="all"]');
+                // Actualizar el checkbox "Todos" del HTML inicial
+                const allDiv = optionsContainer.querySelector('div');
+                if (allDiv) {
+                  const allCheckbox = allDiv.querySelector('input[value="all"]');
                   if (allCheckbox) {
-                    allCheckboxDiv.onclick = function(e) {
-                      if (e.target !== allCheckbox) {
-                        allCheckbox.checked = !allCheckbox.checked;
-                      }
+                    allCheckbox.style.pointerEvents = 'none';
+                    allDiv.onclick = function() {
+                      allCheckbox.checked = !allCheckbox.checked;
                       handlePreSearchServerChange();
                     };
                   }
@@ -10034,7 +10024,7 @@ app.get('/library', async (req, res) => {
                 item.servers.forEach(server => {
                   serversSet.add(server.serverName);
                   if (server.resolution) qualitiesSet.add(server.resolution);
-                  if (server.audioCodec) audioSet.add(server.audioCodec);
+                  if (server.audioLanguage && server.audioLanguage !== 'unknown') audioSet.add(server.audioLanguage);
                 });
               });
               
@@ -10052,7 +10042,7 @@ app.get('/library', async (req, res) => {
               // Poblar dropdowns personalizados POST-búsqueda
               populateCustomDropdown('serverFilterDropdown', 'serverFilterLabel', availableServers, '🖥️', 'Servidores', handleServerFilterChange);
               populateCustomDropdown('qualityFilterDropdown', 'qualityFilterLabel', availableQualities, '📺', 'Calidades', handleQualityFilterChange);
-              populateCustomDropdown('audioFilterDropdown', 'audioFilterLabel', availableAudio, '🔊', 'Audios', handleAudioFilterChange);
+              populateCustomDropdown('audioFilterDropdown', 'audioFilterLabel', availableAudio, '🌍', 'Idiomas', handleAudioFilterChange);
               
               // Mostrar filtros
               document.getElementById('postSearchFilters').style.display = 'block';
@@ -10066,7 +10056,7 @@ app.get('/library', async (req, res) => {
                 // Limpiar todos los checkboxes
                 clearDropdown('serverFilterDropdown', 'serverFilterLabel', '🖥️ Todos los Servidores');
                 clearDropdown('qualityFilterDropdown', 'qualityFilterLabel', '📺 Todas las Calidades');
-                clearDropdown('audioFilterDropdown', 'audioFilterLabel', '🔊 Todos los Audios');
+                clearDropdown('audioFilterDropdown', 'audioFilterLabel', '🌍 Todos los Idiomas');
                 
                 renderFilteredResults(data.results);
               };
@@ -10099,9 +10089,9 @@ app.get('/library', async (req, res) => {
                 if (!item.servers.some(s => currentQualityFilter.includes(s.resolution))) return false;
               }
               
-              // Filtro de audio (multi-select)
+              // Filtro de idioma (multi-select)
               if (currentLanguageFilter.length > 0) {
-                if (!item.servers.some(s => currentLanguageFilter.includes(s.audioCodec))) return false;
+                if (!item.servers.some(s => currentLanguageFilter.includes(s.audioLanguage))) return false;
               }
               
               return true;
