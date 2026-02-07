@@ -8369,6 +8369,8 @@ app.get('/library', async (req, res) => {
               const searchUrl = `${server.baseURI}/library/sections/${sectionKey}/search?query=${encodeURIComponent(query)}&X-Plex-Token=${token.accessToken}`;
               const searchXml = await httpsGetXML(searchUrl);
               
+              console.log('[GLOBAL-SEARCH] XML respuesta (primeros 300 chars):', searchXml.substring(0, 300));
+              
               const tagType = sectionType === 'movie' ? 'Video' : 'Directory';
               const itemRegex = new RegExp(`<${tagType}[^>]*>`, 'g');
               const itemTags = searchXml.match(itemRegex) || [];
