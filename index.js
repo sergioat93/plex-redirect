@@ -9485,27 +9485,42 @@ app.get('/library', async (req, res) => {
                 <button class="search-btn" id="searchBtn">Buscar</button>
               </div>
               
-              <div class="filter-buttons">
-                <div class="filter-label">Tipo:</div>
-                <button class="filter-btn filter-type active" data-type="all" id="filter-all">
-                  📦 Todo
-                </button>
-                <button class="filter-btn filter-type" data-type="movie" id="filter-movie">
-                  🎬 Películas
-                </button>
-                <button class="filter-btn filter-type" data-type="show" id="filter-show">
-                  📺 Series
-                </button>
+              <!-- Filtros PRE-búsqueda -->
+              <div style="background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <div style="color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">⚙️ Filtros de Búsqueda</div>
+                <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span style="color: #9ca3af; font-size: 0.875rem;">Tipo:</span>
+                    <div class="filter-buttons" style="margin: 0;">
+                      <button class="filter-btn filter-type active" data-type="all" id="filter-all">📦 Todo</button>
+                      <button class="filter-btn filter-type" data-type="movie" id="filter-movie">🎬 Películas</button>
+                      <button class="filter-btn filter-type" data-type="show" id="filter-show">📺 Series</button>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span style="color: #9ca3af; font-size: 0.875rem;">Buscar en:</span>
+                    <select id="preSearchServersSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                      <option value="all">🌐 Todos los Servidores</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               
-              <div class="filter-buttons" id="preSearchServersContainer" style="margin-top: 0.5rem;">
-                <div class="filter-label">Buscar en:</div>
-                <button class="filter-btn filter-pre-server active" data-server="all">🌐 Todos los Servidores</button>
-                <!-- Los servidores se cargan dinámicamente -->
-              </div>
-              
-              <div class="filter-buttons" id="serverFiltersContainer" style="display: none; margin-top: 0.5rem;">
-                <!-- Filtros de resultados se agregan dinámicamente -->
+              <!-- Filtros POST-búsqueda -->
+              <div id="postSearchFilters" style="display: none; background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <div style="color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">🔍 Filtrar Resultados</div>
+                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                  <select id="serverFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all">🖥️ Todos los Servidores</option>
+                  </select>
+                  <select id="qualityFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all">📺 Todas las Calidades</option>
+                  </select>
+                  <select id="languageFilter" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer;">
+                    <option value="all">🌍 Todos los Idiomas</option>
+                  </select>
+                  <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar Filtros</button>
+                </div>
               </div>
             </div>
             
@@ -9534,6 +9549,8 @@ app.get('/library', async (req, res) => {
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
           let currentServerFilter = 'all';
+          let currentQualityFilter = 'all';
+          let currentLanguageFilter = 'all';
           let preSearchServers = []; // Servidores seleccionados ANTES de buscar
           let availableServers = [];
           let searchTimeout = null;
@@ -9616,34 +9633,28 @@ app.get('/library', async (req, res) => {
               const data = await response.json();
               
               if (data.servers && data.servers.length > 0) {
-                const container = document.getElementById('preSearchServersContainer');
-                const serverButtons = data.servers.map(server => 
-                  '<button class="filter-btn filter-pre-server" data-server="' + server.serverName + '">🖥️ ' + server.serverName + '</button>'
-                ).join('');
+                const select = document.getElementById('preSearchServersSelect');
+                data.servers.forEach(server => {
+                  const option = document.createElement('option');
+                  option.value = server.serverName;
+                  option.textContent = '🖥️ ' + server.serverName;
+                  select.appendChild(option);
+                });
                 
-                container.innerHTML = '<div class="filter-label">Buscar en:</div>' +
-                  '<button class="filter-btn filter-pre-server active" data-server="all">🌐 Todos</button>' +
-                  serverButtons;
-                
-                // Event listeners
-                document.querySelectorAll('.filter-pre-server').forEach(btn => {
-                  btn.addEventListener('click', function() {
-                    document.querySelectorAll('.filter-pre-server').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    const selectedServer = this.dataset.server;
-                    if (selectedServer === 'all') {
-                      preSearchServers = [];
-                    } else {
-                      preSearchServers = [selectedServer];
-                    }
-                    
-                    // Re-ejecutar búsqueda si hay texto
-                    const searchInput = document.getElementById('searchInput');
-                    if (searchInput && searchInput.value.trim().length >= 3) {
-                      performSearch();
-                    }
-                  });
+                // Event listener
+                select.addEventListener('change', function() {
+                  const selectedServer = this.value;
+                  if (selectedServer === 'all') {
+                    preSearchServers = [];
+                  } else {
+                    preSearchServers = [selectedServer];
+                  }
+                  
+                  // Re-ejecutar búsqueda si hay texto
+                  const searchInput = document.getElementById('searchInput');
+                  if (searchInput && searchInput.value.trim().length >= 3) {
+                    performSearch();
+                  }
                 });
               }
             } catch (error) {
@@ -9713,40 +9724,42 @@ app.get('/library', async (req, res) => {
               
               if (data.results.length === 0) {
                 status.textContent = 'No se encontraron resultados para "' + query + '"';
+                document.getElementById('postSearchFilters').style.display = 'none';
                 return;
               }
               
-              // Extraer servidores únicos y crear filtros
+              // Extraer valores únicos para filtros
               const serversSet = new Set();
+              
               data.results.forEach(item => {
                 item.servers.forEach(server => {
                   serversSet.add(server.serverName);
                 });
               });
+              
               availableServers = Array.from(serversSet).sort();
               
-              // Actualizar filtros de servidores
-              const serverFiltersContainer = document.getElementById('serverFiltersContainer');
-              if (availableServers.length > 1) {
-                serverFiltersContainer.style.display = 'flex';
-                serverFiltersContainer.innerHTML = '<div class="filter-label">Servidores:</div>' +
-                  '<button class="filter-btn filter-server active" data-server="all">🌐 Todos</button>' +
-                  availableServers.map(server => 
-                    '<button class="filter-btn filter-server" data-server="' + server + '">🖥️ ' + server + '</button>'
-                  ).join('');
-                
-                // Event listeners para filtros de servidor
-                document.querySelectorAll('.filter-server').forEach(btn => {
-                  btn.addEventListener('click', function() {
-                    document.querySelectorAll('.filter-server').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    currentServerFilter = this.dataset.server;
-                    renderFilteredResults(data.results);
-                  });
-                });
-              } else {
-                serverFiltersContainer.style.display = 'none';
-              }
+              // Actualizar filtros POST-búsqueda
+              const postSearchFilters = document.getElementById('postSearchFilters');
+              const serverFilter = document.getElementById('serverFilter');
+              
+              // Servidor filter
+              serverFilter.innerHTML = '<option value="all">🖥️ Todos los Servidores (' + availableServers.length + ')</option>' +
+                availableServers.map(s => '<option value="' + s + '">' + s + '</option>').join('');
+              
+              // Mostrar filtros (solo servidor por ahora, calidad/idioma requieren metadata adicional)
+              postSearchFilters.style.display = 'block';
+              document.getElementById('qualityFilter').style.display = 'none';
+              document.getElementById('languageFilter').style.display = 'none';
+              
+              // Event listeners para filtros
+              serverFilter.onchange = () => { currentServerFilter = serverFilter.value; renderFilteredResults(data.results); };
+              
+              document.getElementById('clearFiltersBtn').onclick = () => {
+                serverFilter.value = 'all';
+                currentServerFilter = 'all';
+                renderFilteredResults(data.results);
+              };
               
               currentServerFilter = 'all';
               window.searchResultsData = data.results;
@@ -9764,13 +9777,13 @@ app.get('/library', async (req, res) => {
           function renderFilteredResults(allResults) {
             const results = document.getElementById('searchResults');
             
-            // Filtrar por servidor si no es "all"
-            let filteredResults = allResults;
-            if (currentServerFilter !== 'all') {
-              filteredResults = allResults.filter(item => 
-                item.servers.some(server => server.serverName === currentServerFilter)
-              );
-            }
+            // Aplicar filtro de servidor
+            let filteredResults = allResults.filter(item => {
+              if (currentServerFilter !== 'all') {
+                return item.servers.some(s => s.serverName === currentServerFilter);
+              }
+              return true;
+            });
             
             if (filteredResults.length === 0) {
               results.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 2rem;">No se encontraron resultados con estos filtros</div>';
