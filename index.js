@@ -6797,7 +6797,6 @@ app.get('/browse', async (req, res) => {
                     // Determinar qué bibliotecas mostrar (restar espacio del botón Más)
                     const spaceForLinks = availableWidth - moreBtnWidth;
                     const visibleIndices = [];
-                    const hiddenIndices = [];
                     let accumulatedWidth = 0;
                     
                     // Prioridad 1: La biblioteca activa siempre visible
@@ -6816,29 +6815,33 @@ app.get('/browse', async (req, res) => {
                       if (accumulatedWidth + item.width <= spaceForLinks) {
                         visibleIndices.push(item.index);
                         accumulatedWidth += item.width;
-                      } else {
-                        hiddenIndices.push(item.index);
                       }
                     }
                     
-                    // Agregar los que no cupieron
+                    // Calcular las ocultas (las que NO están en visibles)
+                    const hiddenIndices = [];
                     allLibraries.forEach((lib, i) => {
                       if (!visibleIndices.includes(i)) {
                         hiddenIndices.push(i);
                       }
                     });
                     
-                    // Re-renderizar solo las visibles
+                    // Re-renderizar visibles: ACTIVA PRIMERO, luego las demás en orden
                     libraryLinksContainer.innerHTML = '';
-                    visibleIndices.sort((a, b) => a - b); // Mantener orden original
-                    visibleIndices.forEach(i => {
+                    
+                    // Primero la activa
+                    if (activeIndex !== -1 && visibleIndices.includes(activeIndex)) {
+                      libraryLinksContainer.appendChild(createLibraryLink(allLibraries[activeIndex]));
+                    }
+                    
+                    // Luego las demás en orden original (excluyendo la activa)
+                    visibleIndices.filter(i => i !== activeIndex).sort((a, b) => a - b).forEach(i => {
                       libraryLinksContainer.appendChild(createLibraryLink(allLibraries[i]));
                     });
                     
-                    // Poner las ocultas en el dropdown
+                    // Poner las ocultas en el dropdown (en orden original)
                     dropdownMenu.innerHTML = '';
-                    hiddenIndices.sort((a, b) => a - b); // Mantener orden original
-                    hiddenIndices.forEach(i => {
+                    hiddenIndices.sort((a, b) => a - b).forEach(i => {
                       dropdownMenu.appendChild(createLibraryLink(allLibraries[i]));
                     });
                     
