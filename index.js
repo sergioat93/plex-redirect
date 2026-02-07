@@ -9782,18 +9782,23 @@ app.get('/library', async (req, res) => {
             const allCheckbox = dropdown.querySelector('input[value="all"]');
             const serverCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
             
-            if (allCheckbox.checked) {
+            // Si se marcó "Todos", desmarcar el resto
+            if (allCheckbox && allCheckbox.checked) {
               serverCheckboxes.forEach(cb => cb.checked = false);
               currentServerFilter = [];
               label.textContent = '🖥️ Todos los Servidores';
             } else {
+              // Si se desmarca "Todos" o se marca otro checkbox
               const selected = serverCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
               
               if (selected.length === 0) {
-                allCheckbox.checked = true;
+                // Si no hay ningún servidor seleccionado, marcar "Todos"
+                if (allCheckbox) allCheckbox.checked = true;
                 currentServerFilter = [];
                 label.textContent = '🖥️ Todos los Servidores';
               } else {
+                // Desmarcar "Todos" si hay servidores individuales seleccionados
+                if (allCheckbox) allCheckbox.checked = false;
                 currentServerFilter = selected;
                 label.textContent = selected.length === 1 ? '🖥️ ' + selected[0] : '🖥️ ' + selected.length + ' servidores';
               }
@@ -9808,7 +9813,7 @@ app.get('/library', async (req, res) => {
             const allCheckbox = dropdown.querySelector('input[value="all"]');
             const qualityCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
             
-            if (allCheckbox.checked) {
+            if (allCheckbox && allCheckbox.checked) {
               qualityCheckboxes.forEach(cb => cb.checked = false);
               currentQualityFilter = [];
               label.textContent = '📺 Todas las Calidades';
@@ -9816,10 +9821,11 @@ app.get('/library', async (req, res) => {
               const selected = qualityCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
               
               if (selected.length === 0) {
-                allCheckbox.checked = true;
+                if (allCheckbox) allCheckbox.checked = true;
                 currentQualityFilter = [];
                 label.textContent = '📺 Todas las Calidades';
               } else {
+                if (allCheckbox) allCheckbox.checked = false;
                 currentQualityFilter = selected;
                 label.textContent = selected.length === 1 ? '📺 ' + selected[0].toUpperCase() : '📺 ' + selected.length + ' calidades';
               }
@@ -9834,7 +9840,7 @@ app.get('/library', async (req, res) => {
             const allCheckbox = dropdown.querySelector('input[value="all"]');
             const audioCheckboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
             
-            if (allCheckbox.checked) {
+            if (allCheckbox && allCheckbox.checked) {
               audioCheckboxes.forEach(cb => cb.checked = false);
               currentLanguageFilter = [];
               label.textContent = '🌍 Todos los Idiomas';
@@ -9842,10 +9848,11 @@ app.get('/library', async (req, res) => {
               const selected = audioCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
               
               if (selected.length === 0) {
-                allCheckbox.checked = true;
+                if (allCheckbox) allCheckbox.checked = true;
                 currentLanguageFilter = [];
                 label.textContent = '🌍 Todos los Idiomas';
               } else {
+                if (allCheckbox) allCheckbox.checked = false;
                 currentLanguageFilter = selected;
                 label.textContent = selected.length === 1 ? '🌍 ' + selected[0].toUpperCase() : '🌍 ' + selected.length + ' idiomas';
               }
@@ -9923,8 +9930,7 @@ app.get('/library', async (req, res) => {
             const allCheckbox = optionsContainer.querySelector('input[value="all"]');
             const serverCheckboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
             
-            // Si se marcó "Todos"
-            if (allCheckbox.checked) {
+            if (allCheckbox && allCheckbox.checked) {
               serverCheckboxes.forEach(cb => cb.checked = false);
               preSearchServers = [];
               label.textContent = '🌐 Todos los Servidores';
@@ -9932,10 +9938,11 @@ app.get('/library', async (req, res) => {
               const selected = serverCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
               
               if (selected.length === 0) {
-                allCheckbox.checked = true;
+                if (allCheckbox) allCheckbox.checked = true;
                 preSearchServers = [];
                 label.textContent = '🌐 Todos los Servidores';
               } else {
+                if (allCheckbox) allCheckbox.checked = false;
                 preSearchServers = selected;
                 label.textContent = selected.length === 1 ? '🖥️ ' + selected[0] : '🖥️ ' + selected.length + ' servidores';
               }
