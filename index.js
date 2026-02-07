@@ -8442,6 +8442,16 @@ app.get('/library', async (req, res) => {
                 const thumb = thumbMatch ? `${server.baseURI}${thumbMatch[1]}?X-Plex-Token=${token.accessToken}` : '';
                 const tmdbId = guidMatch ? guidMatch[1] : null;
                 
+                // Extraer resolución y audio del contenido posterior al tag
+                const remainingXml = contentXml.substring(match.index);
+                const endTagMatch = remainingXml.match(new RegExp(`</${tagType}>`));
+                const itemContent = endTagMatch ? remainingXml.substring(0, endTagMatch.index) : remainingXml.substring(0, 2000);
+                
+                // Buscar tag Media para obtener resolución
+                const mediaMatch = itemContent.match(/<Media[^>]*videoResolution="([^"]*)"[^>]*audioCodec="([^"]*)"/);
+                const resolution = mediaMatch ? mediaMatch[1] : 'SD';
+                const audioCodec = mediaMatch ? mediaMatch[2] : 'Unknown';
+                
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
                 
@@ -8459,7 +8469,9 @@ app.get('/library', async (req, res) => {
                       ratingKey: ratingKey,
                       libraryKey: sectionKey,
                       libraryTitle: sectionTitle,
-                      libraryType: sectionType
+                      libraryType: sectionType,
+                      resolution: resolution,
+                      audioCodec: audioCodec
                     });
                   }
                   continue;
@@ -8481,7 +8493,9 @@ app.get('/library', async (req, res) => {
                     ratingKey: ratingKey,
                     libraryKey: sectionKey,
                     libraryTitle: sectionTitle,
-                    libraryType: sectionType
+                    libraryType: sectionType,
+                    resolution: resolution,
+                    audioCodec: audioCodec
                   }]
                 });
               }
@@ -9730,34 +9744,67 @@ app.get('/library', async (req, res) => {
               
               // Extraer valores únicos para filtros
               const serversSet = new Set();
+              const qualitiesSet = new Set();
+              const audioSet = new Set();
               
               data.results.forEach(item => {
                 item.servers.forEach(server => {
                   serversSet.add(server.serverName);
+                  if (server.resolution) qualitiesSet.add(server.resolution);
+                  if (server.audioCodec) audioSet.add(server.audioCodec);
                 });
               });
               
               availableServers = Array.from(serversSet).sort();
+              const availableQualities = Array.from(qualitiesSet).sort((a, b) => {
+                const order = { '2160': 4, '1080': 3, '720': 2, 'sd': 1 };
+                return (order[b.toLowerCase()] || 0) - (order[a.toLowerCase()] || 0);
+              });
+              const availableAudio = Array.from(audioSet).sort();
               
               // Actualizar filtros POST-búsqueda
               const postSearchFilters = document.getElementById('postSearchFilters');
               const serverFilter = document.getElementById('serverFilter');
+              const qualityFilter = document.getElementById('qualityFilter');
+              const languageFilter = document.getElementById('languageFilter');
               
               // Servidor filter
               serverFilter.innerHTML = '<option value="all">🖥️ Todos los Servidores (' + availableServers.length + ')</option>' +
                 availableServers.map(s => '<option value="' + s + '">' + s + '</option>').join('');
               
-              // Mostrar filtros (solo servidor por ahora, calidad/idioma requieren metadata adicional)
+              // Calidad filter
+              if (availableQualities.length > 0) {
+                qualityFilter.innerHTML = '<option value="all">📺 Todas las Calidades</option>' +
+                  availableQualities.map(q => '<option value="' + q + '">' + q.toUpperCase() + '</option>').join('');
+                qualityFilter.style.display = 'block';
+              } else {
+                qualityFilter.style.display = 'none';
+              }
+              
+              // Audio filter (renombrado de idioma)
+              if (availableAudio.length > 0) {
+                languageFilter.innerHTML = '<option value="all">🔊 Todos los Audios</option>' +
+                  availableAudio.map(a => '<option value="' + a + '">' + a.toUpperCase() + '</option>').join('');
+                languageFilter.style.display = 'block';
+              } else {
+                languageFilter.style.display = 'none';
+              }
+              
+              // Mostrar filtros
               postSearchFilters.style.display = 'block';
-              document.getElementById('qualityFilter').style.display = 'none';
-              document.getElementById('languageFilter').style.display = 'none';
               
               // Event listeners para filtros
               serverFilter.onchange = () => { currentServerFilter = serverFilter.value; renderFilteredResults(data.results); };
+              qualityFilter.onchange = () => { currentQualityFilter = qualityFilter.value; renderFilteredResults(data.results); };
+              languageFilter.onchange = () => { currentLanguageFilter = languageFilter.value; renderFilteredResults(data.results); };
               
               document.getElementById('clearFiltersBtn').onclick = () => {
                 serverFilter.value = 'all';
+                qualityFilter.value = 'all';
+                languageFilter.value = 'all';
                 currentServerFilter = 'all';
+                currentQualityFilter = 'all';
+                currentLanguageFilter = 'all';
                 renderFilteredResults(data.results);
               };
               
@@ -9777,11 +9824,23 @@ app.get('/library', async (req, res) => {
           function renderFilteredResults(allResults) {
             const results = document.getElementById('searchResults');
             
-            // Aplicar filtro de servidor
+            // Aplicar todos los filtros
             let filteredResults = allResults.filter(item => {
+              // Filtro de servidor
               if (currentServerFilter !== 'all') {
-                return item.servers.some(s => s.serverName === currentServerFilter);
+                if (!item.servers.some(s => s.serverName === currentServerFilter)) return false;
               }
+              
+              // Filtro de calidad
+              if (currentQualityFilter !== 'all') {
+                if (!item.servers.some(s => s.resolution === currentQualityFilter)) return false;
+              }
+              
+              // Filtro de audio
+              if (currentLanguageFilter !== 'all') {
+                if (!item.servers.some(s => s.audioCodec === currentLanguageFilter)) return false;
+              }
+              
               return true;
             });
             
