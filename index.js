@@ -8450,15 +8450,15 @@ app.get('/library', async (req, res) => {
                 // Buscar tag Media y extraer atributos por separado
                 const mediaTagMatch = itemContent.match(/<Media[^>]*>/);
                 let resolution = 'SD';
-                let audioCodec = 'unknown';
+                let audioLanguage = 'unknown';
                 
                 if (mediaTagMatch) {
                   const mediaTag = mediaTagMatch[0];
                   const resMatch = mediaTag.match(/videoResolution="([^"]*)"/);
-                  const audioMatch = mediaTag.match(/audioCodec="([^"]*)"/);
+                  const audioMatch = mediaTag.match(/languageCode="([^"]*)"/);
                   
                   if (resMatch) resolution = resMatch[1];
-                  if (audioMatch) audioCodec = audioMatch[1];
+                  if (audioMatch) audioLanguage = audioMatch[1].toLowerCase();
                 }
                 
                 matchCount++;
@@ -9528,10 +9528,10 @@ app.get('/library', async (req, res) => {
                         <span style="margin-left: 0.5rem;">▼</span>
                       </div>
                       <div class="dropdown-options" id="preSearchServersOptions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                        <div style="display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(229,160,13,0.1)'" onmouseout="this.style.background='transparent'">
+                        <label style="display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(229,160,13,0.1)'" onmouseout="this.style.background='transparent'">
                           <input type="checkbox" value="all" checked style="margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer;">
-                          <span style="color: #f3f4f6; font-size: 0.875rem; user-select: none;">🌐 Todos los Servidores</span>
-                        </div>
+                          <span style="color: #f3f4f6; font-size: 0.875rem;">🌐 Todos los Servidores</span>
+                        </label>
                       </div>
                     </div>
                   </div>
@@ -9709,10 +9709,10 @@ app.get('/library', async (req, res) => {
             dropdown.innerHTML = '';
             
             // Opción "Todos"
-            const allDiv = document.createElement('div');
-            allDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-            allDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-            allDiv.onmouseout = function() { this.style.background = 'transparent'; };
+            const allLabel = document.createElement('label');
+            allLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+            allLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+            allLabel.onmouseout = function() { this.style.background = 'transparent'; };
             
             const allCheckbox = document.createElement('input');
             allCheckbox.type = 'checkbox';
@@ -9722,20 +9722,19 @@ app.get('/library', async (req, res) => {
             allCheckbox.onchange = changeHandler;
             
             const allText = document.createElement('span');
-            allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
+            allText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
             allText.textContent = icon + ' Todos los ' + typeName;
-            allText.onclick = function() { allCheckbox.click(); };
             
-            allDiv.appendChild(allCheckbox);
-            allDiv.appendChild(allText);
-            dropdown.appendChild(allDiv);
+            allLabel.appendChild(allCheckbox);
+            allLabel.appendChild(allText);
+            dropdown.appendChild(allLabel);
             
             // Opciones individuales
             items.forEach(item => {
-              const itemDiv = document.createElement('div');
-              itemDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-              itemDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-              itemDiv.onmouseout = function() { this.style.background = 'transparent'; };
+              const itemLabel = document.createElement('label');
+              itemLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+              itemLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+              itemLabel.onmouseout = function() { this.style.background = 'transparent'; };
               
               const itemCheckbox = document.createElement('input');
               itemCheckbox.type = 'checkbox';
@@ -9744,13 +9743,12 @@ app.get('/library', async (req, res) => {
               itemCheckbox.onchange = changeHandler;
               
               const itemText = document.createElement('span');
-              itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
+              itemText.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
               itemText.textContent = icon + ' ' + item.toUpperCase();
-              itemText.onclick = function() { itemCheckbox.click(); };
               
-              itemDiv.appendChild(itemCheckbox);
-              itemDiv.appendChild(itemText);
-              dropdown.appendChild(itemDiv);
+              itemLabel.appendChild(itemCheckbox);
+              itemLabel.appendChild(itemText);
+              dropdown.appendChild(itemLabel);
             });
           }
           
@@ -9870,10 +9868,10 @@ app.get('/library', async (req, res) => {
                 
                 // Agregar servidores al dropdown
                 data.servers.forEach(server => {
-                  const serverDiv = document.createElement('div');
-                  serverDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-                  serverDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-                  serverDiv.onmouseout = function() { this.style.background = 'transparent'; };
+                  const serverLabel = document.createElement('label');
+                  serverLabel.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
+                  serverLabel.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
+                  serverLabel.onmouseout = function() { this.style.background = 'transparent'; };
                   
                   const checkbox = document.createElement('input');
                   checkbox.type = 'checkbox';
@@ -9882,13 +9880,12 @@ app.get('/library', async (req, res) => {
                   checkbox.onchange = handlePreSearchServerChange;
                   
                   const text = document.createElement('span');
-                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
+                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem;';
                   text.textContent = '🖥️ ' + server.serverName;
-                  text.onclick = function() { checkbox.click(); };
                   
-                  serverDiv.appendChild(checkbox);
-                  serverDiv.appendChild(text);
-                  optionsContainer.appendChild(serverDiv);
+                  serverLabel.appendChild(checkbox);
+                  serverLabel.appendChild(text);
+                  optionsContainer.appendChild(serverLabel);
                 });
                 
                 // Toggle dropdown al hacer click
@@ -9898,13 +9895,11 @@ app.get('/library', async (req, res) => {
                 };
                 
                 // Actualizar el checkbox "Todos" del HTML inicial
-                const allDiv = optionsContainer.querySelector('div');
-                if (allDiv) {
-                  const allCheckbox = allDiv.querySelector('input[value="all"]');
-                  const allText = allDiv.querySelector('span');
+                const firstLabel = optionsContainer.querySelector('label, div');
+                if (firstLabel) {
+                  const allCheckbox = firstLabel.querySelector('input[value="all"]');
                   if (allCheckbox) {
                     allCheckbox.onchange = handlePreSearchServerChange;
-                    if (allText) allText.onclick = function() { allCheckbox.click(); };
                   }
                 }
               }
