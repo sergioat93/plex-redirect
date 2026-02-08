@@ -13027,7 +13027,11 @@ app.get('/api/web-local/generate', async (req, res) => {
               // Guardar progreso cada 50 items
               if (processedCount % 50 === 0) {
                 await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
-                sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
+                const duplicates = processedCount - (allMovies.length + allSeries.length + notFoundItems.length);
+                sendProgress({ 
+                  type: 'info', 
+                  message: `💾 Progreso: ${allMovies.length + allSeries.length} únicos | ${notFoundItems.length} no encontrados | ~${duplicates} duplicados` 
+                });
               }
               
               // Buscar en TMDB
