@@ -124,14 +124,21 @@ async function initializeWebLocalCollections() {
 const antiInspectScript = `
 <script>
 // Protección contra inspección (dificulta, no previene al 100%)
-document.addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('keydown', e => {
-  if (e.key === 'F12' || 
-      (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
-      (e.ctrlKey && e.key === 'U')) {
-    e.preventDefault();
-  }
-});
+// Solo se activa si NO estamos en el panel de admin
+const isAdminPanel = window.location.search.includes('action=show-admin-panel');
+
+if (!isAdminPanel) {
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('keydown', e => {
+    if (e.key === 'F12' || 
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        (e.ctrlKey && e.key === 'U')) {
+      e.preventDefault();
+    }
+  });
+} else {
+  console.log('🔓 Panel de Admin: Inspección habilitada');
+}
 </script>
 `;
 
@@ -9005,10 +9012,13 @@ Generado por Infinity Scrap`;
   
   // Renderizar contenido del tab "Generar Web"
   if (action === 'web-generate-tab') {
+    console.log('[DEBUG] Endpoint web-generate-tab llamado');
     if (adminPassword !== ADMIN_PASSWORD) {
+      console.log('[DEBUG] Password incorrecto');
       return res.status(403).send('No autorizado');
     }
     
+    console.log('[DEBUG] Devolviendo HTML del tab Generar Web');
     return res.send(`
       <div class="container">
         <div class="header">
@@ -10456,12 +10466,17 @@ Generado por Infinity Scrap`;
                       }
                       
                       // Cargar contenido via AJAX
+                      console.log('[DEBUG CLIENT] Llamando a web-generate-tab...');
                       const response = await fetch(\`/library?action=web-generate-tab&password=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
+                      console.log('[DEBUG CLIENT] HTML recibido, longitud:', html.length);
+                      console.log('[DEBUG CLIENT] Primeros 200 chars:', html.substring(0, 200));
                       
                       if (generatePane) {
                         // Insertar HTML directamente (es un fragmento válido)
+                        console.log('[DEBUG CLIENT] Insertando HTML en generatePane...');
                         generatePane.innerHTML = html;
+                        console.log('[DEBUG CLIENT] HTML insertado, contenido:', generatePane.innerHTML.substring(0, 200));
                         
                         // Ejecutar los scripts del contenido cargado
                         const scripts = generatePane.querySelectorAll('script');
