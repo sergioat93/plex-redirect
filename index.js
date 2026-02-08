@@ -9303,103 +9303,176 @@ app.get('/library', async (req, res) => {
       gap: 15px;
     }
     
-    /* CARDS */
+    /* CARDS - Diseño igual a /browse */
     .content-card {
-      background: rgba(31, 41, 55, 0.8);
-      border: 2px solid rgba(229, 160, 13, 0.2);
-      border-radius: 12px;
-      overflow: hidden;
-      transition: all 0.3s;
+      position: relative;
       cursor: pointer;
-      display: flex;
-      flex-direction: column;
+      transition: all 0.3s ease;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
     .content-card:hover {
-      transform: translateY(-5px);
-      border-color: #e5a00d;
-      box-shadow: 0 10px 30px rgba(229, 160, 13, 0.3);
+      transform: translateY(-8px);
+      box-shadow: 0 8px 24px rgba(229, 160, 13, 0.3);
     }
     .content-grid.list-view .content-card {
+      display: flex;
       flex-direction: row;
+      align-items: stretch;
       height: 150px;
+      padding: 0;
     }
     
     .card-poster {
-      width: 100%;
-      aspect-ratio: 2/3;
-      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 3rem;
-      border-bottom: 2px solid rgba(229, 160, 13, 0.2);
       position: relative;
-    }
-    .content-grid.list-view .card-poster {
-      width: 100px;
-      height: 100%;
-      aspect-ratio: auto;
-      border-bottom: none;
-      border-right: 2px solid rgba(229, 160, 13, 0.2);
+      overflow: hidden;
+      border-radius: 8px;
+      aspect-ratio: 2/3;
     }
     .card-poster img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      transition: transform 0.3s ease;
+      display: block;
+    }
+    .content-card:hover .card-poster img {
+      transform: scale(1.1);
+    }
+    .no-poster {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-size: 2.5rem;
+    }
+    
+    /* Botones de enlaces externos */
+    .modal-icons-row {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    .badge-icon-link {
+      display: inline-flex;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+    .badge-icon-link:hover {
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+    .badge-icon {
+      height: 32px;
+      width: auto;
+      object-fit: contain;
+    }
+    .content-grid.list-view .card-poster {
+      aspect-ratio: 2/3;
+      width: 100px;
+      height: 150px;
+      flex-shrink: 0;
+      margin: 0;
+      border-radius: 8px 0 0 8px;
     }
     
     .card-content {
-      padding: 15px;
-      flex: 1;
-    }
-    .content-grid.list-view .card-content {
+      padding: 0.75rem;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      gap: 0.35rem;
+    }
+    .content-grid.list-view .card-content {
+      padding: 1rem 1.5rem 1.25rem 1.5rem;
+      flex: 1;
+      justify-content: flex-start;
+      gap: 0.5rem;
+      overflow: hidden;
     }
     
     .card-title {
-      font-weight: 700;
-      font-size: 0.95rem;
-      margin-bottom: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
       overflow: hidden;
       text-overflow: ellipsis;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      white-space: nowrap;
+      color: var(--text-primary);
     }
     .content-grid.list-view .card-title {
-      font-size: 1.1rem;
-      -webkit-line-clamp: 1;
+      font-size: 1.25rem;
+      font-weight: 700;
+      order: 1;
     }
     
     .card-info {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      font-size: 0.85rem;
-      color: #9ca3af;
-      flex-wrap: wrap;
       gap: 0.5rem;
-    }
-    .card-year {
-      color: #e5a00d;
-      font-weight: 600;
-    }
-    .card-rating {
-      color: #f9a825;
-      font-weight: 600;
-    }
-    .card-genres {
-      color: #9ca3af;
-      font-size: 0.8rem;
-    }
-    .card-server {
       font-size: 0.75rem;
-      background: rgba(229, 160, 13, 0.2);
-      padding: 3px 8px;
-      border-radius: 4px;
-      color: #e5a00d;
+    }
+    .content-grid.list-view .card-info {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.875rem;
+      order: 2;
+      flex-wrap: nowrap;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+    
+    .card-year {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .content-grid.list-view .card-year {
+      font-size: 1.25rem;
+      font-weight: 400;
+    }
+    
+    .card-rating {
+      color: var(--primary-color);
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .card-rating i {
+      font-size: 0.7rem;
+    }
+    .content-grid.list-view .card-rating {
+      gap: 0.35rem;
+    }
+    
+    .card-genres {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 400;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .content-grid:not(.list-view) .card-genres {
+      display: block;
+      margin-top: 0.25rem;
+    }
+    .content-grid.list-view .card-genres {
+      display: inline;
+      font-size: 0.875rem;
+      flex: 1;
+      min-width: 0;
     }
     
     .no-results {
@@ -10042,9 +10115,6 @@ app.get('/library', async (req, res) => {
             <option value="7">⭐ 7.0+</option>
             <option value="6">⭐ 6.0+</option>
           </select>
-          <select id="server-filter" class="filter-select">
-            <option value="">Todos los servidores</option>
-          </select>
           <select id="sort-filter" class="filter-select">
             <option value="title">Título A-Z</option>
             <option value="title-desc">Título Z-A</option>
@@ -10093,125 +10163,242 @@ app.get('/library', async (req, res) => {
   <div class="modal-container" id="modalContainer"></div>
 
   <script>
-    let allMovies = [];
-    let allSeries = [];
-    let allCollections = [];
-    let allServers = new Set();
+    // Embeber datos JSON directamente para evitar CORS
+    const allMovies = ${JSON.stringify(snapshot.data.movies)};
+    const allSeries = ${JSON.stringify(snapshot.data.series)};
+    const allCollections = ${JSON.stringify(snapshot.data.collections)};
+    
+    let currentTab = 'movies';
     let currentContentForServerModal = null;
 
-    // Cargar datos y popular filtros
-    Promise.all([
-      fetch('data/movies.json').then(r => r.json()),
-      fetch('data/series.json').then(r => r.json()),
-      fetch('data/collections.json').then(r => r.json())
-    ]).then(([movies, series, collections]) => {
-      allMovies = movies;
-      allSeries = series;
-      allCollections = collections;
+    // Función para normalizar texto (igual que en /browse)
+    function normalizeText(text) {
+      if (!text) return '';
+      // Función para decodificar entidades HTML
+      const decodeHTML = (str) => {
+        if (!str) return '';
+        const txt = document.createElement('textarea');
+        txt.innerHTML = str;
+        return txt.value;
+      };
       
-      // Extraer servidores
-      movies.forEach(m => allServers.add(m.serverName));
-      series.forEach(s => allServers.add(s.serverName));
-      
-      // Popular filtros dinámicos
-      populateFilters('movies', movies);
-      populateFilters('series', series);
-      
-      // Renderizar inicial
-      renderMovies();
-      renderSeries();
-      renderCollections();
+      // Primero decodificar entidades HTML, luego normalizar
+      const decoded = decodeHTML(text);
+      return decoded
+        .toString()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Inicializar al cargar
+    document.addEventListener('DOMContentLoaded', () => {
+      populateFilters();
+      setupEventListeners();
+      renderContent();
     });
 
-    // Popular filtros dinámicos
-    function populateFilters(type, items) {
-      // Genres
-      const genres = new Set();
-      items.forEach(item => {
-        if (item.genres) {
-          item.genres.forEach(g => genres.add(g));
-        }
-      });
-      const genreSelect = document.getElementById(\`genre-filter-\${type}\`);
-      Array.from(genres).sort().forEach(genre => {
-        const opt = document.createElement('option');
-        opt.value = genre;
-        opt.textContent = genre;
-        genreSelect.appendChild(opt);
-      });
+    // Popular filtros dinámicos unificados
+    function populateFilters(filteredItems = null) {
+      let items;
+      if (filteredItems) {
+        items = filteredItems;
+      } else {
+        if (currentTab === 'movies') items = allMovies;
+        else if (currentTab === 'series') items = allSeries;
+        else items = allCollections;
+      }
       
-      // Years
-      const years = new Set();
-      items.forEach(item => {
-        if (item.releaseYear) years.add(item.releaseYear);
-      });
-      const yearSelect = document.getElementById(\`year-filter-\${type}\`);
-      Array.from(years).sort((a, b) => b - a).forEach(year => {
-        const opt = document.createElement('option');
-        opt.value = year;
-        opt.textContent = year;
-        yearSelect.appendChild(opt);
-      });
+      // Obtener valores actuales seleccionados
+      const currentGenre = document.getElementById('genre-filter').value;
+      const currentYear = document.getElementById('year-filter').value;
+      const currentCountry = document.getElementById('country-filter').value;
       
-      // Countries
-      const countries = new Set();
-      items.forEach(item => {
-        if (item.productionCompanies) {
-          item.productionCompanies.split(',').forEach(c => countries.add(c.trim()));
-        }
-      });
-      const countrySelect = document.getElementById(\`country-filter-\${type}\`);
-      Array.from(countries).sort().forEach(country => {
-        const opt = document.createElement('option');
-        opt.value = country;
-        opt.textContent = country;
-        countrySelect.appendChild(opt);
-      });
+      // Genres (solo para movies y series)
+      if (currentTab !== 'collections') {
+        const genres = new Set();
+        items.forEach(item => {
+          if (item.genres) {
+            item.genres.forEach(g => genres.add(g));
+          }
+        });
+        const genreSelect = document.getElementById('genre-filter');
+        const genreOptions = '<option value="">Géneros</option>' + 
+          Array.from(genres).sort().map(genre => 
+            \`<option value="\${genre}" \${genre === currentGenre ? 'selected' : ''}>\${genre}</option>\`
+          ).join('');
+        genreSelect.innerHTML = genreOptions;
+      }
       
-      // Servers
-      const serverSelect = document.getElementById(\`server-filter-\${type}\`);
-      Array.from(allServers).sort().forEach(server => {
-        const opt = document.createElement('option');
-        opt.value = server;
-        opt.textContent = server;
-        serverSelect.appendChild(opt);
+      // Years (solo para movies y series)
+      if (currentTab !== 'collections') {
+        const years = new Set();
+        items.forEach(item => {
+          if (item.releaseYear) years.add(item.releaseYear.toString());
+        });
+        const yearSelect = document.getElementById('year-filter');
+        const yearOptions = '<option value="">Años</option>' + 
+          Array.from(years).sort((a, b) => b - a).map(year => 
+            \`<option value="\${year}" \${year === currentYear ? 'selected' : ''}>\${year}</option>\`
+          ).join('');
+        yearSelect.innerHTML = yearOptions;
+      }
+      
+      // Countries (solo para movies y series)
+      if (currentTab !== 'collections') {
+        const countries = new Set();
+        items.forEach(item => {
+          if (item.productionCompanies) {
+            item.productionCompanies.split(',').forEach(c => {
+              const trimmed = c.trim();
+              if (trimmed) countries.add(trimmed);
+            });
+          }
+        });
+        const countrySelect = document.getElementById('country-filter');
+        const countryOptions = '<option value="">Países</option>' + 
+          Array.from(countries).sort().map(country => 
+            \`<option value="\${country}" \${country === currentCountry ? 'selected' : ''}>\${country}</option>\`
+          ).join('');
+        countrySelect.innerHTML = countryOptions;
+      }
+    }
+
+    // Configurar event listeners
+    function setupEventListeners() {
+      // Library links (navbar)
+      document.querySelectorAll('.library-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const tab = e.currentTarget.dataset.tab;
+          switchTab(tab);
+        });
+      });
+
+      // Search
+      document.getElementById('search-input').addEventListener('input', renderContent);
+
+      // Filtros (solo para movies y series)
+      document.getElementById('genre-filter').addEventListener('change', renderContent);
+      document.getElementById('year-filter').addEventListener('change', renderContent);
+      document.getElementById('country-filter').addEventListener('change', renderContent);
+      document.getElementById('rating-filter').addEventListener('change', renderContent);
+      document.getElementById('sort-filter').addEventListener('change', renderContent);
+
+      // Clear filters button
+      document.getElementById('clear-filters-btn').addEventListener('click', clearFilters);
+
+      // View controls
+      document.getElementById('grid-view-btn').addEventListener('click', () => setView('grid'));
+      document.getElementById('list-view-btn').addEventListener('click', () => setView('list'));
+
+      // Grid size slider
+      const slider = document.getElementById('grid-size-slider');
+      const grid = document.getElementById('content-grid');
+      slider.addEventListener('input', () => {
+        grid.style.setProperty('--card-size', slider.value + 'px');
       });
     }
 
-    // Tabs
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+    // Cambiar de tab
+    function switchTab(tab) {
+      currentTab = tab;
+      
+      // Actualizar navbar
+      document.querySelectorAll('.library-link').forEach(link => {
+        link.classList.toggle('active', link.dataset.tab === tab);
       });
-    });
 
-    // RENDER MOVIES con TODOS los filtros
+      // Mostrar/ocultar filtros según tab
+      const filtersBar = document.querySelector('.filters-bar');
+      if (tab === 'collections') {
+        // Ocultar filtros que no aplican a colecciones
+        document.getElementById('genre-filter').parentElement.style.display = 'none';
+        document.getElementById('year-filter').parentElement.style.display = 'none';
+        document.getElementById('country-filter').parentElement.style.display = 'none';
+        document.getElementById('rating-filter').parentElement.style.display = 'none';
+      } else {
+        // Mostrar todos los filtros para movies y series
+        document.getElementById('genre-filter').parentElement.style.display = '';
+        document.getElementById('year-filter').parentElement.style.display = '';
+        document.getElementById('country-filter').parentElement.style.display = '';
+        document.getElementById('rating-filter').parentElement.style.display = '';
+      }
+
+      // Limpiar filtros y repopular
+      clearFilters();
+      populateFilters();
+      renderContent();
+    }
+
+    // Renderizar contenido según tab actual
+    function renderContent() {
+      if (currentTab === 'movies') renderMovies();
+      else if (currentTab === 'series') renderSeries();
+      else renderCollections();
+    }
+
+    // RENDER MOVIES
     function renderMovies() {
-      const search = document.getElementById('search-movies').value.toLowerCase();
-      const genre = document.getElementById('genre-filter-movies').value;
-      const year = document.getElementById('year-filter-movies').value;
-      const country = document.getElementById('country-filter-movies').value;
-      const rating = document.getElementById('rating-filter-movies').value;
-      const sort = document.getElementById('sort-filter-movies').value;
-      const server = document.getElementById('server-filter-movies').value;
+      const search = document.getElementById('search-input').value;
+      const genre = document.getElementById('genre-filter').value;
+      const year = document.getElementById('year-filter').value;
+      const country = document.getElementById('country-filter').value;
+      const rating = document.getElementById('rating-filter').value;
+      const sort = document.getElementById('sort-filter').value;
       
       let filtered = allMovies.filter(m => {
-        const matchSearch = !search || m.title.toLowerCase().includes(search);
-        const matchGenre = !genre || (m.genres && m.genres.includes(genre));
-        const matchYear = !year || m.releaseYear === parseInt(year);
-        const matchCountry = !country || (m.productionCompanies && m.productionCompanies.includes(country));
-        const matchRating = !rating || (m.voteAverage && m.voteAverage >= parseFloat(rating));
-        const matchServer = !server || m.serverName === server;
-        return matchSearch && matchGenre && matchYear && matchCountry && matchRating && matchServer;
+        // Búsqueda con normalización
+        if (search && search.trim() !== '') {
+          const searchNormalized = normalizeText(search);
+          const titleNormalized = normalizeText(m.title);
+          const yearNormalized = normalizeText(m.releaseYear);
+          
+          const titleMatch = titleNormalized.includes(searchNormalized);
+          const yearMatch = yearNormalized.includes(searchNormalized);
+          
+          if (!titleMatch && !yearMatch) return false;
+        }
+        
+        // Filtro de género con normalización
+        if (genre) {
+          const itemGenres = Array.isArray(m.genres) ? m.genres : [];
+          const genreNormalized = normalizeText(genre);
+          const hasGenre = itemGenres.some(g => normalizeText(g) === genreNormalized);
+          if (!hasGenre) return false;
+        }
+        
+        // Filtro de año
+        if (year) {
+          if (m.releaseYear !== year && m.releaseYear !== parseInt(year)) return false;
+        }
+        
+        // Filtro de país con normalización
+        if (country) {
+          const countries = m.productionCompanies ? m.productionCompanies.split(',').map(c => c.trim()) : [];
+          const countryNormalized = normalizeText(country);
+          const hasCountry = countries.some(c => normalizeText(c) === countryNormalized);
+          if (!hasCountry) return false;
+        }
+        
+        // Filtro de rating
+        if (rating) {
+          if (!m.voteAverage || m.voteAverage < parseFloat(rating)) return false;
+        }
+        
+        return true;
       });
+
+      // Actualizar filtros dinámicos basados en resultados
+      populateFilters(filtered);
 
       // Ordenar
       filtered = sortItems(filtered, sort);
 
-      const grid = document.getElementById('movies-grid');
+      const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="no-results">📭 No se encontraron películas</div>';
         return;
@@ -10220,14 +10407,13 @@ app.get('/library', async (req, res) => {
       grid.innerHTML = filtered.map(m => \`
         <div class="content-card" onclick="openMovieModal(\${m.tmdbId})">
           <div class="card-poster">
-            \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy">\` : '🎬'}
+            \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">🎬</div>'}
           </div>
           <div class="card-content">
             <div class="card-title">\${m.title}</div>
             <div class="card-info">
               <span class="card-year">\${m.releaseYear || 'N/A'}</span>
-              \${m.voteAverage ? \`<span class="card-rating">⭐ \${m.voteAverage}</span>\` : ''}
-              <span class="card-server">\${m.serverName}</span>
+              \${m.voteAverage ? \`<span class="card-rating"><i class="fas fa-star"></i> \${m.voteAverage}</span>\` : ''}
             </div>
             \${m.genres ? \`<div class="card-genres">\${m.genres.slice(0, 2).join(', ')}</div>\` : ''}
           </div>
@@ -10235,30 +10421,64 @@ app.get('/library', async (req, res) => {
       \`).join('');
     }
 
-    // RENDER SERIES con TODOS los filtros
+    // RENDER SERIES
     function renderSeries() {
-      const search = document.getElementById('search-series').value.toLowerCase();
-      const genre = document.getElementById('genre-filter-series').value;
-      const year = document.getElementById('year-filter-series').value;
-      const country = document.getElementById('country-filter-series').value;
-      const rating = document.getElementById('rating-filter-series').value;
-      const sort = document.getElementById('sort-filter-series').value;
-      const server = document.getElementById('server-filter-series').value;
+      const search = document.getElementById('search-input').value;
+      const genre = document.getElementById('genre-filter').value;
+      const year = document.getElementById('year-filter').value;
+      const country = document.getElementById('country-filter').value;
+      const rating = document.getElementById('rating-filter').value;
+      const sort = document.getElementById('sort-filter').value;
       
       let filtered = allSeries.filter(s => {
-        const matchSearch = !search || s.title.toLowerCase().includes(search);
-        const matchGenre = !genre || (s.genres && s.genres.includes(genre));
-        const matchYear = !year || s.releaseYear === parseInt(year);
-        const matchCountry = !country || (s.productionCompanies && s.productionCompanies.includes(country));
-        const matchRating = !rating || (s.voteAverage && s.voteAverage >= parseFloat(rating));
-        const matchServer = !server || s.serverName === server;
-        return matchSearch && matchGenre && matchYear && matchCountry && matchRating && matchServer;
+        // Búsqueda con normalización
+        if (search && search.trim() !== '') {
+          const searchNormalized = normalizeText(search);
+          const titleNormalized = normalizeText(s.title);
+          const yearNormalized = normalizeText(s.releaseYear);
+          
+          const titleMatch = titleNormalized.includes(searchNormalized);
+          const yearMatch = yearNormalized.includes(searchNormalized);
+          
+          if (!titleMatch && !yearMatch) return false;
+        }
+        
+        // Filtro de género con normalización
+        if (genre) {
+          const itemGenres = Array.isArray(s.genres) ? s.genres : [];
+          const genreNormalized = normalizeText(genre);
+          const hasGenre = itemGenres.some(g => normalizeText(g) === genreNormalized);
+          if (!hasGenre) return false;
+        }
+        
+        // Filtro de año
+        if (year) {
+          if (s.releaseYear !== year && s.releaseYear !== parseInt(year)) return false;
+        }
+        
+        // Filtro de país con normalización
+        if (country) {
+          const countries = s.productionCompanies ? s.productionCompanies.split(',').map(c => c.trim()) : [];
+          const countryNormalized = normalizeText(country);
+          const hasCountry = countries.some(c => normalizeText(c) === countryNormalized);
+          if (!hasCountry) return false;
+        }
+        
+        // Filtro de rating
+        if (rating) {
+          if (!s.voteAverage || s.voteAverage < parseFloat(rating)) return false;
+        }
+        
+        return true;
       });
+
+      // Actualizar filtros dinámicos basados en resultados
+      populateFilters(filtered);
 
       // Ordenar
       filtered = sortItems(filtered, sort);
 
-      const grid = document.getElementById('series-grid');
+      const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="no-results">📭 No se encontraron series</div>';
         return;
@@ -10267,14 +10487,13 @@ app.get('/library', async (req, res) => {
       grid.innerHTML = filtered.map(s => \`
         <div class="content-card" onclick="openSeriesModal(\${s.tmdbId})">
           <div class="card-poster">
-            \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}" loading="lazy">\` : '📺'}
+            \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📺</div>'}
           </div>
           <div class="card-content">
             <div class="card-title">\${s.title}</div>
             <div class="card-info">
               <span class="card-year">\${s.releaseYear || 'N/A'}</span>
-              \${s.voteAverage ? \`<span class="card-rating">⭐ \${s.voteAverage}</span>\` : ''}
-              <span class="card-server">\${s.serverName}</span>
+              \${s.voteAverage ? \`<span class="card-rating"><i class="fas fa-star"></i> \${s.voteAverage}</span>\` : ''}
             </div>
             \${s.genres ? \`<div class="card-genres">\${s.genres.slice(0, 2).join(', ')}</div>\` : ''}
           </div>
@@ -10282,27 +10501,34 @@ app.get('/library', async (req, res) => {
       \`).join('');
     }
 
-    // RENDER COLLECTIONS con ordenamiento
+    // RENDER COLLECTIONS
     function renderCollections() {
-      const search = document.getElementById('search-collections').value.toLowerCase();
-      const sort = document.getElementById('sort-filter-collections').value;
+      const search = document.getElementById('search-input').value;
+      const sort = document.getElementById('sort-filter').value;
       
-      let filtered = allCollections.filter(c => 
-        !search || c.name.toLowerCase().includes(search)
-      );
+      let filtered = allCollections.filter(c => {
+        // Búsqueda con normalización
+        if (search && search.trim() !== '') {
+          const searchNormalized = normalizeText(search);
+          const nameNormalized = normalizeText(c.name);
+          
+          if (!nameNormalized.includes(searchNormalized)) return false;
+        }
+        return true;
+      });
 
       // Ordenar colecciones
-      if (sort === 'name') {
+      if (sort === 'title' || sort === 'name') {
         filtered.sort((a, b) => a.name.localeCompare(b.name));
-      } else if (sort === 'name-desc') {
+      } else if (sort === 'title-desc' || sort === 'name-desc') {
         filtered.sort((a, b) => b.name.localeCompare(a.name));
-      } else if (sort === 'count-desc') {
+      } else if (sort === 'rating-desc') {
         filtered.sort((a, b) => b.movieIds.length - a.movieIds.length);
-      } else if (sort === 'count-asc') {
+      } else if (sort === 'rating-asc') {
         filtered.sort((a, b) => a.movieIds.length - b.movieIds.length);
       }
 
-      const grid = document.getElementById('collections-grid');
+      const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="no-results">📭 No se encontraron colecciones</div>';
         return;
@@ -10311,7 +10537,7 @@ app.get('/library', async (req, res) => {
       grid.innerHTML = filtered.map(c => \`
         <div class="content-card" onclick="openCollectionModal(\${c.tmdbId})">
           <div class="card-poster">
-            \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}" loading="lazy">\` : '📚'}
+            \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📚</div>'}
           </div>
           <div class="card-content">
             <div class="card-title">\${c.name}</div>
@@ -10321,7 +10547,7 @@ app.get('/library', async (req, res) => {
       \`).join('');
     }
 
-    // SORT FUNCTION (para movies y series)
+    // SORT FUNCTION
     function sortItems(items, sortValue) {
       const sorted = [...items];
       
@@ -10343,31 +10569,22 @@ app.get('/library', async (req, res) => {
     }
 
     // CLEAR FILTERS
-    function clearFilters(type) {
-      document.getElementById(\`search-\${type}\`).value = '';
-      
-      if (type === 'movies' || type === 'series') {
-        document.getElementById(\`genre-filter-\${type}\`).value = '';
-        document.getElementById(\`year-filter-\${type}\`).value = '';
-        document.getElementById(\`country-filter-\${type}\`).value = '';
-        document.getElementById(\`rating-filter-\${type}\`).value = '';
-        document.getElementById(\`sort-filter-\${type}\`).value = 'title';
-        document.getElementById(\`server-filter-\${type}\`).value = '';
-      } else if (type === 'collections') {
-        document.getElementById('sort-filter-collections').value = 'name';
-      }
-      
-      if (type === 'movies') renderMovies();
-      else if (type === 'series') renderSeries();
-      else renderCollections();
+    function clearFilters() {
+      document.getElementById('search-input').value = '';
+      document.getElementById('genre-filter').value = '';
+      document.getElementById('year-filter').value = '';
+      document.getElementById('country-filter').value = '';
+      document.getElementById('rating-filter').value = '';
+      document.getElementById('sort-filter').value = 'title';
+      renderContent();
     }
 
     // VIEW CONTROLS (grid/list toggle)
-    function toggleView(type, mode) {
-      const grid = document.getElementById(\`\${type}-grid\`);
-      const gridBtn = document.getElementById(\`grid-view-btn-\${type}\`);
-      const listBtn = document.getElementById(\`list-view-btn-\${type}\`);
-      const sizeControl = document.getElementById(\`grid-size-control-\${type}\`);
+    function setView(mode) {
+      const grid = document.getElementById('content-grid');
+      const gridBtn = document.getElementById('grid-view-btn');
+      const listBtn = document.getElementById('list-view-btn');
+      const sizeControl = document.getElementById('grid-size-control');
       
       if (mode === 'grid') {
         grid.classList.remove('list-view');
@@ -10381,41 +10598,6 @@ app.get('/library', async (req, res) => {
         sizeControl.classList.add('hidden');
       }
     }
-
-    // GRID SIZE SLIDER
-    function setupGridSizeSlider(type) {
-      const slider = document.getElementById(\`grid-size-slider-\${type}\`);
-      const grid = document.getElementById(\`\${type}-grid\`);
-      
-      slider.addEventListener('input', () => {
-        grid.style.setProperty('--card-size', slider.value + 'px');
-      });
-    }
-    setupGridSizeSlider('movies');
-    setupGridSizeSlider('series');
-    setupGridSizeSlider('collections');
-
-    // EVENT LISTENERS - Movies
-    document.getElementById('search-movies').addEventListener('input', renderMovies);
-    document.getElementById('genre-filter-movies').addEventListener('change', renderMovies);
-    document.getElementById('year-filter-movies').addEventListener('change', renderMovies);
-    document.getElementById('country-filter-movies').addEventListener('change', renderMovies);
-    document.getElementById('rating-filter-movies').addEventListener('change', renderMovies);
-    document.getElementById('sort-filter-movies').addEventListener('change', renderMovies);
-    document.getElementById('server-filter-movies').addEventListener('change', renderMovies);
-
-    // EVENT LISTENERS - Series
-    document.getElementById('search-series').addEventListener('input', renderSeries);
-    document.getElementById('genre-filter-series').addEventListener('change', renderSeries);
-    document.getElementById('year-filter-series').addEventListener('change', renderSeries);
-    document.getElementById('country-filter-series').addEventListener('change', renderSeries);
-    document.getElementById('rating-filter-series').addEventListener('change', renderSeries);
-    document.getElementById('sort-filter-series').addEventListener('change', renderSeries);
-    document.getElementById('server-filter-series').addEventListener('change', renderSeries);
-
-    // EVENT LISTENERS - Collections
-    document.getElementById('search-collections').addEventListener('input', renderCollections);
-    document.getElementById('sort-filter-collections').addEventListener('change', renderCollections);
 
 
     // MODALS
@@ -10452,12 +10634,17 @@ app.get('/library', async (req, res) => {
                 \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
                 \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
               </div>
+              <div class="modal-icons-row">
+                \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
+                \${movie.imdbId ? \`<a href="https://www.imdb.com/title/\${movie.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
+                \${movie.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${movie.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+              </div>
             </div>
           </div>
           <div class="modal-hero">
             <div class="modal-poster-container">
               <div class="modal-poster-hero">
-                <img src="\${movie.posterPath}" alt="\${movie.title}" loading="lazy">
+                <img src="\${movie.posterPath}" alt="\${movie.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
               </div>
             </div>
             <div class="modal-main-info">
@@ -10556,12 +10743,17 @@ app.get('/library', async (req, res) => {
                 \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
                 \${series.genres ? series.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
               </div>
+              <div class="modal-icons-row">
+                \${tmdbId ? \`<a href="https://www.themoviedb.org/tv/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
+                \${series.imdbId ? \`<a href="https://www.imdb.com/title/\${series.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
+                \${series.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${series.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+              </div>
             </div>
           </div>
           <div class="modal-hero">
             <div class="modal-poster-container">
               <div class="modal-poster-hero">
-                <img src="\${series.posterPath}" alt="\${series.title}" loading="lazy">
+                <img src="\${series.posterPath}" alt="\${series.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
               </div>
             </div>
             <div class="modal-main-info">
@@ -10639,7 +10831,7 @@ app.get('/library', async (req, res) => {
           <div class="modal-hero">
             <div class="modal-poster-container">
               <div class="modal-poster-hero">
-                <img src="\${collection.posterPath}" alt="\${collection.name}" loading="lazy">
+                <img src="\${collection.posterPath}" alt="\${collection.name}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
               </div>
             </div>
             <div class="modal-main-info">
@@ -14312,9 +14504,12 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
 // Helper: Obtener detalles completos de TMDB
 async function getTMDBDetails(tmdbId, type = 'movie') {
   try {
-    const detailsUrl = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,keywords,videos`;
+    const detailsUrl = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,keywords,videos,external_ids`;
     const response = await fetch(detailsUrl);
     const data = await response.json();
+    
+    // Obtener IMDB ID
+    const imdbId = data.imdb_id || (data.external_ids && data.external_ids.imdb_id) || null;
     
     // Extraer cast (primeros 10 actores)
     const cast = data.credits && data.credits.cast 
@@ -14373,6 +14568,7 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
       status: data.status || '',
       budget: data.budget || 0,
       revenue: data.revenue || 0,
+      imdbId,
       director,
       createdBy,
       cast,
