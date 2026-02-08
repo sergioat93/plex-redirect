@@ -8836,14 +8836,15 @@ app.get('/library', async (req, res) => {
       archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
       archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
       
-      // Agregar index.html (web estática con estilo Infinity Scrap)
+      // Agregar index.html (diseño idéntico a Infinity Scrap)
       const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Infinity Scrap - Web Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Infinity Scrap - Web Local Offline</title>
   <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * {
