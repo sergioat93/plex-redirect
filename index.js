@@ -9533,7 +9533,7 @@ app.get('/library', async (req, res) => {
     }
     
     .container {
-      max-width: 1400px;
+      max-width: calc(100% - 150px);
       margin: 0 auto;
       padding: 0 2rem;
     }
@@ -9546,6 +9546,7 @@ app.get('/library', async (req, res) => {
       z-index: 998;
       display: none;
       backdrop-filter: blur(4px);
+      cursor: pointer;
     }
     .modal-overlay.active {
       display: block;
@@ -9580,13 +9581,13 @@ app.get('/library', async (req, res) => {
       top: 1rem;
       left: 1rem;
       z-index: 10;
-      background: rgba(0, 0, 0, 0.75);
+      background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(8px);
-      border: 1px solid rgba(229, 160, 13, 0.3);
+      border: 1px solid rgba(229, 160, 13, 0.2);
       border-radius: 6px;
       padding: 0.4rem 0.75rem;
       font-size: 0.75rem;
-      color: rgba(229, 160, 13, 0.9);
+      color: rgba(229, 160, 13, 0.7);
       cursor: pointer;
       transition: all 0.3s ease;
       display: flex;
@@ -9594,9 +9595,9 @@ app.get('/library', async (req, res) => {
       gap: 0.4rem;
     }
     .modal-collection-tag:hover {
-      background: rgba(229, 160, 13, 0.15);
-      border-color: rgba(229, 160, 13, 0.6);
-      color: #e5a00d;
+      background: rgba(229, 160, 13, 0.12);
+      border-color: rgba(229, 160, 13, 0.5);
+      color: rgba(229, 160, 13, 0.95);
       transform: scale(1.05);
     }
     .modal-collection-tag::before {
@@ -10257,12 +10258,12 @@ app.get('/library', async (req, res) => {
             <option value="0">⭐ 0+</option>
           </select>
           <select id="sort-filter" class="filter-select">
-            <option value="title">Título A-Z</option>
-            <option value="title-desc">Título Z-A</option>
+            <option value="title">Nombre A-Z</option>
+            <option value="title-desc">Nombre Z-A</option>
             <option value="year-desc">Año ↓</option>
             <option value="year-asc">Año ↑</option>
-            <option value="rating-desc">Valoración ↓</option>
-            <option value="rating-asc">Valoración ↑</option>
+            <option value="rating-desc">Más películas</option>
+            <option value="rating-asc">Menos películas</option>
           </select>
           <button id="clear-filters-btn" class="btn-clear-filters">
             <i class="fas fa-broom"></i> Limpiar
@@ -10302,7 +10303,7 @@ app.get('/library', async (req, res) => {
   <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
   
   <!-- Modal Container -->
-  <div class="modal-container" id="modalContainer"></div>
+  <div class="modal-container" id="modalContainer" onclick="closeModal()"></div>
 
   <script>
     // Embeber datos JSON directamente para evitar CORS
@@ -10894,7 +10895,7 @@ app.get('/library', async (req, res) => {
           : '';
 
       const modalHTML = \`
-        <div class="modal-content">
+        <div class="modal-content" onclick="event.stopPropagation()">
           \${movieCollection ? \`<div class="modal-collection-tag" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección completa">
             <span>\${movieCollection.name}</span>
           </div>\` : ''}
@@ -11001,7 +11002,7 @@ app.get('/library', async (req, res) => {
       \` : '';
 
       const modalHTML = \`
-        <div class="modal-content">
+        <div class="modal-content" onclick="event.stopPropagation()">
           <div class="modal-backdrop-header" style="background-image: url('\${series.backdropPath || series.posterPath}');">
             <button class="close-button" onclick="closeModal()">&times;</button>
             <div class="modal-backdrop-overlay"></div>
@@ -11243,7 +11244,7 @@ app.get('/library', async (req, res) => {
       }).join('');
       
       const serverModalHTML = \`
-        <div class="server-selection-modal">
+        <div class="server-selection-modal" onclick="event.stopPropagation()">
           <div class="server-selection-header">
             <img src="\${firstItem.posterPath}" alt="\${firstItem.title}" class="server-modal-poster">
             <div class="server-modal-info">
@@ -11611,7 +11612,7 @@ Generado por Infinity Scrap`;
                       🌐 Generar Primera Web
                     </button>
                     <button class="btn-secondary" onclick="startGeneration(true)">
-                      🧪 Prueba (10 items/servidor)
+                      🧪 Prueba (5 películas + 5 series/servidor)
                     </button>
                   </div>
                 </div>
@@ -11702,7 +11703,7 @@ Generado por Infinity Scrap`;
                       🔄 Regenerar Web
                     </button>
                     <button class="btn-secondary" onclick="startGeneration(true)">
-                      🧪 Prueba (10 items/servidor)
+                      🧪 Prueba (5 películas + 5 series/servidor)
                     </button>
                     <button class="btn-secondary" onclick="clearProgress()">
                       🗑️ Borrar Progreso
@@ -14972,9 +14973,10 @@ app.get('/api/web-local/status', async (req, res) => {
 
 // Endpoint: Generar web local (primera vez o completa)
 app.get('/api/web-local/generate', async (req, res) => {
-  // Modo de prueba (solo 10 items por servidor)
+  // Modo de prueba (5 películas + 5 series por servidor)
   const testMode = req.query.test === 'true';
-  const testLimit = testMode ? 10 : Infinity;
+  const testLimitMovies = testMode ? 5 : Infinity;
+  const testLimitSeries = testMode ? 5 : Infinity;
   
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
@@ -14987,7 +14989,7 @@ app.get('/api/web-local/generate', async (req, res) => {
   };
   
   if (testMode) {
-    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán los primeros 10 items de cada servidor' });
+    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán 5 películas y 5 series de cada servidor' });
   }
   
   // Keepalive cada 15 segundos para mantener conexión viva
@@ -15177,6 +15179,7 @@ app.get('/api/web-local/generate', async (req, res) => {
         sendProgress({ type: 'progress', message: `Escaneando ${server.serverName} (${totalItems} items)...`, percent: 10 + serverProgress });
         
         // Procesar películas
+        let movieCount = 0;
         for (const lib of movieLibraries) {
           const moviesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
           const moviesXml = await httpsGetXML(moviesUrl);
@@ -15186,9 +15189,9 @@ app.get('/api/web-local/generate', async (req, res) => {
             for (const movie of moviesData.MediaContainer.Video) {
               processedCount++;
               
-              // MODO PRUEBA: Limitar a testLimit items
-              if (testMode && processedCount > testLimit) {
-                sendProgress({ type: 'warning', message: `🧪 Límite de prueba alcanzado en ${server.serverName}` });
+              // MODO PRUEBA: Limitar a testLimitMovies películas
+              if (testMode && movieCount >= testLimitMovies) {
+                sendProgress({ type: 'warning', message: `🧪 Límite de películas de prueba alcanzado en ${server.serverName}` });
                 break;
               }
               
@@ -15273,8 +15276,17 @@ app.get('/api/web-local/generate', async (req, res) => {
                   const media = movie.Media && movie.Media[0] ? movie.Media[0] : {};
                   const part = media.Part && media.Part[0] ? media.Part[0] : {};
                   
-                  // Construir URL de descarga completa (funcional)
-                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}` : '';
+                  // Construir nombre de archivo personalizado para descarga
+                  const movieYear = movie.year || tmdbDetails.releaseYear || '';
+                  const safeTitle = (tmdbDetails.title || movie.title).replace(/[<>:"\/\\|?*]/g, '_');
+                  const fileName = part.file ? part.file.split('/').pop() : 'file.mkv';
+                  const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+                  const customFileName = `${safeTitle} (${movieYear})${fileExtension}`;
+                  
+                  // Construir URL de descarga completa (funcional) con nombre personalizado
+                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}&filename=${encodeURIComponent(customFileName)}` : '';
+                  
+                  movieCount++; // Incrementar contador de películas procesadas
                   
                   const movieData = {
                     ratingKey: movie.ratingKey,
@@ -15344,6 +15356,7 @@ app.get('/api/web-local/generate', async (req, res) => {
         }
         
         // Procesar series
+        let seriesCount = 0;
         for (const lib of showLibraries) {
           const seriesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
           const seriesXml = await httpsGetXML(seriesUrl);
@@ -15353,9 +15366,9 @@ app.get('/api/web-local/generate', async (req, res) => {
             for (const series of seriesData.MediaContainer.Directory) {
               processedCount++;
               
-              // MODO PRUEBA: Limitar a testLimit items
-              if (testMode && processedCount > testLimit) {
-                sendProgress({ type: 'warning', message: `🧪 Límite de prueba alcanzado en ${server.serverName}` });
+              // MODO PRUEBA: Limitar a testLimitSeries series
+              if (testMode && seriesCount >= testLimitSeries) {
+                sendProgress({ type: 'warning', message: `🧪 Límite de series de prueba alcanzado en ${server.serverName}` });
                 break;
               }
               
@@ -15442,8 +15455,17 @@ app.get('/api/web-local/generate', async (req, res) => {
                           const media = episode.Media && episode.Media[0] ? episode.Media[0] : {};
                           const part = media.Part && media.Part[0] ? media.Part[0] : {};
                           
-                          // Construir URL de descarga completa (funcional)
-                          const downloadUrl = part.key ? `${server.baseURI}${part.key}?X-Plex-Token=${server.accessToken}&download=1` : '';
+                          // Construir nombre de archivo personalizado para episodio
+                          const safeSeriesName = (tmdbDetails.title || series.title).replace(/[<>:"\\/\\|?*]/g, '_');
+                          const seasonNum = String(season.index || 0).padStart(2, '0');
+                          const episodeNum = String(episode.index || 0).padStart(2, '0');
+                          const safeEpisodeTitle = (episode.title || 'Sin título').replace(/[<>:"\\/\\|?*]/g, '_');
+                          const fileName = part.file ? part.file.split('/').pop() : 'file.mkv';
+                          const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+                          const customFileName = `${safeSeriesName} - S${seasonNum}E${episodeNum} - ${safeEpisodeTitle}${fileExtension}`;
+                          
+                          // Construir URL de descarga completa (funcional) con nombre personalizado
+                          const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}&filename=${encodeURIComponent(customFileName)}` : '';
                           
                           episodes.push({
                             ratingKey: episode.ratingKey,
@@ -15519,6 +15541,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                       servers: [seriesDataObj],
                       serverCount: 1
                     });
+                    seriesCount++; // Incrementar contador de series procesadas
                   }
                 }
               } else {
