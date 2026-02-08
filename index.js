@@ -9627,9 +9627,14 @@ Generado por Infinity Scrap`;
                   <p style="color: #9ca3af; margin-bottom: 1.5rem;">
                     Aún no has generado ninguna web local. Haz clic en el botón de abajo para iniciar el proceso.
                   </p>
-                  <button class="btn-primary" onclick="startGeneration()">
-                    🌐 Generar Primera Web
-                  </button>
+                  <div class="button-group">
+                    <button class="btn-primary" onclick="startGeneration()">
+                      🌐 Generar Primera Web
+                    </button>
+                    <button class="btn-secondary" onclick="startGeneration(true)">
+                      🧪 Prueba (10 items/servidor)
+                    </button>
+                  </div>
                 </div>
               \`;
             } else {
@@ -9717,6 +9722,9 @@ Generado por Infinity Scrap`;
                     <button class="btn-primary" onclick="startGeneration()">
                       🔄 Regenerar Web
                     </button>
+                    <button class="btn-secondary" onclick="startGeneration(true)">
+                      🧪 Prueba (10 items/servidor)
+                    </button>
                   </div>
                 </div>
               \`;
@@ -9726,13 +9734,13 @@ Generado por Infinity Scrap`;
           }
         }
         
-        async function startGeneration() {
+        async function startGeneration(testMode = false) {
           document.getElementById('dashboardContainer').style.display = 'none';
           const progressContainer = document.getElementById('progressContainer');
           progressContainer.style.display = 'block';
           progressContainer.innerHTML = \`
             <div class="dashboard-card">
-              <div class="dashboard-title">🌐 Generando Web Local</div>
+              <div class="dashboard-title">🌐 Generando Web Local \${testMode ? '🧪 (MODO PRUEBA)' : ''}</div>
               <div class="progress-bar">
                 <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
               </div>
@@ -9742,7 +9750,8 @@ Generado por Infinity Scrap`;
           \`;
           
           try {
-            const eventSource = new EventSource('/api/web-local/generate');
+            const url = '/api/web-local/generate' + (testMode ? '?test=true' : '');
+            const eventSource = new EventSource(url);
             
             eventSource.onmessage = (event) => {
               const data = JSON.parse(event.data);
@@ -12665,30 +12674,67 @@ Generado por Infinity Scrap`;
 // ========================================
 
 // Helper: Búsqueda en TMDB con cache
-async function searchTMDBWithCache(title, year, type = 'movie') {
+async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
+  // PRIORIDAD 1: Si viene TMDB ID directo en el GUID
+  if (guid) {
+    const tmdbMatch = guid.match(/tmdb:\/\/(movie|tv)\/(\d+)/i);
+    if (tmdbMatch) {
+      const tmdbId = parseInt(tmdbMatch[2]);
+      return { tmdbId, imdbId: null, fromCache: false, source: 'guid-tmdb' };
+    }
+    
+    // PRIORIDAD 2: Si viene IMDB ID, convertir a TMDB
+    const imdbMatch = guid.match(/imdb:\/\/(tt\d+)/i);
+    if (imdbMatch) {
+      const imdbId = imdbMatch[1];
+      try {
+        const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+        const response = await fetch(findUrl);
+        const data = await response.json();
+        
+        const results = type === 'movie' ? data.movie_results : data.tv_results;
+        if (results && results.length > 0) {
+          return { tmdbId: results[0].id, imdbId, fromCache: false, source: 'guid-imdb' };
+        }
+      } catch (error) {
+        console.error('Error convirtiendo IMDB a TMDB:', error);
+      }
+    }
+  }
+  
+  // PRIORIDAD 3: Buscar en cache por título
   const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
   
-  // Buscar en cache
   const cached = await tmdbCacheCollection.findOne({
     'searchQuery.title': normalizedTitle,
-    'searchQuery.year': parseInt(year),
+    'searchQuery.year': parseInt(year) || 0,
     'searchQuery.type': type
   });
   
   if (cached) {
-    // Actualizar lastUsed
     await tmdbCacheCollection.updateOne(
       { _id: cached._id },
       { $set: { lastUsed: new Date() }, $inc: { timesUsed: 1 } }
     );
-    return { tmdbId: cached.tmdbId, imdbId: cached.imdbId, fromCache: true };
+    return { tmdbId: cached.tmdbId, imdbId: cached.imdbId, fromCache: true, source: 'cache' };
   }
   
-  // Buscar en TMDB API
+  // PRIORIDAD 4: Buscar en TMDB API por título + año
   try {
-    const searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}&year=${year}`;
-    const response = await fetch(searchUrl);
-    const data = await response.json();
+    let searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`;
+    if (year && year !== 'undefined' && parseInt(year) > 1900) {
+      searchUrl += `&year=${year}`;
+    }
+    
+    let response = await fetch(searchUrl);
+    let data = await response.json();
+    
+    // PRIORIDAD 5: Si falla con año, buscar SIN año
+    if ((!data.results || data.results.length === 0) && year && parseInt(year) > 1900) {
+      searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`;
+      response = await fetch(searchUrl);
+      data = await response.json();
+    }
     
     if (data.results && data.results.length > 0) {
       const result = data.results[0];
@@ -12699,12 +12745,12 @@ async function searchTMDBWithCache(title, year, type = 'movie') {
       await tmdbCacheCollection.updateOne(
         {
           'searchQuery.title': normalizedTitle,
-          'searchQuery.year': parseInt(year),
+          'searchQuery.year': parseInt(year) || 0,
           'searchQuery.type': type
         },
         {
           $set: {
-            searchQuery: { title: normalizedTitle, year: parseInt(year), type },
+            searchQuery: { title: normalizedTitle, year: parseInt(year) || 0, type },
             tmdbId,
             imdbId,
             verified: {
@@ -12720,7 +12766,7 @@ async function searchTMDBWithCache(title, year, type = 'movie') {
         { upsert: true }
       );
       
-      return { tmdbId, imdbId, fromCache: false };
+      return { tmdbId, imdbId, fromCache: false, source: 'search' };
     }
     
     return null;
@@ -12828,6 +12874,10 @@ app.get('/api/web-local/status', async (req, res) => {
 
 // Endpoint: Generar web local (primera vez o completa)
 app.get('/api/web-local/generate', async (req, res) => {
+  // Modo de prueba (solo 10 items por servidor)
+  const testMode = req.query.test === 'true';
+  const testLimit = testMode ? 10 : Infinity;
+  
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -12837,6 +12887,10 @@ app.get('/api/web-local/generate', async (req, res) => {
   const sendProgress = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+  
+  if (testMode) {
+    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán los primeros 10 items de cada servidor' });
+  }
   
   // Keepalive cada 15 segundos para mantener conexión viva
   const keepaliveInterval = setInterval(() => {
@@ -13022,6 +13076,12 @@ app.get('/api/web-local/generate', async (req, res) => {
             for (const movie of moviesData.MediaContainer.Video) {
               processedCount++;
               
+              // MODO PRUEBA: Limitar a testLimit items
+              if (testMode && processedCount > testLimit) {
+                sendProgress({ type: 'warning', message: `🧪 Límite de prueba alcanzado en ${server.serverName}` });
+                break;
+              }
+              
               // SALTAR si ya fue procesado en ejecución anterior
               if (processedItems[server.machineIdentifier].movies.includes(parseInt(movie.ratingKey))) {
                 if (processedCount % 10 === 0 || processedCount === totalItems) {
@@ -13046,7 +13106,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               }
               
               // Buscar en TMDB
-              const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie');
+              const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie', movie.guid);
               
               if (tmdbResult) {
                 // Agregar a lista procesada
@@ -13122,6 +13182,12 @@ app.get('/api/web-local/generate', async (req, res) => {
             for (const series of seriesData.MediaContainer.Directory) {
               processedCount++;
               
+              // MODO PRUEBA: Limitar a testLimit items
+              if (testMode && processedCount > testLimit) {
+                sendProgress({ type: 'warning', message: `🧪 Límite de prueba alcanzado en ${server.serverName}` });
+                break;
+              }
+              
               // SALTAR si ya fue procesado en ejecución anterior
               if (processedItems[server.machineIdentifier].series.includes(parseInt(series.ratingKey))) {
                 if (processedCount % 10 === 0 || processedCount === totalItems) {
@@ -13142,7 +13208,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               }
               
               // Buscar en TMDB
-              const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv');
+              const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv', series.guid);
               
               if (tmdbResult) {
                 // Agregar a lista procesada
