@@ -13156,22 +13156,15 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Extraer GUIDs correctos del XML de forma más directa
+              // Extraer GUIDs correctos del XML - necesitamos el endpoint individual
               let bestGuid = movie.guid;
               
-              // Buscar el bloque de este ratingKey específico en el XML
-              const ratingKeyPattern = 'ratingKey="' + movie.ratingKey + '"';
-              const startPos = moviesXml.indexOf(ratingKeyPattern);
-              
-              if (startPos !== -1) {
-                // Tomar desde este ratingKey hasta el próximo <Video> o fin
-                const xmlAfter = moviesXml.substring(startPos);
-                const nextVideoPos = xmlAfter.indexOf('<Video', 10); // Empezar búsqueda después del actual
-                const endPos = nextVideoPos !== -1 ? nextVideoPos : xmlAfter.length;
-                const thisMovieXml = xmlAfter.substring(0, endPos);
+              try {
+                const metadataUrl = server.baseURI + '/library/metadata/' + movie.ratingKey + '?X-Plex-Token=' + server.accessToken;
+                const metadataXml = await httpsGetXML(metadataUrl);
                 
-                // Buscar TODOS los <Guid id="..."/> en este bloque
-                const guidMatches = thisMovieXml.match(/<Guid id="([^"]+)"\s*\/>/g);
+                // Buscar TODOS los <Guid id="..."/> en el XML completo
+                const guidMatches = metadataXml.match(/<Guid id="([^"]+)"\s*\/>/g);
                 
                 if (guidMatches) {
                   // Buscar TMDB primero
@@ -13194,6 +13187,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                     }
                   }
                 }
+              } catch (error) {
+                console.error('[ERROR] No se pudo obtener metadata para ratingKey:', movie.ratingKey);
               }
               
               // Buscar en TMDB
@@ -13306,22 +13301,15 @@ app.get('/api/web-local/generate', async (req, res) => {
                 sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
               }
               
-              // Extraer GUIDs correctos del XML de forma más directa
+              // Extraer GUIDs correctos del XML - necesitamos el endpoint individual
               let bestGuid = series.guid;
               
-              // Buscar el bloque de este ratingKey específico en el XML
-              const ratingKeyPattern = 'ratingKey="' + series.ratingKey + '"';
-              const startPos = seriesXml.indexOf(ratingKeyPattern);
-              
-              if (startPos !== -1) {
-                // Tomar desde este ratingKey hasta el próximo <Directory> o fin
-                const xmlAfter = seriesXml.substring(startPos);
-                const nextDirPos = xmlAfter.indexOf('<Directory', 10); // Empezar búsqueda después del actual
-                const endPos = nextDirPos !== -1 ? nextDirPos : xmlAfter.length;
-                const thisSeriesXml = xmlAfter.substring(0, endPos);
+              try {
+                const metadataUrl = server.baseURI + '/library/metadata/' + series.ratingKey + '?X-Plex-Token=' + server.accessToken;
+                const metadataXml = await httpsGetXML(metadataUrl);
                 
-                // Buscar TODOS los <Guid id="..."/> en este bloque
-                const guidMatches = thisSeriesXml.match(/<Guid id="([^"]+)"\s*\/>/g);
+                // Buscar TODOS los <Guid id="..."/> en el XML completo
+                const guidMatches = metadataXml.match(/<Guid id="([^"]+)"\s*\/>/g);
                 
                 if (guidMatches) {
                   // Buscar TMDB primero
@@ -13344,6 +13332,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                     }
                   }
                 }
+              } catch (error) {
+                console.error('[ERROR] No se pudo obtener metadata para ratingKey:', series.ratingKey);
               }
               
               // Buscar en TMDB
