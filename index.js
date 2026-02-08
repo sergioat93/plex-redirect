@@ -8447,31 +8447,14 @@ app.get('/library', async (req, res) => {
                 const endTagMatch = remainingXml.match(new RegExp(`</${tagType}>`));
                 const itemContent = endTagMatch ? remainingXml.substring(0, endTagMatch.index) : remainingXml.substring(0, 2000);
                 
-                // LOGGING: Imprimir XML COMPLETO del primer match
-                if (matchCount === 0) {
-                  console.log('[XML DEBUG] ======== XML COMPLETO DEL PRIMER MATCH ========');
-                  console.log(itemContent);
-                  console.log('[XML DEBUG] ======== FIN XML COMPLETO ========');
-                }
-                
                 // Buscar tag Media para resolución
                 const mediaTagMatch = itemContent.match(/<Media[^>]*>/);
                 let resolution = 'SD';
-                let audioLanguage = 'unknown';
                 
                 if (mediaTagMatch) {
                   const mediaTag = mediaTagMatch[0];
                   const resMatch = mediaTag.match(/videoResolution="([^"]*)"/);
                   if (resMatch) resolution = resMatch[1];
-                }
-                
-                // Buscar idioma en Stream tags (streamType="2" = audio)
-                const streamMatch = itemContent.match(/<Stream[^>]*streamType="2"[^>]*>/);
-                if (streamMatch) {
-                  const langMatch = streamMatch[0].match(/languageCode="([^"]*)"/);  
-                  if (langMatch) {
-                    audioLanguage = langMatch[1].toLowerCase();
-                  }
                 }
                 
                 matchCount++;
@@ -8492,8 +8475,7 @@ app.get('/library', async (req, res) => {
                       libraryKey: sectionKey,
                       libraryTitle: sectionTitle,
                       libraryType: sectionType,
-                      resolution: resolution,
-                      audioLanguage: audioLanguage
+                      resolution: resolution
                     });
                   }
                   continue;
@@ -8516,8 +8498,7 @@ app.get('/library', async (req, res) => {
                     libraryKey: sectionKey,
                     libraryTitle: sectionTitle,
                     libraryType: sectionType,
-                    resolution: resolution,
-                    audioLanguage: audioLanguage
+                    resolution: resolution
                   }]
                 });
               }
@@ -9556,11 +9537,6 @@ app.get('/library', async (req, res) => {
                     <option value="all">📺 Todas las Calidades</option>
                   </select>
                   
-                  <!-- Select Idiomas -->
-                  <select id="audioFilterSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; min-width: 180px;">
-                    <option value="all">🌍 Todos los Idiomas</option>
-                  </select>
-                  
                   <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar</button>
                 </div>
               </div>
@@ -9966,14 +9942,12 @@ app.get('/library', async (req, res) => {
               // Extraer valores únicos para filtros
               const serversSet = new Set();
               const qualitiesSet = new Set();
-              const audioSet = new Set();
               
               // IMPORTANTE: Extraer de TODOS los servidores de TODOS los resultados
               data.results.forEach(item => {
                 item.servers.forEach(server => {
                   serversSet.add(server.serverName);
                   if (server.resolution) qualitiesSet.add(server.resolution);
-                  if (server.audioLanguage && server.audioLanguage !== 'unknown') audioSet.add(server.audioLanguage);
                 });
               });
               
@@ -9982,16 +9956,13 @@ app.get('/library', async (req, res) => {
                 const order = { '2160': 4, '1080': 3, '720': 2, 'sd': 1 };
                 return (order[b.toLowerCase()] || 0) - (order[a.toLowerCase()] || 0);
               });
-              const availableAudio = Array.from(audioSet).sort();
               
               console.log('[SEARCH] Servidores únicos:', availableServers);
               console.log('[SEARCH] Calidades únicas:', availableQualities);
-              console.log('[SEARCH] Audios únicos:', availableAudio);
               
               // Poblar selects nativos POST-búsqueda
               const serverSelect = document.getElementById('serverFilterSelect');
               const qualitySelect = document.getElementById('qualityFilterSelect');
-              const audioSelect = document.getElementById('audioFilterSelect');
               
               // Limpiar y poblar select de servidores
               serverSelect.innerHTML = '<option value="all">🖥️ Todos los Servidores</option>';
@@ -10021,20 +9992,6 @@ app.get('/library', async (req, res) => {
                 renderFilteredResults(data.results);
               };
               
-              // Limpiar y poblar select de idiomas
-              audioSelect.innerHTML = '<option value="all">🌍 Todos los Idiomas</option>';
-              availableAudio.forEach(audio => {
-                const option = document.createElement('option');
-                option.value = audio;
-                option.textContent = '🌍 ' + audio.toUpperCase();
-                audioSelect.appendChild(option);
-              });
-              audioSelect.value = 'all';
-              audioSelect.onchange = () => {
-                currentLanguageFilter = audioSelect.value;
-                renderFilteredResults(data.results);
-              };
-              
               // Mostrar filtros
               document.getElementById('postSearchFilters').style.display = 'block';
               
@@ -10042,11 +9999,9 @@ app.get('/library', async (req, res) => {
               document.getElementById('clearFiltersBtn').onclick = () => {
                 currentServerFilter = 'all';
                 currentQualityFilter = 'all';
-                currentLanguageFilter = 'all';
                 
                 serverSelect.value = 'all';
                 qualitySelect.value = 'all';
-                audioSelect.value = 'all';
                 
                 renderFilteredResults(data.results);
               };
@@ -10067,7 +10022,7 @@ app.get('/library', async (req, res) => {
           function renderFilteredResults(allResults) {
             const results = document.getElementById('searchResults');
             
-            // Aplicar todos los filtros (selección única)
+            // Aplicar filtros (selección única)
             let filteredResults = allResults.filter(item => {
               // Filtro de servidor
               if (currentServerFilter !== 'all') {
@@ -10077,11 +10032,6 @@ app.get('/library', async (req, res) => {
               // Filtro de calidad
               if (currentQualityFilter !== 'all') {
                 if (!item.servers.some(s => s.resolution === currentQualityFilter)) return false;
-              }
-              
-              // Filtro de idioma
-              if (currentLanguageFilter !== 'all') {
-                if (!item.servers.some(s => s.audioLanguage === currentLanguageFilter)) return false;
               }
               
               return true;
