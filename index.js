@@ -8836,7 +8836,7 @@ app.get('/library', async (req, res) => {
       archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
       archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
       
-      // Agregar index.html (diseño idéntico a Infinity Scrap)
+      // Agregar InfinityScrap.html (diseño COMPLETO idéntico a Infinity Scrap con TODOS los filtros)
       const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8844,32 +8844,36 @@ app.get('/library', async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
   <title>Infinity Scrap - Web Local Offline</title>
   <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    :root {
+      --primary-color: #e5a00d;
+      --primary-dark: #c28a0b;
+      --bg-dark: #0f0f0f;
+      --bg-secondary: #1a1a1a;
+      --text-primary: #ffffff;
+      --text-secondary: #b3b3b3;
+      --border-color: rgba(255, 255, 255, 0.1);
+      --card-size: 180px;
     }
-    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-      color: #f3f4f6;
+      color: var(--text-primary);
       min-height: 100vh;
-      padding: 20px;
     }
     
+    /* HEADER */
     .header {
       text-align: center;
       padding: 40px 20px;
-      margin-bottom: 40px;
+      margin-bottom: 20px;
       background: rgba(31, 41, 55, 0.6);
       border-radius: 16px;
       border: 2px solid rgba(229, 160, 13, 0.2);
     }
-    
     .header h1 {
       font-size: 2.5rem;
       font-weight: 800;
@@ -8879,20 +8883,40 @@ app.get('/library', async (req, res) => {
       background-clip: text;
       margin-bottom: 10px;
     }
+    .header p { color: #9ca3af; font-size: 1rem; }
     
-    .header p {
+    /* STATS BAR */
+    .stats-bar {
+      background: rgba(31, 41, 55, 0.6);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .stat-item { text-align: center; }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #e5a00d;
+    }
+    .stat-label {
       color: #9ca3af;
-      font-size: 1rem;
+      font-size: 0.875rem;
+      margin-top: 5px;
     }
     
+    /* TABS */
     .tabs {
       display: flex;
       gap: 10px;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
       justify-content: center;
       flex-wrap: wrap;
     }
-    
     .tab {
       padding: 12px 24px;
       background: rgba(31, 41, 55, 0.8);
@@ -8903,36 +8927,132 @@ app.get('/library', async (req, res) => {
       cursor: pointer;
       transition: all 0.3s;
     }
-    
     .tab:hover {
       background: rgba(229, 160, 13, 0.1);
       border-color: rgba(229, 160, 13, 0.5);
     }
-    
     .tab.active {
       background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
       border-color: #e5a00d;
       color: #000;
     }
     
-    .filters {
+    /* LIBRARY CONTROLS */
+    .library-controls {
       background: rgba(31, 41, 55, 0.6);
       border-radius: 12px;
       padding: 20px;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
       border: 2px solid rgba(229, 160, 13, 0.2);
     }
-    
-    .filters-row {
+    .controls-row {
       display: flex;
-      gap: 15px;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
       flex-wrap: wrap;
-      margin-bottom: 15px;
     }
     
-    .search-box {
+    /* Filters Group */
+    .filters-group {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
       flex: 1;
-      min-width: 250px;
+      justify-content: center;
+    }
+    .filter-select {
+      background: rgba(17, 24, 39, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 8px;
+      padding: 10px 15px;
+      color: #f3f4f6;
+      cursor: pointer;
+      font-size: 0.875rem;
+      min-width: 120px;
+    }
+    .filter-select:focus {
+      outline: none;
+      border-color: #e5a00d;
+    }
+    .btn-clear-filters {
+      background: var(--primary-color);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+    }
+    .btn-clear-filters:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+    
+    /* View Controls */
+    .view-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .grid-size-control {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .grid-size-control.hidden {
+      display: none;
+    }
+    .grid-size-control input[type="range"] {
+      width: 120px;
+      height: 4px;
+      background: rgba(17, 24, 39, 0.8);
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .grid-size-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--primary-color);
+      cursor: pointer;
+      border-radius: 50%;
+    }
+    .view-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .view-btn {
+      background: rgba(17, 24, 39, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #f3f4f6;
+      transition: all 0.2s;
+    }
+    .view-btn:hover {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+    .view-btn.active {
+      background: var(--primary-color);
+      color: #000;
+      border-color: var(--primary-color);
+    }
+    
+    /* SEARCH BAR */
+    .search-bar {
+      margin-bottom: 20px;
+    }
+    .search-input {
+      width: 100%;
       padding: 12px 20px;
       background: rgba(17, 24, 39, 0.8);
       border: 2px solid rgba(229, 160, 13, 0.2);
@@ -8941,44 +9061,23 @@ app.get('/library', async (req, res) => {
       font-size: 1rem;
       outline: none;
     }
-    
-    .search-box:focus {
+    .search-input:focus {
       border-color: #e5a00d;
     }
     
-    select {
-      padding: 12px 20px;
-      background: rgba(17, 24, 39, 0.8);
-      border: 2px solid rgba(229, 160, 13, 0.2);
-      border-radius: 8px;
-      color: #f3f4f6;
-      font-size: 0.875rem;
-      cursor: pointer;
-      min-width: 180px;
-    }
-    
-    .btn-clear {
-      padding: 12px 24px;
-      background: rgba(229, 160, 13, 0.15);
-      border: 2px solid rgba(229, 160, 13, 0.4);
-      border-radius: 8px;
-      color: #e5a00d;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    
-    .btn-clear:hover {
-      background: rgba(229, 160, 13, 0.3);
-    }
-    
+    /* GRID/LIST VIEWS */
     .content-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
       gap: 20px;
-      margin-bottom: 40px;
+      padding: 20px 0;
+    }
+    .content-grid.list-view {
+      grid-template-columns: 1fr;
+      gap: 15px;
     }
     
+    /* CARDS */
     .content-card {
       background: rgba(31, 41, 55, 0.8);
       border: 2px solid rgba(229, 160, 13, 0.2);
@@ -8986,12 +9085,17 @@ app.get('/library', async (req, res) => {
       overflow: hidden;
       transition: all 0.3s;
       cursor: pointer;
+      display: flex;
+      flex-direction: column;
     }
-    
     .content-card:hover {
       transform: translateY(-5px);
       border-color: #e5a00d;
       box-shadow: 0 10px 30px rgba(229, 160, 13, 0.3);
+    }
+    .content-grid.list-view .content-card {
+      flex-direction: row;
+      height: 150px;
     }
     
     .card-poster {
@@ -9003,8 +9107,15 @@ app.get('/library', async (req, res) => {
       justify-content: center;
       font-size: 3rem;
       border-bottom: 2px solid rgba(229, 160, 13, 0.2);
+      position: relative;
     }
-    
+    .content-grid.list-view .card-poster {
+      width: 100px;
+      height: 100%;
+      aspect-ratio: auto;
+      border-bottom: none;
+      border-right: 2px solid rgba(229, 160, 13, 0.2);
+    }
     .card-poster img {
       width: 100%;
       height: 100%;
@@ -9013,6 +9124,12 @@ app.get('/library', async (req, res) => {
     
     .card-content {
       padding: 15px;
+      flex: 1;
+    }
+    .content-grid.list-view .card-content {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
     
     .card-title {
@@ -9025,6 +9142,10 @@ app.get('/library', async (req, res) => {
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
     }
+    .content-grid.list-view .card-title {
+      font-size: 1.1rem;
+      -webkit-line-clamp: 1;
+    }
     
     .card-info {
       display: flex;
@@ -9032,13 +9153,21 @@ app.get('/library', async (req, res) => {
       align-items: center;
       font-size: 0.85rem;
       color: #9ca3af;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
-    
     .card-year {
       color: #e5a00d;
       font-weight: 600;
     }
-    
+    .card-rating {
+      color: #f9a825;
+      font-weight: 600;
+    }
+    .card-genres {
+      color: #9ca3af;
+      font-size: 0.8rem;
+    }
     .card-server {
       font-size: 0.75rem;
       background: rgba(229, 160, 13, 0.2);
@@ -9054,38 +9183,9 @@ app.get('/library', async (req, res) => {
       font-size: 1.2rem;
     }
     
-    .stats-bar {
-      background: rgba(31, 41, 55, 0.6);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 30px;
-      border: 2px solid rgba(229, 160, 13, 0.2);
-      display: flex;
-      justify-content: space-around;
-      flex-wrap: wrap;
-      gap: 20px;
-    }
-    
-    .stat-item {
-      text-align: center;
-    }
-    
-    .stat-value {
-      font-size: 2rem;
-      font-weight: 700;
-      color: #e5a00d;
-    }
-    
-    .stat-label {
-      color: #9ca3af;
-      font-size: 0.875rem;
-      margin-top: 5px;
-    }
-    
     .tab-content {
       display: none;
     }
-    
     .tab-content.active {
       display: block;
     }
@@ -9100,74 +9200,538 @@ app.get('/library', async (req, res) => {
       margin-top: 8px;
       display: inline-block;
     }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+    
+    /* MODALS */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 998;
+      display: none;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active {
+      display: block;
+    }
+    
+    .modal-container {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      overflow-y: auto;
+      display: none;
+      padding: 20px;
+    }
+    .modal-container.active {
+      display: block;
+    }
+    
+    .modal-content {
+      position: relative;
+      max-width: 1000px;
+      margin: 40px auto;
+      background: #282828;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-backdrop-header {
+      position: relative;
+      background-size: cover;
+      background-position: center top;
+      min-height: 220px;
+      display: flex;
+      align-items: flex-end;
+      padding: 2.5rem 3.5rem 1.5rem 3.5rem;
+    }
+    .modal-backdrop-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.6) 50%, rgba(40,40,40,0.95) 100%);
+    }
+    .modal-header-content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+    }
+    
+    .close-button {
+      position: absolute;
+      top: 1.5rem;
+      right: 2rem;
+      z-index: 3;
+      background: rgba(0,0,0,0.6);
+      border: 2px solid rgba(255,255,255,0.3);
+      color: white;
+      font-size: 2rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .close-button:hover {
+      background: rgba(229, 160, 13, 0.9);
+      border-color: #e5a00d;
+      transform: scale(1.1);
+    }
+    
+    .modal-title {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      text-shadow: 2px 2px 6px rgba(0,0,0,0.8);
+      color: white;
+    }
+    .modal-tagline {
+      color: rgba(255,255,255,0.9);
+      font-size: 1.1rem;
+      font-style: italic;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.8);
+      margin-bottom: 1rem;
+    }
+    
+    .modal-badges {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .year-badge, .runtime-badge {
+      background: #e5a00d;
+      color: #000;
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .rating-badge {
+      background: rgba(249, 168, 37, 0.2);
+      border: 2px solid #f9a825;
+      padding: 0.3rem 0.8rem;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: #f9a825;
+      font-weight: 600;
+    }
+    .genre-tag {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0.3rem 0.8rem;
+      border-radius: 15px;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .modal-hero {
+      padding: 1.5rem 3.5rem;
+      display: flex;
+      gap: 2rem;
+      background: #282828;
+      color: white;
+    }
+    .modal-poster-container {
+      flex-shrink: 0;
+    }
+    .modal-poster-hero {
+      width: 250px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .modal-poster-hero img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    
+    .modal-main-info {
+      flex: 1;
+    }
+    .modal-synopsis {
+      line-height: 1.7;
+      font-size: 1.05rem;
+      text-align: justify;
+      margin-bottom: 1.5rem;
+      color: #cccccc;
+    }
+    
+    .modal-details-table {
+      display: grid;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      background: rgba(255,255,255,0.05);
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(229, 160, 13, 0.1);
+    }
+    .detail-item:last-child {
+      border-bottom: none;
+    }
+    .detail-item strong {
+      color: #e5e5e5;
+      font-weight: 600;
+    }
+    .detail-item span {
+      color: #ccc;
+      text-align: right;
+    }
+    
+    /* Series: Temporadas y episodios */
+    .seasons-container {
+      padding: 0 3.5rem 2rem;
+      background: #282828;
+    }
+    .season-item {
+      background: rgba(255,255,255,0.05);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .season-item:hover {
+      border-color: #e5a00d;
+      transform: translateY(-2px);
+    }
+    .season-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .season-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #e5a00d;
+    }
+    .season-episodes-count {
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    .episodes-list {
+      display: none;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(229, 160, 13, 0.2);
+    }
+    .episodes-list.active {
+      display: block;
+    }
+    .episode-item {
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .episode-number {
+      font-weight: 700;
+      color: #e5a00d;
+      min-width: 60px;
+    }
+    .episode-title {
+      flex: 1;
+      color: white;
+      font-weight: 600;
+    }
+    
+    /* Colecciones: Películas */
+    .collection-movies-container {
+      padding: 0 3.5rem 2rem;
+      background: #282828;
+    }
+    .collection-movies-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1rem;
+    }
+    .collection-movie-card {
+      background: rgba(255,255,255,0.05);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .collection-movie-card:hover {
+      border-color: #e5a00d;
+      transform: translateY(-5px);
+    }
+    .collection-movie-poster {
+      width: 100%;
+      aspect-ratio: 2/3;
+      background: #1f2937;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .collection-movie-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .collection-movie-title {
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: white;
+      text-align: center;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 0 1rem;
+      }
+      .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filters-group {
+        flex-direction: column;
+      }
+      .filter-select {
+        width: 100%;
+      }
+      .view-controls {
+        justify-content: space-between;
+      }
+      .content-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 15px;
+      }
+      .modal-hero {
+        flex-direction: column;
+        padding: 1.5rem;
+      }
+      .modal-poster-hero {
+        width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+      }
+      .modal-backdrop-header {
+        padding: 2rem 1.5rem 1rem;
+      }
+      .modal-title {
+        font-size: 2rem;
+      }
+      .seasons-container, .collection-movies-container {
+        padding: 1rem;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>🌐 Infinity Scrap - Web Local</h1>
-    <p>Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}</p>
-  </div>
+  <div class="container">
+    <div class="header">
+      <h1>🌐 Infinity Scrap - Web Local</h1>
+      <p id="generation-date">Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}</p>
+    </div>
 
-  <div class="stats-bar">
-    <div class="stat-item">
-      <div class="stat-value">${snapshot.stats.totalMovies}</div>
-      <div class="stat-label">Películas</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-value">${snapshot.stats.totalSeries}</div>
-      <div class="stat-label">Series</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-value">${snapshot.stats.totalCollections}</div>
-      <div class="stat-label">Colecciones</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-value">${snapshot.stats.totalEpisodes || 0}</div>
-      <div class="stat-label">Episodios</div>
-    </div>
-  </div>
-
-  <div class="tabs">
-    <button class="tab active" data-tab="movies">🎬 Películas</button>
-    <button class="tab" data-tab="series">📺 Series</button>
-    <button class="tab" data-tab="collections">📚 Colecciones</button>
-  </div>
-
-  <div id="movies-tab" class="tab-content active">
-    <div class="filters">
-      <div class="filters-row">
-        <input type="text" id="search-movies" class="search-box" placeholder="🔍 Buscar películas...">
-        <select id="server-movies">
-          <option value="all">🖥️ Todos los Servidores</option>
-        </select>
-        <button class="btn-clear" onclick="clearFilters('movies')">🗑️ Limpiar</button>
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-movies">${snapshot.stats.totalMovies}</div>
+        <div class="stat-label">Películas</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-series">${snapshot.stats.totalSeries}</div>
+        <div class="stat-label">Series</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-collections">${snapshot.stats.totalCollections}</div>
+        <div class="stat-label">Colecciones</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-episodes">${snapshot.stats.totalEpisodes || 0}</div>
+        <div class="stat-label">Episodios</div>
       </div>
     </div>
-    <div id="movies-grid" class="content-grid"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="movies">🎬 Películas</button>
+      <button class="tab" data-tab="series">📺 Series</button>
+      <button class="tab" data-tab="collections">📚 Colecciones</button>
+    </div>
+
+    <!-- Movies Tab -->
+    <div id="movies-tab" class="tab-content active">
+      <div class="search-bar">
+        <input type="text" id="search-movies" class="search-input" placeholder="🔍 Buscar películas...">
+      </div>
+      
+      <div class="library-controls">
+        <div class="controls-row">
+          <div class="filters-group">
+            <select id="genre-filter-movies" class="filter-select">
+              <option value="">Todos los géneros</option>
+            </select>
+            <select id="year-filter-movies" class="filter-select">
+              <option value="">Todos los años</option>
+            </select>
+            <select id="country-filter-movies" class="filter-select">
+              <option value="">Todos los países</option>
+            </select>
+            <select id="rating-filter-movies" class="filter-select">
+              <option value="">Todas las valoraciones</option>
+              <option value="9">⭐ 9.0+</option>
+              <option value="8">⭐ 8.0+</option>
+              <option value="7">⭐ 7.0+</option>
+              <option value="6">⭐ 6.0+</option>
+            </select>
+            <select id="sort-filter-movies" class="filter-select">
+              <option value="title">Título A-Z</option>
+              <option value="title-desc">Título Z-A</option>
+              <option value="year-desc">Año ↓</option>
+              <option value="year-asc">Año ↑</option>
+              <option value="rating-desc">Valoración ↓</option>
+              <option value="rating-asc">Valoración ↑</option>
+            </select>
+            <select id="server-filter-movies" class="filter-select">
+              <option value="">Todos los servidores</option>
+            </select>
+            <button class="btn-clear-filters" onclick="clearFilters('movies')">🗑️ Limpiar</button>
+          </div>
+          <div class="view-controls">
+            <div class="grid-size-control" id="grid-size-control-movies">
+              <input type="range" id="grid-size-slider-movies" min="120" max="250" value="180" step="10">
+              <span>📏</span>
+            </div>
+            <div class="view-buttons">
+              <button class="view-btn active" id="grid-view-btn-movies" onclick="toggleView('movies', 'grid')">
+                <span>⊞</span>
+              </button>
+              <button class="view-btn" id="list-view-btn-movies" onclick="toggleView('movies', 'list')">
+                <span>☰</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="movies-grid" class="content-grid"></div>
+    </div>
+
+    <!-- Series Tab -->
+    <div id="series-tab" class="tab-content">
+      <div class="search-bar">
+        <input type="text" id="search-series" class="search-input" placeholder="🔍 Buscar series...">
+      </div>
+      
+      <div class="library-controls">
+        <div class="controls-row">
+          <div class="filters-group">
+            <select id="genre-filter-series" class="filter-select">
+              <option value="">Todos los géneros</option>
+            </select>
+            <select id="year-filter-series" class="filter-select">
+              <option value="">Todos los años</option>
+            </select>
+            <select id="country-filter-series" class="filter-select">
+              <option value="">Todos los países</option>
+            </select>
+            <select id="rating-filter-series" class="filter-select">
+              <option value="">Todas las valoraciones</option>
+              <option value="9">⭐ 9.0+</option>
+              <option value="8">⭐ 8.0+</option>
+              <option value="7">⭐ 7.0+</option>
+              <option value="6">⭐ 6.0+</option>
+            </select>
+            <select id="sort-filter-series" class="filter-select">
+              <option value="title">Título A-Z</option>
+              <option value="title-desc">Título Z-A</option>
+              <option value="year-desc">Año ↓</option>
+              <option value="year-asc">Año ↑</option>
+              <option value="rating-desc">Valoración ↓</option>
+              <option value="rating-asc">Valoración ↑</option>
+            </select>
+            <select id="server-filter-series" class="filter-select">
+              <option value="">Todos los servidores</option>
+            </select>
+            <button class="btn-clear-filters" onclick="clearFilters('series')">🗑️ Limpiar</button>
+          </div>
+          <div class="view-controls">
+            <div class="grid-size-control" id="grid-size-control-series">
+              <input type="range" id="grid-size-slider-series" min="120" max="250" value="180" step="10">
+              <span>📏</span>
+            </div>
+            <div class="view-buttons">
+              <button class="view-btn active" id="grid-view-btn-series" onclick="toggleView('series', 'grid')">
+                <span>⊞</span>
+              </button>
+              <button class="view-btn" id="list-view-btn-series" onclick="toggleView('series', 'list')">
+                <span>☰</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="series-grid" class="content-grid"></div>
+    </div>
+
+    <!-- Collections Tab -->
+    <div id="collections-tab" class="tab-content">
+      <div class="search-bar">
+        <input type="text" id="search-collections" class="search-input" placeholder="🔍 Buscar colecciones...">
+      </div>
+      
+      <div class="library-controls">
+        <div class="controls-row">
+          <div class="filters-group">
+            <select id="sort-filter-collections" class="filter-select">
+              <option value="name">Nombre A-Z</option>
+              <option value="name-desc">Nombre Z-A</option>
+              <option value="count-desc">Más películas</option>
+              <option value="count-asc">Menos películas</option>
+            </select>
+            <button class="btn-clear-filters" onclick="clearFilters('collections')">🗑️ Limpiar</button>
+          </div>
+          <div class="view-controls">
+            <div class="grid-size-control" id="grid-size-control-collections">
+              <input type="range" id="grid-size-slider-collections" min="120" max="250" value="180" step="10">
+              <span>📏</span>
+            </div>
+            <div class="view-buttons">
+              <button class="view-btn active" id="grid-view-btn-collections" onclick="toggleView('collections', 'grid')">
+                <span>⊞</span>
+              </button>
+              <button class="view-btn" id="list-view-btn-collections" onclick="toggleView('collections', 'list')">
+                <span>☰</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="collections-grid" class="content-grid"></div>
+    </div>
   </div>
 
-  <div id="series-tab" class="tab-content">
-    <div class="filters">
-      <div class="filters-row">
-        <input type="text" id="search-series" class="search-box" placeholder="🔍 Buscar series...">
-        <select id="server-series">
-          <option value="all">🖥️ Todos los Servidores</option>
-        </select>
-        <button class="btn-clear" onclick="clearFilters('series')">🗑️ Limpiar</button>
-      </div>
-    </div>
-    <div id="series-grid" class="content-grid"></div>
-  </div>
-
-  <div id="collections-tab" class="tab-content">
-    <div class="filters">
-      <div class="filters-row">
-        <input type="text" id="search-collections" class="search-box" placeholder="🔍 Buscar colecciones...">
-        <button class="btn-clear" onclick="clearFilters('collections')">🗑️ Limpiar</button>
-      </div>
-    </div>
-    <div id="collections-grid" class="content-grid"></div>
-  </div>
+  <!-- Modal Overlay -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+  
+  <!-- Modal Container -->
+  <div class="modal-container" id="modalContainer"></div>
 
   <script>
     let allMovies = [];
@@ -9175,31 +9739,91 @@ app.get('/library', async (req, res) => {
     let allCollections = [];
     let allServers = new Set();
 
-    // Cargar datos
-    fetch('data/movies.json')
-      .then(r => r.json())
-      .then(data => {
-        allMovies = data;
-        data.forEach(m => allServers.add(m.serverName));
-        populateServerFilter('movies');
-        renderMovies();
-      });
+    // Cargar datos y popular filtros
+    Promise.all([
+      fetch('data/movies.json').then(r => r.json()),
+      fetch('data/series.json').then(r => r.json()),
+      fetch('data/collections.json').then(r => r.json())
+    ]).then(([movies, series, collections]) => {
+      allMovies = movies;
+      allSeries = series;
+      allCollections = collections;
+      
+      // Extraer servidores
+      movies.forEach(m => allServers.add(m.serverName));
+      series.forEach(s => allServers.add(s.serverName));
+      
+      // Popular filtros dinámicos
+      populateFilters('movies', movies);
+      populateFilters('series', series);
+      
+      // Actualizar stats
+      document.getElementById('generation-date').textContent = 'Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}';
+      document.getElementById('stat-movies').textContent = ${snapshot.stats.totalMovies};
+      document.getElementById('stat-series').textContent = ${snapshot.stats.totalSeries};
+      document.getElementById('stat-collections').textContent = ${snapshot.stats.totalCollections};
+      document.getElementById('stat-episodes').textContent = ${snapshot.stats.totalEpisodes || 0};
+      
+      // Renderizar inicial
+      renderMovies();
+      renderSeries();
+      renderCollections();
+    });
 
-    fetch('data/series.json')
-      .then(r => r.json())
-      .then(data => {
-        allSeries = data;
-        data.forEach(s => allServers.add(s.serverName));
-        populateServerFilter('series');
-        renderSeries();
+    // Popular filtros dinámicos
+    function populateFilters(type, items) {
+      // Genres
+      const genres = new Set();
+      items.forEach(item => {
+        if (item.genres) {
+          item.genres.forEach(g => genres.add(g));
+        }
       });
-
-    fetch('data/collections.json')
-      .then(r => r.json())
-      .then(data => {
-        allCollections = data;
-        renderCollections();
+      const genreSelect = document.getElementById(\`genre-filter-\${type}\`);
+      Array.from(genres).sort().forEach(genre => {
+        const opt = document.createElement('option');
+        opt.value = genre;
+        opt.textContent = genre;
+        genreSelect.appendChild(opt);
       });
+      
+      // Years
+      const years = new Set();
+      items.forEach(item => {
+        if (item.releaseYear) years.add(item.releaseYear);
+      });
+      const yearSelect = document.getElementById(\`year-filter-\${type}\`);
+      Array.from(years).sort((a, b) => b - a).forEach(year => {
+        const opt = document.createElement('option');
+        opt.value = year;
+        opt.textContent = year;
+        yearSelect.appendChild(opt);
+      });
+      
+      // Countries
+      const countries = new Set();
+      items.forEach(item => {
+        if (item.productionCompanies) {
+          item.productionCompanies.split(',').forEach(c => countries.add(c.trim()));
+        }
+      });
+      const countrySelect = document.getElementById(\`country-filter-\${type}\`);
+      Array.from(countries).sort().forEach(country => {
+        const opt = document.createElement('option');
+        opt.value = country;
+        opt.textContent = country;
+        countrySelect.appendChild(opt);
+      });
+      
+      // Servers
+      const serverSelect = document.getElementById(\`server-filter-\${type}\`);
+      Array.from(allServers).sort().forEach(server => {
+        const opt = document.createElement('option');
+        opt.value = server;
+        opt.textContent = server;
+        serverSelect.appendChild(opt);
+      });
+    }
 
     // Tabs
     document.querySelectorAll('.tab').forEach(tab => {
@@ -9211,26 +9835,28 @@ app.get('/library', async (req, res) => {
       });
     });
 
-    function populateServerFilter(type) {
-      const select = document.getElementById(\`server-\${type}\`);
-      const servers = Array.from(allServers).sort();
-      servers.forEach(server => {
-        const option = document.createElement('option');
-        option.value = server;
-        option.textContent = server;
-        select.appendChild(option);
-      });
-    }
-
+    // RENDER MOVIES con TODOS los filtros
     function renderMovies() {
       const search = document.getElementById('search-movies').value.toLowerCase();
-      const server = document.getElementById('server-movies').value;
+      const genre = document.getElementById('genre-filter-movies').value;
+      const year = document.getElementById('year-filter-movies').value;
+      const country = document.getElementById('country-filter-movies').value;
+      const rating = document.getElementById('rating-filter-movies').value;
+      const sort = document.getElementById('sort-filter-movies').value;
+      const server = document.getElementById('server-filter-movies').value;
       
-      const filtered = allMovies.filter(m => {
-        const matchSearch = m.title.toLowerCase().includes(search);
-        const matchServer = server === 'all' || m.serverName === server;
-        return matchSearch && matchServer;
+      let filtered = allMovies.filter(m => {
+        const matchSearch = !search || m.title.toLowerCase().includes(search);
+        const matchGenre = !genre || (m.genres && m.genres.includes(genre));
+        const matchYear = !year || m.releaseYear === parseInt(year);
+        const matchCountry = !country || (m.productionCompanies && m.productionCompanies.includes(country));
+        const matchRating = !rating || (m.voteAverage && m.voteAverage >= parseFloat(rating));
+        const matchServer = !server || m.serverName === server;
+        return matchSearch && matchGenre && matchYear && matchCountry && matchRating && matchServer;
       });
+
+      // Ordenar
+      filtered = sortItems(filtered, sort);
 
       const grid = document.getElementById('movies-grid');
       if (filtered.length === 0) {
@@ -9239,30 +9865,45 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(m => \`
-        <div class="content-card">
+        <div class="content-card" onclick="openMovieModal(\${m.tmdbId})">
           <div class="card-poster">
-            \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}">\` : '🎬'}
+            \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy">\` : '🎬'}
           </div>
           <div class="card-content">
             <div class="card-title">\${m.title}</div>
             <div class="card-info">
               <span class="card-year">\${m.releaseYear || 'N/A'}</span>
+              \${m.voteAverage ? \`<span class="card-rating">⭐ \${m.voteAverage}</span>\` : ''}
               <span class="card-server">\${m.serverName}</span>
             </div>
+            \${m.genres ? \`<div class="card-genres">\${m.genres.slice(0, 2).join(', ')}</div>\` : ''}
           </div>
         </div>
       \`).join('');
     }
 
+    // RENDER SERIES con TODOS los filtros
     function renderSeries() {
       const search = document.getElementById('search-series').value.toLowerCase();
-      const server = document.getElementById('server-series').value;
+      const genre = document.getElementById('genre-filter-series').value;
+      const year = document.getElementById('year-filter-series').value;
+      const country = document.getElementById('country-filter-series').value;
+      const rating = document.getElementById('rating-filter-series').value;
+      const sort = document.getElementById('sort-filter-series').value;
+      const server = document.getElementById('server-filter-series').value;
       
-      const filtered = allSeries.filter(s => {
-        const matchSearch = s.title.toLowerCase().includes(search);
-        const matchServer = server === 'all' || s.serverName === server;
-        return matchSearch && matchServer;
+      let filtered = allSeries.filter(s => {
+        const matchSearch = !search || s.title.toLowerCase().includes(search);
+        const matchGenre = !genre || (s.genres && s.genres.includes(genre));
+        const matchYear = !year || s.releaseYear === parseInt(year);
+        const matchCountry = !country || (s.productionCompanies && s.productionCompanies.includes(country));
+        const matchRating = !rating || (s.voteAverage && s.voteAverage >= parseFloat(rating));
+        const matchServer = !server || s.serverName === server;
+        return matchSearch && matchGenre && matchYear && matchCountry && matchRating && matchServer;
       });
+
+      // Ordenar
+      filtered = sortItems(filtered, sort);
 
       const grid = document.getElementById('series-grid');
       if (filtered.length === 0) {
@@ -9271,27 +9912,42 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(s => \`
-        <div class="content-card">
+        <div class="content-card" onclick="openSeriesModal(\${s.tmdbId})">
           <div class="card-poster">
-            \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}">\` : '📺'}
+            \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}" loading="lazy">\` : '📺'}
           </div>
           <div class="card-content">
             <div class="card-title">\${s.title}</div>
             <div class="card-info">
               <span class="card-year">\${s.releaseYear || 'N/A'}</span>
+              \${s.voteAverage ? \`<span class="card-rating">⭐ \${s.voteAverage}</span>\` : ''}
               <span class="card-server">\${s.serverName}</span>
             </div>
+            \${s.genres ? \`<div class="card-genres">\${s.genres.slice(0, 2).join(', ')}</div>\` : ''}
           </div>
         </div>
       \`).join('');
     }
 
+    // RENDER COLLECTIONS con ordenamiento
     function renderCollections() {
       const search = document.getElementById('search-collections').value.toLowerCase();
+      const sort = document.getElementById('sort-filter-collections').value;
       
-      const filtered = allCollections.filter(c => 
-        c.name.toLowerCase().includes(search)
+      let filtered = allCollections.filter(c => 
+        !search || c.name.toLowerCase().includes(search)
       );
+
+      // Ordenar colecciones
+      if (sort === 'name') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+      } else if (sort === 'name-desc') {
+        filtered.sort((a, b) => b.name.localeCompare(a.name));
+      } else if (sort === 'count-desc') {
+        filtered.sort((a, b) => b.movieIds.length - a.movieIds.length);
+      } else if (sort === 'count-asc') {
+        filtered.sort((a, b) => a.movieIds.length - b.movieIds.length);
+      }
 
       const grid = document.getElementById('collections-grid');
       if (filtered.length === 0) {
@@ -9300,9 +9956,9 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(c => \`
-        <div class="content-card">
+        <div class="content-card" onclick="openCollectionModal(\${c.tmdbId})">
           <div class="card-poster">
-            \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}">\` : '📚'}
+            \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}" loading="lazy">\` : '📚'}
           </div>
           <div class="card-content">
             <div class="card-title">\${c.name}</div>
@@ -9312,29 +9968,293 @@ app.get('/library', async (req, res) => {
       \`).join('');
     }
 
+    // SORT FUNCTION (para movies y series)
+    function sortItems(items, sortValue) {
+      const sorted = [...items];
+      
+      if (sortValue === 'title') {
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+      } else if (sortValue === 'title-desc') {
+        sorted.sort((a, b) => b.title.localeCompare(a.title));
+      } else if (sortValue === 'year-desc') {
+        sorted.sort((a, b) => (b.releaseYear || 0) - (a.releaseYear || 0));
+      } else if (sortValue === 'year-asc') {
+        sorted.sort((a, b) => (a.releaseYear || 0) - (b.releaseYear || 0));
+      } else if (sortValue === 'rating-desc') {
+        sorted.sort((a, b) => (b.voteAverage || 0) - (a.voteAverage || 0));
+      } else if (sortValue === 'rating-asc') {
+        sorted.sort((a, b) => (a.voteAverage || 0) - (b.voteAverage || 0));
+      }
+      
+      return sorted;
+    }
+
+    // CLEAR FILTERS
     function clearFilters(type) {
       document.getElementById(\`search-\${type}\`).value = '';
-      const serverSelect = document.getElementById(\`server-\${type}\`);
-      if (serverSelect) serverSelect.value = 'all';
+      
+      if (type === 'movies' || type === 'series') {
+        document.getElementById(\`genre-filter-\${type}\`).value = '';
+        document.getElementById(\`year-filter-\${type}\`).value = '';
+        document.getElementById(\`country-filter-\${type}\`).value = '';
+        document.getElementById(\`rating-filter-\${type}\`).value = '';
+        document.getElementById(\`sort-filter-\${type}\`).value = 'title';
+        document.getElementById(\`server-filter-\${type}\`).value = '';
+      } else if (type === 'collections') {
+        document.getElementById('sort-filter-collections').value = 'name';
+      }
       
       if (type === 'movies') renderMovies();
       else if (type === 'series') renderSeries();
       else renderCollections();
     }
 
-    // Event listeners para búsqueda en tiempo real
+    // VIEW CONTROLS (grid/list toggle)
+    function toggleView(type, mode) {
+      const grid = document.getElementById(\`\${type}-grid\`);
+      const gridBtn = document.getElementById(\`grid-view-btn-\${type}\`);
+      const listBtn = document.getElementById(\`list-view-btn-\${type}\`);
+      const sizeControl = document.getElementById(\`grid-size-control-\${type}\`);
+      
+      if (mode === 'grid') {
+        grid.classList.remove('list-view');
+        gridBtn.classList.add('active');
+        listBtn.classList.remove('active');
+        sizeControl.classList.remove('hidden');
+      } else {
+        grid.classList.add('list-view');
+        listBtn.classList.add('active');
+        gridBtn.classList.remove('active');
+        sizeControl.classList.add('hidden');
+      }
+    }
+
+    // GRID SIZE SLIDER
+    function setupGridSizeSlider(type) {
+      const slider = document.getElementById(\`grid-size-slider-\${type}\`);
+      const grid = document.getElementById(\`\${type}-grid\`);
+      
+      slider.addEventListener('input', () => {
+        grid.style.setProperty('--card-size', slider.value + 'px');
+      });
+    }
+    setupGridSizeSlider('movies');
+    setupGridSizeSlider('series');
+    setupGridSizeSlider('collections');
+
+    // EVENT LISTENERS - Movies
     document.getElementById('search-movies').addEventListener('input', renderMovies);
-    document.getElementById('server-movies').addEventListener('change', renderMovies);
-    
+    document.getElementById('genre-filter-movies').addEventListener('change', renderMovies);
+    document.getElementById('year-filter-movies').addEventListener('change', renderMovies);
+    document.getElementById('country-filter-movies').addEventListener('change', renderMovies);
+    document.getElementById('rating-filter-movies').addEventListener('change', renderMovies);
+    document.getElementById('sort-filter-movies').addEventListener('change', renderMovies);
+    document.getElementById('server-filter-movies').addEventListener('change', renderMovies);
+
+    // EVENT LISTENERS - Series
     document.getElementById('search-series').addEventListener('input', renderSeries);
-    document.getElementById('server-series').addEventListener('change', renderSeries);
-    
+    document.getElementById('genre-filter-series').addEventListener('change', renderSeries);
+    document.getElementById('year-filter-series').addEventListener('change', renderSeries);
+    document.getElementById('country-filter-series').addEventListener('change', renderSeries);
+    document.getElementById('rating-filter-series').addEventListener('change', renderSeries);
+    document.getElementById('sort-filter-series').addEventListener('change', renderSeries);
+    document.getElementById('server-filter-series').addEventListener('change', renderSeries);
+
+    // EVENT LISTENERS - Collections
     document.getElementById('search-collections').addEventListener('input', renderCollections);
+    document.getElementById('sort-filter-collections').addEventListener('change', renderCollections);
+
+
+    // MODALS
+    function openMovieModal(tmdbId) {
+      const movie = allMovies.find(m => m.tmdbId === tmdbId);
+      if (!movie) return;
+
+      const modalHTML = \`
+        <div class="modal-content">
+          <div class="modal-backdrop-header" style="background-image: url('\${movie.backdropPath || movie.posterPath}');">
+            <button class="close-button" onclick="closeModal()">&times;</button>
+            <div class="modal-backdrop-overlay"></div>
+            <div class="modal-header-content">
+              <h1 class="modal-title">\${movie.title}</h1>
+              \${movie.tagline ? \`<div class="modal-tagline">\${movie.tagline}</div>\` : ''}
+              <div class="modal-badges">
+                \${movie.releaseYear ? \`<span class="year-badge">\${movie.releaseYear}</span>\` : ''}
+                \${movie.runtime ? \`<span class="runtime-badge">\${movie.runtime}</span>\` : ''}
+                \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
+                \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
+              </div>
+            </div>
+          </div>
+          <div class="modal-hero">
+            <div class="modal-poster-container">
+              <div class="modal-poster-hero">
+                <img src="\${movie.posterPath}" alt="\${movie.title}" loading="lazy">
+              </div>
+            </div>
+            <div class="modal-main-info">
+              <div class="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
+              <div class="modal-details-table">
+                \${movie.director ? \`<div class="detail-item"><strong>Director:</strong><span>\${movie.director}</span></div>\` : ''}
+                \${movie.productionCompanies ? \`<div class="detail-item"><strong>Productora:</strong><span>\${movie.productionCompanies}</span></div>\` : ''}
+                \${movie.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${movie.serverName}</span></div>\` : ''}
+                \${movie.releaseDate ? \`<div class="detail-item"><strong>Estreno:</strong><span>\${movie.releaseDate}</span></div>\` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      \`;
+
+      document.getElementById('modalContainer').innerHTML = modalHTML;
+      document.getElementById('modalOverlay').classList.add('active');
+      document.getElementById('modalContainer').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function openSeriesModal(tmdbId) {
+      const series = allSeries.find(s => s.tmdbId === tmdbId);
+      if (!series) return;
+
+      const seasonsHTML = series.seasons && series.seasons.length > 0 ? \`
+        <div class="seasons-container">
+          <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Temporadas y Episodios</h2>
+          \${series.seasons.map((season, idx) => \`
+            <div class="season-item" onclick="toggleSeason(\${idx})">
+              <div class="season-header">
+                <div class="season-title">\${season.name}</div>
+                <div class="season-episodes-count">\${season.episodeCount || 0} episodios</div>
+              </div>
+              <div class="episodes-list" id="season-\${idx}">
+                \${season.episodes ? season.episodes.map(ep => \`
+                  <div class="episode-item">
+                    <div class="episode-number">E\${ep.episodeNumber || '?'}</div>
+                    <div class="episode-title">\${ep.name || 'Sin título'}</div>
+                  </div>
+                \`).join('') : '<p style="color: #999; padding: 1rem;">No hay episodios disponibles</p>'}
+              </div>
+            </div>
+          \`).join('')}
+        </div>
+      \` : '';
+
+      const modalHTML = \`
+        <div class="modal-content">
+          <div class="modal-backdrop-header" style="background-image: url('\${series.backdropPath || series.posterPath}');">
+            <button class="close-button" onclick="closeModal()">&times;</button>
+            <div class="modal-backdrop-overlay"></div>
+            <div class="modal-header-content">
+              <h1 class="modal-title">\${series.title}</h1>
+              <div class="modal-badges">
+                \${series.releaseYear ? \`<span class="year-badge">\${series.releaseYear}</span>\` : ''}
+                \${series.numberOfSeasons ? \`<span class="runtime-badge">\${series.numberOfSeasons} temporadas</span>\` : ''}
+                \${series.numberOfEpisodes ? \`<span class="runtime-badge">\${series.numberOfEpisodes} episodios</span>\` : ''}
+                \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
+                \${series.genres ? series.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
+              </div>
+            </div>
+          </div>
+          <div class="modal-hero">
+            <div class="modal-poster-container">
+              <div class="modal-poster-hero">
+                <img src="\${series.posterPath}" alt="\${series.title}" loading="lazy">
+              </div>
+            </div>
+            <div class="modal-main-info">
+              <div class="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
+              <div class="modal-details-table">
+                \${series.createdBy ? \`<div class="detail-item"><strong>Creador:</strong><span>\${series.createdBy}</span></div>\` : ''}
+                \${series.productionCompanies ? \`<div class="detail-item"><strong>Productora:</strong><span>\${series.productionCompanies}</span></div>\` : ''}
+                \${series.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${series.serverName}</span></div>\` : ''}
+                \${series.firstAirDate ? \`<div class="detail-item"><strong>Estreno:</strong><span>\${series.firstAirDate}</span></div>\` : ''}
+              </div>
+            </div>
+          </div>
+          \${seasonsHTML}
+        </div>
+      \`;
+
+      document.getElementById('modalContainer').innerHTML = modalHTML;
+      document.getElementById('modalOverlay').classList.add('active');
+      document.getElementById('modalContainer').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function openCollectionModal(tmdbId) {
+      const collection = allCollections.find(c => c.tmdbId === tmdbId);
+      if (!collection) return;
+
+      const collectionMovies = collection.movieIds.map(id => allMovies.find(m => m.tmdbId === id)).filter(Boolean);
+
+      const moviesHTML = \`
+        <div class="collection-movies-container">
+          <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Películas de la colección</h2>
+          <div class="collection-movies-grid">
+            \${collectionMovies.map(m => \`
+              <div class="collection-movie-card" onclick="closeModal(); setTimeout(() => openMovieModal(\${m.tmdbId}), 300)">
+                <div class="collection-movie-poster">
+                  \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy">\` : '🎬'}
+                </div>
+                <div class="collection-movie-title">\${m.title}</div>
+              </div>
+            \`).join('')}
+          </div>
+        </div>
+      \`;
+
+      const modalHTML = \`
+        <div class="modal-content">
+          <div class="modal-backdrop-header" style="background-image: url('\${collection.backdropPath || collection.posterPath}');">
+            <button class="close-button" onclick="closeModal()">&times;</button>
+            <div class="modal-backdrop-overlay"></div>
+            <div class="modal-header-content">
+              <h1 class="modal-title">\${collection.name}</h1>
+              <div class="modal-badges">
+                <span class="runtime-badge">\${collection.movieIds.length} películas</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-hero">
+            <div class="modal-poster-container">
+              <div class="modal-poster-hero">
+                <img src="\${collection.posterPath}" alt="\${collection.name}" loading="lazy">
+              </div>
+            </div>
+            <div class="modal-main-info">
+              <div class="modal-synopsis">\${collection.overview || 'Sin descripción disponible'}</div>
+            </div>
+          </div>
+          \${moviesHTML}
+        </div>
+      \`;
+
+      document.getElementById('modalContainer').innerHTML = modalHTML;
+      document.getElementById('modalOverlay').classList.add('active');
+      document.getElementById('modalContainer').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function toggleSeason(idx) {
+      const seasonList = document.getElementById(\`season-\${idx}\`);
+      if (seasonList) {
+        seasonList.classList.toggle('active');
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('active');
+      document.getElementById('modalContainer').classList.remove('active');
+      document.body.style.overflow = 'auto';
+    }
+
+    // Cerrar modal con ESC
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
   </script>
 </body>
 </html>`;
       
-      archive.append(htmlContent, { name: 'index.html' });
+      archive.append(htmlContent, { name: 'InfinityScrap.html' });
       
       // Agregar README
       const readmeContent = `# Infinity Scrap - Web Local
@@ -9351,13 +10271,13 @@ Generada el: ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}
 
 ## Uso
 
-1. Abre \`index.html\` en tu navegador
-2. Navega por las bibliotecas
-3. Todo funciona sin conexión a internet
+1. Abre \`InfinityScrap.html\` en tu navegador
+2. Navega por las bibliotecas usando las pestañas y filtros
+3. Todo funciona sin conexión a internet (excepto las imágenes de TMDB)
 
 ## Actualización
 
-Para actualizar esta web, ve al Panel Admin de Infinity Scrap y usa la opción "Actualizar Web Local".
+Para actualizar esta web, ve al Panel Admin de Infinity Scrap y usa la opción "Regenerar Web Local".
 
 ---
 Generado por Infinity Scrap`;
