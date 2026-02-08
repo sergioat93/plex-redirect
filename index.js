@@ -12981,7 +12981,10 @@ app.get('/api/web-local/generate', async (req, res) => {
         const movieLibraries = libraries.MediaContainer.Directory.filter(lib => lib.type === 'movie');
         const showLibraries = libraries.MediaContainer.Directory.filter(lib => lib.type === 'show');
         
-        processedItems[server.machineIdentifier] = { movies: [], series: [] };
+        // Inicializar processedItems para este servidor si no existe
+        if (!processedItems[server.machineIdentifier]) {
+          processedItems[server.machineIdentifier] = { movies: [], series: [] };
+        }
         
         // Contar total de items en este servidor
         let totalItems = 0;
@@ -13018,6 +13021,14 @@ app.get('/api/web-local/generate', async (req, res) => {
           if (moviesData && moviesData.MediaContainer && moviesData.MediaContainer.Video) {
             for (const movie of moviesData.MediaContainer.Video) {
               processedCount++;
+              
+              // SALTAR si ya fue procesado en ejecución anterior
+              if (processedItems[server.machineIdentifier].movies.includes(parseInt(movie.ratingKey))) {
+                if (processedCount % 10 === 0 || processedCount === totalItems) {
+                  sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+                }
+                continue;
+              }
               
               // Solo enviar progreso cada 10 items para no saturar SSE
               if (processedCount % 10 === 0 || processedCount === totalItems) {
@@ -13110,6 +13121,14 @@ app.get('/api/web-local/generate', async (req, res) => {
           if (seriesData && seriesData.MediaContainer && seriesData.MediaContainer.Directory) {
             for (const series of seriesData.MediaContainer.Directory) {
               processedCount++;
+              
+              // SALTAR si ya fue procesado en ejecución anterior
+              if (processedItems[server.machineIdentifier].series.includes(parseInt(series.ratingKey))) {
+                if (processedCount % 10 === 0 || processedCount === totalItems) {
+                  sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+                }
+                continue;
+              }
               
               // Solo enviar progreso cada 10 items para no saturar SSE
               if (processedCount % 10 === 0 || processedCount === totalItems) {
