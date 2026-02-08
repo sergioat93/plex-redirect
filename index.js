@@ -9726,6 +9726,9 @@ Generado por Infinity Scrap`;
                     <button class="btn-secondary" onclick="startGeneration(true)">
                       🧪 Prueba (10 items/servidor)
                     </button>
+                    <button class="btn-secondary" onclick="clearProgress()">
+                      🗑️ Borrar Progreso
+                    </button>
                   </div>
                 </div>
               \`;
@@ -9902,6 +9905,32 @@ Generado por Infinity Scrap`;
           } catch (error) {
             console.error('Error:', error);
             alert('Error ignorando item');
+          }
+        }
+        
+        async function clearProgress() {
+          if (!confirm('¿Estás seguro de que quieres borrar el progreso guardado? Esto no afectará a las webs ya generadas.')) {
+            return;
+          }
+          
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
+          
+          try {
+            const response = await fetch(\`/api/web-local/progress?adminPassword=\${encodeURIComponent(password)}\`, {
+              method: 'DELETE'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+              alert('✓ Progreso borrado correctamente');
+              loadDashboard();
+            } else {
+              alert('Error: ' + (data.error || 'Unknown'));
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error borrando progreso');
           }
         }
         
