@@ -8875,7 +8875,7 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       min-height: 100vh;
     }
-    .container { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
+    .container { max-width: 1920px; margin: 0 auto; padding: 0 1.5rem; }
     
     /* NAVBAR */
     .navbar {
@@ -9069,8 +9069,11 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       font-size: 0.75rem;
       cursor: pointer;
-      min-width: fit-content;
-      max-width: none;
+      min-width: 90px;
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .filter-select option {
       white-space: normal;
@@ -9554,20 +9557,51 @@ app.get('/library', async (req, res) => {
       z-index: 999;
       overflow-y: auto;
       display: none;
-      padding: 40px 20px;
+      padding: 2rem 0;
+      align-items: center;
     }
     .modal-container.active {
-      display: block;
+      display: flex;
     }
     
     .modal-content {
       position: relative;
       max-width: 1200px;
-      margin: 0 auto;
+      max-height: 90vh;
+      margin: auto;
       background: #282828;
       border-radius: 12px;
-      overflow: hidden;
+      overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-collection-tag {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(229, 160, 13, 0.3);
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.75rem;
+      color: rgba(229, 160, 13, 0.9);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .modal-collection-tag:hover {
+      background: rgba(229, 160, 13, 0.15);
+      border-color: rgba(229, 160, 13, 0.6);
+      color: #e5a00d;
+      transform: scale(1.05);
+    }
+    .modal-collection-tag::before {
+      content: "📚";
+      font-size: 0.9rem;
     }
     
     .modal-backdrop-header {
@@ -9612,27 +9646,6 @@ app.get('/library', async (req, res) => {
       background: rgba(229, 160, 13, 0.9);
       border-color: #e5a00d;
       transform: scale(1.1);
-    }
-    
-    .collection-badge-top {
-      position: absolute;
-      top: 1.5rem;
-      left: 2rem;
-      z-index: 3;
-      background: rgba(229, 160, 13, 0.95);
-      color: #000;
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    }
-    .collection-badge-top:hover {
-      background: rgba(229, 160, 13, 1);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
     }
     
     .modal-title {
@@ -9716,7 +9729,7 @@ app.get('/library', async (req, res) => {
     }
     
     .modal-hero {
-      padding: 1.5rem 3.5rem;
+      padding: 1rem 3.5rem;
       display: flex;
       gap: 2rem;
       background: #282828;
@@ -9726,7 +9739,7 @@ app.get('/library', async (req, res) => {
       flex-shrink: 0;
     }
     .modal-poster-hero {
-      width: 250px;
+      width: 300px;
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 10px 30px rgba(0,0,0,0.4);
@@ -9749,7 +9762,7 @@ app.get('/library', async (req, res) => {
       position: relative;
     }
     .modal-synopsis.truncated {
-      max-height: 5.2em;
+      max-height: 4.5em;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 3;
@@ -9768,23 +9781,28 @@ app.get('/library', async (req, res) => {
     }
     
     .download-button {
+      width: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      background: linear-gradient(135deg, #e5a00d 0%, #f59e0b 100%);
-      color: white;
+      background: #e5a00d;
+      color: #1e1e27;
       border: none;
-      padding: 0.75rem 1.25rem;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      font-weight: 600;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      margin-top: 1rem;
+    }
       cursor: pointer;
       transition: all 0.3s;
       text-decoration: none;
-      margin: 1rem 0;
-      box-shadow: 0 2px 8px rgba(229, 160, 13, 0.3);
-      width: 100%;
+      margin: 1.5rem 0;
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
     }
     .download-button:hover {
       transform: translateY(-2px);
@@ -10437,6 +10455,7 @@ app.get('/library', async (req, res) => {
       });
 
       // Mostrar/ocultar filtros según tab
+      const filtersBar = document.querySelector('.filters-bar');
       if (tab === 'collections') {
         // Ocultar filtros que no aplican a colecciones
         document.getElementById('genre-filter').style.display = 'none';
@@ -10876,9 +10895,11 @@ app.get('/library', async (req, res) => {
 
       const modalHTML = \`
         <div class="modal-content">
+          \${movieCollection ? \`<div class="modal-collection-tag" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección completa">
+            <span>\${movieCollection.name}</span>
+          </div>\` : ''}
           <div class="modal-backdrop-header" style="background-image: url('\${movie.backdropPath || movie.posterPath}');">
             <button class="close-button" onclick="closeModal()">&times;</button>
-            \${movieCollection ? \`<div class="collection-badge-top" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</div>\` : ''}
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
               <h1 class="modal-title">\${movie.title}</h1>
