@@ -10164,9 +10164,9 @@ app.get('/library', async (req, res) => {
 
   <script>
     // Embeber datos JSON directamente para evitar CORS
-    const allMovies = ${JSON.stringify(snapshot.data.movies)};
-    const allSeries = ${JSON.stringify(snapshot.data.series)};
-    const allCollections = ${JSON.stringify(snapshot.data.collections)};
+    const allMovies = ${snapshot.generatedFiles.movies};
+    const allSeries = ${snapshot.generatedFiles.series};
+    const allCollections = ${snapshot.generatedFiles.collections};
     
     let currentTab = 'movies';
     let currentContentForServerModal = null;
