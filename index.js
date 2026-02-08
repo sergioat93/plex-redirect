@@ -12323,13 +12323,13 @@ app.get('/api/web-local/status', async (req, res) => {
         });
         serverStatuses.push({
           machineIdentifier: server.machineIdentifier,
-          name: server.name,
+          name: server.serverName,
           online: response.ok
         });
       } catch {
         serverStatuses.push({
           machineIdentifier: server.machineIdentifier,
-          name: server.name,
+          name: server.serverName,
           online: false
         });
       }
@@ -12372,12 +12372,12 @@ app.get('/api/web-local/generate', async (req, res) => {
         const response = await fetch(`${server.baseURI}/?X-Plex-Token=${server.accessToken}`, { timeout: 5000 });
         if (response.ok) {
           activeServers.push(server);
-          sendProgress({ type: 'info', message: `✅ ${server.name} - ONLINE` });
+          sendProgress({ type: 'info', message: `✅ ${server.serverName} - ONLINE` });
         } else {
-          sendProgress({ type: 'warning', message: `⚠️ ${server.name} - OFFLINE (excluido)` });
+          sendProgress({ type: 'warning', message: `⚠️ ${server.serverName} - OFFLINE (excluido)` });
         }
       } catch {
-        sendProgress({ type: 'warning', message: `❌ ${server.name} - ERROR (excluido)` });
+        sendProgress({ type: 'warning', message: `❌ ${server.serverName} - ERROR (excluido)` });
       }
     }
     
@@ -12398,7 +12398,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     const progressPerServer = 70 / activeServers.length;
     
     for (const server of activeServers) {
-      sendProgress({ type: 'progress', message: `Escaneando ${server.name}...`, percent: 10 + serverProgress });
+      sendProgress({ type: 'progress', message: `Escaneando ${server.serverName}...`, percent: 10 + serverProgress });
       
       try {
         // Obtener bibliotecas del servidor
