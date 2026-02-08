@@ -8875,7 +8875,7 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       min-height: 100vh;
     }
-    .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+    .container { max-width: 1800px; margin: 0 auto; padding: 0 2rem; }
     
     /* NAVBAR */
     .navbar {
@@ -9340,7 +9340,7 @@ app.get('/library', async (req, res) => {
       display: flex;
       flex-direction: row;
       align-items: stretch;
-      height: 150px;
+      height: 180px;
       padding: 0;
     }
     
@@ -9394,8 +9394,8 @@ app.get('/library', async (req, res) => {
     }
     .content-grid.list-view .card-poster {
       aspect-ratio: 2/3;
-      width: 100px;
-      height: 150px;
+      width: 120px;
+      height: 180px;
       flex-shrink: 0;
       margin: 0;
       border-radius: 8px 0 0 8px;
@@ -9628,7 +9628,7 @@ app.get('/library', async (req, res) => {
       flex-wrap: wrap;
       align-items: center;
     }
-    .year-badge, .runtime-badge {
+    .year-badge, .runtime-badge, .filesize-badge {
       background: #e5a00d;
       color: #000;
       padding: 0.4rem 0.8rem;
@@ -9654,6 +9654,19 @@ app.get('/library', async (req, res) => {
       border-radius: 15px;
       font-size: 0.85rem;
       color: rgba(255,255,255,0.9);
+    }
+    
+    .clickable-badge {
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .clickable-badge:hover {
+      transform: scale(1.1);
+      filter: brightness(1.2);
+    }
+    .year-badge.clickable-badge:hover,
+    .genre-tag.clickable-badge:hover {
+      box-shadow: 0 0 10px rgba(229, 160, 13, 0.6);
     }
     
     .collection-badge {
@@ -9705,6 +9718,25 @@ app.get('/library', async (req, res) => {
       text-align: justify;
       margin-bottom: 1.5rem;
       color: #cccccc;
+      position: relative;
+    }
+    .modal-synopsis.truncated {
+      max-height: 4.5em;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .synopsis-toggle {
+      color: var(--primary-color);
+      cursor: pointer;
+      font-weight: 600;
+      margin-top: 0.5rem;
+      display: inline-block;
+      transition: opacity 0.3s;
+    }
+    .synopsis-toggle:hover {
+      opacity: 0.8;
     }
     
     .download-button {
@@ -10663,6 +10695,52 @@ app.get('/library', async (req, res) => {
       }
     }
 
+    // FILTER BY GENRE
+    function filterByGenre(genre, type) {
+      // Cambiar a la pestaña correspondiente
+      if (type === 'movie') {
+        document.getElementById('movies-tab').click();
+      } else if (type === 'series') {
+        document.getElementById('series-tab').click();
+      }
+      
+      // Limpiar otros filtros
+      document.getElementById('search-input').value = '';
+      document.getElementById('year-filter').value = '';
+      document.getElementById('country-filter').value = '';
+      document.getElementById('rating-filter').value = '';
+      document.getElementById('sort-filter').value = 'title';
+      
+      // Aplicar filtro de género
+      document.getElementById('genre-filter').value = genre;
+      
+      // Renderizar con el filtro aplicado
+      renderContent();
+    }
+
+    // FILTER BY YEAR
+    function filterByYear(year, type) {
+      // Cambiar a la pestaña correspondiente
+      if (type === 'movie') {
+        document.getElementById('movies-tab').click();
+      } else if (type === 'series') {
+        document.getElementById('series-tab').click();
+      }
+      
+      // Limpiar otros filtros
+      document.getElementById('search-input').value = '';
+      document.getElementById('genre-filter').value = '';
+      document.getElementById('country-filter').value = '';
+      document.getElementById('rating-filter').value = '';
+      document.getElementById('sort-filter').value = 'title';
+      
+      // Aplicar filtro de año
+      document.getElementById('year-filter').value = year.toString();
+      
+      // Renderizar con el filtro aplicado
+      renderContent();
+    }
+
     // SORT FUNCTION
     function sortItems(items, sortValue) {
       const sorted = [...items];
@@ -10728,6 +10806,23 @@ app.get('/library', async (req, res) => {
       // Obtener colección si existe
       const movieCollection = allCollections.find(c => c.movieIds && c.movieIds.includes(tmdbId));
       
+      // Formatear duración (de minutos a "Xh Ymin")
+      const formatRuntime = (minutes) => {
+        if (!minutes) return '';
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        if (hours > 0 && mins > 0) return \`\${hours}h \${mins}min\`;
+        if (hours > 0) return \`\${hours}h\`;
+        return \`\${mins}min\`;
+      };
+      
+      // Formatear tamaño de archivo
+      const formatFilesize = (bytes) => {
+        if (!bytes) return '';
+        const gb = (bytes / (1024 * 1024 * 1024)).toFixed(2);
+        return \`\${gb} GB\`;
+      };
+      
       // Botón de descarga o selección de servidor
       const downloadButtonHTML = hasMultipleServers 
         ? \`<button class="download-button" onclick="openServerModal(\${tmdbId}, 'movie')">
@@ -10748,12 +10843,17 @@ app.get('/library', async (req, res) => {
               <h1 class="modal-title">\${movie.title}</h1>
               \${movie.tagline ? \`<div class="modal-tagline">\${movie.tagline}</div>\` : ''}
               <div class="modal-badges">
-                \${movie.releaseYear ? \`<span class="year-badge">\${movie.releaseYear}</span>\` : ''}
-                \${movie.runtime ? \`<span class="runtime-badge">\${movie.runtime}</span>\` : ''}
+                \${movie.releaseYear ? \`<span class="year-badge clickable-badge" onclick="filterByYear('\${movie.releaseYear}', 'movie'); closeModal();" title="Ver películas de \${movie.releaseYear}">\${movie.releaseYear}</span>\` : ''}
+                \${movie.runtime ? \`<span class="runtime-badge">\${formatRuntime(movie.runtime)}</span>\` : ''}
+                \${movie.filesize ? \`<span class="filesize-badge">\${formatFilesize(movie.filesize)}</span>\` : ''}
                 \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
-                \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
-                \${movieCollection ? \`<span class="collection-badge" onclick="goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
+                \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag clickable-badge" onclick="filterByGenre('\${g.replace(/'/g, "\\\\'") }', 'movie'); closeModal();" title="Ver películas de \${g}">\${g}</span>\`).join('') : ''}
               </div>
+              \${movieCollection ? \`
+                <div style="margin-top: 0.75rem;">
+                  <span class="collection-badge" onclick="goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>
+                </div>
+              \` : ''}
               <div class="modal-icons-row">
                 \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
                 \${movie.imdbId ? \`<a href="https://www.imdb.com/title/\${movie.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
@@ -10779,7 +10879,10 @@ app.get('/library', async (req, res) => {
                 \${movie.budget ? \`<div class="detail-item"><strong>Presupuesto:</strong><span>$\${movie.budget.toLocaleString()}</span></div>\` : ''}
                 \${movie.revenue ? \`<div class="detail-item"><strong>Recaudación:</strong><span>$\${movie.revenue.toLocaleString()}</span></div>\` : ''}
               </div>
-              <div class="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
+              <div id="synopsis-container">
+                <div class="modal-synopsis truncated" id="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
+                \${movie.overview && movie.overview.length > 200 ? \`<span class="synopsis-toggle" onclick="toggleSynopsis()">Ver más</span>\` : ''}
+              </div>
               \${downloadButtonHTML}
             </div>
           </div>
@@ -10843,11 +10946,11 @@ app.get('/library', async (req, res) => {
             <div class="modal-header-content">
               <h1 class="modal-title">\${series.title}</h1>
               <div class="modal-badges">
-                \${series.releaseYear ? \`<span class="year-badge">\${series.releaseYear}</span>\` : ''}
+                \${series.releaseYear ? \`<span class="year-badge clickable-badge" onclick="filterByYear('\${series.releaseYear}', 'series'); closeModal();" title="Ver series de \${series.releaseYear}">\${series.releaseYear}</span>\` : ''}
                 \${series.numberOfSeasons ? \`<span class="runtime-badge">\${series.numberOfSeasons} temporadas</span>\` : ''}
                 \${series.numberOfEpisodes ? \`<span class="runtime-badge">\${series.numberOfEpisodes} episodios</span>\` : ''}
                 \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
-                \${series.genres ? series.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
+                \${series.genres ? series.genres.slice(0, 3).map(g => \`<span class="genre-tag clickable-badge" onclick="filterByGenre('\${g.replace(/'/g, "\\\\'")}', 'series'); closeModal();" title="Ver series de \${g}">\${g}</span>\`).join('') : ''}
               </div>
               <div class="modal-icons-row">
                 \${tmdbId ? \`<a href="https://www.themoviedb.org/tv/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
@@ -10965,6 +11068,20 @@ app.get('/library', async (req, res) => {
       document.getElementById('modalOverlay').classList.remove('active');
       document.getElementById('modalContainer').classList.remove('active');
       document.body.style.overflow = 'auto';
+    }
+
+    // Toggle synopsis expansion
+    function toggleSynopsis() {
+      const synopsis = document.getElementById('modal-synopsis');
+      const toggle = event.target;
+      
+      if (synopsis.classList.contains('truncated')) {
+        synopsis.classList.remove('truncated');
+        toggle.textContent = 'Ver menos';
+      } else {
+        synopsis.classList.add('truncated');
+        toggle.textContent = 'Ver más';
+      }
     }
 
     // MODAL DE SELECCIÓN DE SERVIDOR
@@ -15378,9 +15495,16 @@ app.get('/api/web-local/generate', async (req, res) => {
     }
     
     const collections = Array.from(collectionsMap.values()).map(col => ({
-      ...col,
+      tmdbId: col.collectionId,
+      name: col.name,
+      posterPath: col.poster,
+      backdropPath: col.backdrop,
+      overview: col.overview || '',
+      movieIds: col.movieIds,
+      movieCount: col.movieCount,
       genres: Array.from(col.genres),
       availableQualities: Array.from(col.availableQualities),
+      serverCount: col.serverCount,
       releaseYear: Math.min(...col.releaseYears),
       lastReleaseYear: Math.max(...col.releaseYears)
     }));
