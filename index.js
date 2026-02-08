@@ -9372,13 +9372,19 @@ app.get('/library', async (req, res) => {
       font-size: 2.5rem;
     }
     
+    /* Contenedor de badges e iconos alineados */
+    .modal-badges-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
     /* Botones de enlaces externos */
     .modal-icons-row {
       display: flex;
       gap: 0.75rem;
-      justify-content: flex-end;
       align-items: center;
-      margin-top: 1rem;
     }
     .badge-icon-link {
       display: inline-flex;
@@ -10619,14 +10625,16 @@ app.get('/library', async (req, res) => {
       });
 
       // Ordenar colecciones
-      if (sort === 'title' || sort === 'name') {
+      if (sort === 'title') {
         filtered.sort((a, b) => a.name.localeCompare(b.name));
-      } else if (sort === 'title-desc' || sort === 'name-desc') {
+      } else if (sort === 'title-desc') {
         filtered.sort((a, b) => b.name.localeCompare(a.name));
       } else if (sort === 'rating-desc') {
-        filtered.sort((a, b) => b.movieIds.length - a.movieIds.length);
+        // Más películas primero
+        filtered.sort((a, b) => (b.movieIds?.length || 0) - (a.movieIds?.length || 0));
       } else if (sort === 'rating-asc') {
-        filtered.sort((a, b) => a.movieIds.length - b.movieIds.length);
+        // Menos películas primero
+        filtered.sort((a, b) => (a.movieIds?.length || 0) - (b.movieIds?.length || 0));
       }
 
       // Actualizar contador
@@ -10852,21 +10860,23 @@ app.get('/library', async (req, res) => {
             <div class="modal-header-content">
               <h1 class="modal-title">\${movie.title}</h1>
               \${movie.tagline ? \`<div class="modal-tagline">\${movie.tagline}</div>\` : ''}
-              <div class="modal-badges">
-                \${movie.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${movie.releaseYear}', 'movie'); window.closeModal();" title="Ver películas de \${movie.releaseYear}">\${movie.releaseYear}</span>\` : ''}
-                \${movie.runtime ? \`<span class="runtime-badge">\${formatRuntime(movie.runtime)}</span>\` : ''}
-                \${movie.filesize ? \`<span class="filesize-badge">\${formatFilesize(movie.filesize)}</span>\` : ''}
-                \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
-                \${movie.genres ? movie.genres.slice(0, 3).map(g => {
-                  const safeGenre = g.replace(/'/g, "\\\\'");
-                  return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'movie'); window.closeModal();" title="Ver películas de \${g}">\${g}</span>\`;
-                }).join('') : ''}
-                \${movieCollection ? \`<span class="collection-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
-              </div>
-              <div class="modal-icons-row">
-                \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
-                \${movie.imdbId ? \`<a href="https://www.imdb.com/title/\${movie.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
-                \${movie.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${movie.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+              <div class="modal-badges-row">
+                <div class="modal-badges">
+                  \${movie.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${movie.releaseYear}', 'movie'); window.closeModal();" title="Ver películas de \${movie.releaseYear}">\${movie.releaseYear}</span>\` : ''}
+                  \${movie.runtime ? \`<span class="runtime-badge">\${formatRuntime(movie.runtime)}</span>\` : ''}
+                  \${firstServer && firstServer.fileSizeGB ? \`<span class="filesize-badge">\${firstServer.fileSizeGB} GB</span>\` : ''}
+                  \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
+                  \${movie.genres ? movie.genres.slice(0, 3).map(g => {
+                    const safeGenre = g.replace(/'/g, "\\\\'");
+                    return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'movie'); window.closeModal();" title="Ver películas de \${g}">\${g}</span>\`;
+                  }).join('') : ''}
+                  \${movieCollection ? \`<span class="collection-badge clickable-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
+                </div>
+                <div class="modal-icons-row">
+                  \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
+                  \${movie.imdbId ? \`<a href="https://www.imdb.com/title/\${movie.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
+                  \${movie.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${movie.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -10875,6 +10885,7 @@ app.get('/library', async (req, res) => {
               <div class="modal-poster-hero">
                 <img src="\${movie.posterPath}" alt="\${movie.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
               </div>
+              \${downloadButtonHTML}
             </div>
             <div class="modal-main-info">
               <div class="modal-details-table">
@@ -10892,7 +10903,6 @@ app.get('/library', async (req, res) => {
                 <div class="modal-synopsis truncated" id="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
                 \${movie.overview && movie.overview.length > 200 ? \`<span class="synopsis-toggle" onclick="toggleSynopsis()">Ver más</span>\` : ''}
               </div>
-              \${downloadButtonHTML}
             </div>
           </div>
         </div>
@@ -10954,20 +10964,22 @@ app.get('/library', async (req, res) => {
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
               <h1 class="modal-title">\${series.title}</h1>
-              <div class="modal-badges">
-                \${series.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${series.releaseYear}', 'series'); window.closeModal();" title="Ver series de \${series.releaseYear}">\${series.releaseYear}</span>\` : ''}
-                \${series.numberOfSeasons ? \`<span class="runtime-badge">\${series.numberOfSeasons} temporadas</span>\` : ''}
-                \${series.numberOfEpisodes ? \`<span class="runtime-badge">\${series.numberOfEpisodes} episodios</span>\` : ''}
-                \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
-                \${series.genres ? series.genres.slice(0, 3).map(g => {
-                  const safeGenre = g.replace(/'/g, "\\\\'");
-                  return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'series'); window.closeModal();" title="Ver series de \${g}">\${g}</span>\`;
-                }).join('') : ''}
-              </div>
-              <div class="modal-icons-row">
-                \${tmdbId ? \`<a href="https://www.themoviedb.org/tv/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
-                \${series.imdbId ? \`<a href="https://www.imdb.com/title/\${series.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
-                \${series.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${series.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+              <div class="modal-badges-row">
+                <div class="modal-badges">
+                  \${series.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${series.releaseYear}', 'series'); window.closeModal();" title="Ver series de \${series.releaseYear}">\${series.releaseYear}</span>\` : ''}
+                  \${series.numberOfSeasons ? \`<span class="runtime-badge">\${series.numberOfSeasons} temporadas</span>\` : ''}
+                  \${series.numberOfEpisodes ? \`<span class="runtime-badge">\${series.numberOfEpisodes} episodios</span>\` : ''}
+                  \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
+                  \${series.genres ? series.genres.slice(0, 3).map(g => {
+                    const safeGenre = g.replace(/'/g, "\\\\'");
+                    return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'series'); window.closeModal();" title="Ver series de \${g}">\${g}</span>\`;
+                  }).join('') : ''}
+                </div>
+                <div class="modal-icons-row">
+                  \${tmdbId ? \`<a href="https://www.themoviedb.org/tv/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
+                  \${series.imdbId ? \`<a href="https://www.imdb.com/title/\${series.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
+                  \${series.trailerKey ? \`<a href="https://www.youtube.com/watch?v=\${series.trailerKey}" target="_blank" rel="noopener noreferrer" title="Ver trailer" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/youtube.png" alt="YouTube" class="badge-icon"></a>\` : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -10976,10 +10988,10 @@ app.get('/library', async (req, res) => {
               <div class="modal-poster-hero">
                 <img src="\${series.posterPath}" alt="\${series.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
               </div>
+              \${downloadButtonHTML}
             </div>
             <div class="modal-main-info">
               <div class="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
-              \${downloadButtonHTML}
               <div class="modal-details-table">
                 \${series.createdBy ? \`<div class="detail-item"><strong>Creador:</strong><span>\${series.createdBy}</span></div>\` : ''}
                 \${series.cast && series.cast.length > 0 ? \`<div class="detail-item"><strong>Reparto:</strong><span>\${series.cast.slice(0, 5).map(a => a.name).join(', ')}</span></div>\` : ''}
@@ -15219,7 +15231,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                   const part = media.Part && media.Part[0] ? media.Part[0] : {};
                   
                   // Construir URL de descarga completa (funcional)
-                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?X-Plex-Token=${server.accessToken}&download=1` : '';
+                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}` : '';
                   
                   const movieData = {
                     ratingKey: movie.ratingKey,
