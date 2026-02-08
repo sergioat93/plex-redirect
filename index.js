@@ -13157,7 +13157,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               
               // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
               let bestGuid = movie.guid; // Fallback al guid principal
-              const movieSection = moviesXml.split(\`ratingKey="\${movie.ratingKey}"\`)[1];
+              const movieSection = moviesXml.split('ratingKey="' + movie.ratingKey + '"')[1];
               if (movieSection) {
                 const endSection = movieSection.indexOf('<Video') > 0 ? movieSection.indexOf('<Video') : movieSection.indexOf('</MediaContainer>');
                 const relevantXml = movieSection.substring(0, endSection);
@@ -13165,7 +13165,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                 // Buscar <Guid id="tmdb://..."/>
                 const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
                 if (tmdbGuidMatch) {
-                  bestGuid = \`tmdb://movie/\${tmdbGuidMatch[1]}\`;
+                  bestGuid = 'tmdb://movie/' + tmdbGuidMatch[1];
                 } else {
                   // Si no hay TMDB, buscar IMDB
                   const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
@@ -13287,7 +13287,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               
               // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
               let bestGuid = series.guid; // Fallback al guid principal
-              const seriesSection = seriesXml.split(\`ratingKey="\${series.ratingKey}"\`)[1];
+              const seriesSection = seriesXml.split('ratingKey="' + series.ratingKey + '"')[1];
               if (seriesSection) {
                 const endSection = seriesSection.indexOf('<Directory') > 0 ? seriesSection.indexOf('<Directory') : seriesSection.indexOf('</MediaContainer>');
                 const relevantXml = seriesSection.substring(0, endSection);
@@ -13295,7 +13295,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                 // Buscar <Guid id="tmdb://..."/>
                 const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
                 if (tmdbGuidMatch) {
-                  bestGuid = \`tmdb://tv/\${tmdbGuidMatch[1]}\`;
+                  bestGuid = 'tmdb://tv/' + tmdbGuidMatch[1];
                 } else {
                   // Si no hay TMDB, buscar IMDB
                   const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
