@@ -10398,21 +10398,9 @@ Generado por Infinity Scrap`;
           </div>
         </div>
         
-        <!-- Generate Web Tab (Pending Implementation) -->
+        <!-- Generate Web Tab (contenido cargado dinámicamente via AJAX) -->
         <div class="tab-pane" id="tab-generate">
-          <div class="container">
-            <div class="header">
-              <div class="header-left">
-                <span class="header-icon">🌐</span>
-                <h1 class="header-title">Generar Web</h1>
-              </div>
-            </div>
-            <div style="text-align: center; padding: 4rem 2rem; color: #9ca3af;">
-              <div style="font-size: 3rem; margin-bottom: 1rem;">🚧</div>
-              <h2 style="color: #f3f4f6; margin-bottom: 0.5rem;">Próximamente</h2>
-              <p>Esta función estará disponible en futuras actualizaciones.</p>
-            </div>
-          </div>
+          <!-- El contenido se carga automáticamente al hacer clic en el tab -->
         </div>
         
         </div> <!-- Cierre tab-content -->
@@ -10453,49 +10441,54 @@ Generado por Infinity Scrap`;
                 
                 // Update active pane
                 document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-                const targetPane = document.getElementById('tab-' + tabName);
                 
-                if (targetPane) {
-                  targetPane.classList.add('active');
-                } else if (tabName === 'generate') {
-                  // Cargar contenido del tab Generar Web via AJAX
+                // Si es el tab "generate", cargar contenido dinámicamente
+                if (tabName === 'generate') {
                   const password = new URLSearchParams(window.location.search).get('password');
                   if (password) {
                     try {
+                      const generatePane = document.getElementById('tab-generate');
+                      
+                      // Si ya tiene contenido cargado, solo activarlo
+                      if (generatePane && generatePane.hasAttribute('data-loaded')) {
+                        generatePane.classList.add('active');
+                        return;
+                      }
+                      
+                      // Cargar contenido via AJAX
                       const response = await fetch(\`/library?action=web-generate-tab&password=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
                       
-                      // Crear el tab-pane si no existe
-                      const tabContent = document.querySelector('.tab-content');
-                      let generatePane = document.getElementById('tab-generate');
-                      
-                      if (!generatePane) {
-                        generatePane = document.createElement('div');
-                        generatePane.className = 'tab-pane';
-                        generatePane.id = 'tab-generate';
-                        tabContent.appendChild(generatePane);
+                      if (generatePane) {
+                        // Parsear solo el body del HTML recibido
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        generatePane.innerHTML = doc.body.innerHTML;
+                        
+                        // Ejecutar los scripts del contenido cargado
+                        const scripts = generatePane.querySelectorAll('script');
+                        scripts.forEach(oldScript => {
+                          const newScript = document.createElement('script');
+                          newScript.textContent = oldScript.textContent;
+                          oldScript.parentNode.replaceChild(newScript, oldScript);
+                        });
+                        
+                        // Marcar como cargado
+                        generatePane.setAttribute('data-loaded', 'true');
+                        
+                        // Activar el pane
+                        generatePane.classList.add('active');
                       }
-                      
-                      // Parsear solo el body del HTML recibido
-                      const parser = new DOMParser();
-                      const doc = parser.parseFromString(html, 'text/html');
-                      generatePane.innerHTML = doc.body.innerHTML;
-                      
-                      // Ejecutar los scripts del contenido cargado
-                      const scripts = generatePane.querySelectorAll('script');
-                      scripts.forEach(oldScript => {
-                        const newScript = document.createElement('script');
-                        newScript.textContent = oldScript.textContent;
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                      });
-                      
-                      // Activar el pane
-                      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-                      generatePane.classList.add('active');
                     } catch (error) {
                       console.error('Error cargando tab Generar Web:', error);
-                      alert('Error al cargar la pestaña');
+                      alert('Error al cargar la pestaña: ' + error.message);
                     }
+                  }
+                } else {
+                  // Para otros tabs, simplemente activarlos
+                  const targetPane = document.getElementById('tab-' + tabName);
+                  if (targetPane) {
+                    targetPane.classList.add('active');
                   }
                 }
               });
