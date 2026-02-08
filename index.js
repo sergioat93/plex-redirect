@@ -1,7 +1,9 @@
 const express = require('express');
 const https = require('https');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const crypto = require('crypto');
+const archiver = require('archiver');
+const stream = require('stream');
 // const compression = require('compression');
 // const NodeCache = require('node-cache');
 const app = express();
@@ -8764,6 +8766,667 @@ app.get('/library', async (req, res) => {
     }
   }
   
+  // ========================================
+  // ACCIONES WEB LOCAL
+  // ========================================
+  
+  // Descargar ZIP de la web generada
+  if (action === 'download-web-zip') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const { snapshotId } = req.query;
+    
+    try {
+      const snapshot = snapshotId 
+        ? await webSnapshotsCollection.findOne({ _id: new ObjectId(snapshotId) })
+        : await webSnapshotsCollection.findOne({ isActive: true });
+      
+      if (!snapshot || !snapshot.generatedFiles) {
+        return res.status(404).send('No hay web generada disponible');
+      }
+      
+      // Configurar headers para descarga
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="infinity-plex-web-${new Date().toISOString().split('T')[0]}.zip"`);
+      
+      // Crear ZIP en streaming
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      
+      archive.on('error', (err) => {
+        console.error('Error generando ZIP:', err);
+        res.status(500).end();
+      });
+      
+      archive.pipe(res);
+      
+      // Agregar archivos JSON
+      archive.append(snapshot.generatedFiles.metadata, { name: 'data/metadata.json' });
+      archive.append(snapshot.generatedFiles.movies, { name: 'data/movies.json' });
+      archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
+      archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
+      
+      // Agregar index.html (web estática)
+      const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infinity Scrap - Web Local</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #0f0f17; color: #fff; padding: 20px; }
+    h1 { color: #e5a00d; margin-bottom: 20px; }
+    .libraries { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+    .library-card { background: #1a1a2e; border: 2px solid #e5a00d; border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; transition: transform 0.2s; }
+    .library-card:hover { transform: translateY(-5px); }
+    .library-icon { font-size: 3rem; margin-bottom: 10px; }
+    .library-title { font-size: 1.5rem; font-weight: bold; }
+    .library-count { color: #888; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>🌐 Infinity Scrap - Web Local</h1>
+  <p style="margin-bottom: 30px; color: #888;">Generada el ${new Date(snapshot.generatedAt).toLocaleDateString('es-ES')}</p>
+  
+  <div class="libraries">
+    <div class="library-card" onclick="location.href='movies.html'">
+      <div class="library-icon">🎬</div>
+      <div class="library-title">Películas</div>
+      <div class="library-count">${snapshot.stats.totalMovies} películas</div>
+    </div>
+    
+    <div class="library-card" onclick="location.href='collections.html'">
+      <div class="library-icon">📚</div>
+      <div class="library-title">Colecciones</div>
+      <div class="library-count">${snapshot.stats.totalCollections} colecciones</div>
+    </div>
+    
+    <div class="library-card" onclick="location.href='series.html'">
+      <div class="library-icon">📺</div>
+      <div class="library-title">Series</div>
+      <div class="library-count">${snapshot.stats.totalSeries} series</div>
+    </div>
+  </div>
+  
+  <div style="margin-top: 40px; padding: 20px; background: rgba(229, 160, 13, 0.1); border-radius: 8px; border: 1px solid #e5a00d;">
+    <h3 style="margin-bottom: 10px;">📊 Estadísticas</h3>
+    <p>✅ ${snapshot.stats.totalMovies} películas en ${snapshot.stats.totalCollections} colecciones</p>
+    <p>✅ ${snapshot.stats.totalSeries} series con ${snapshot.stats.totalEpisodes || 0} episodios</p>
+    <p>📡 ${snapshot.stats.serversCount} servidores incluidos</p>
+  </div>
+</body>
+</html>`;
+      
+      archive.append(htmlContent, { name: 'index.html' });
+      
+      // Agregar README
+      const readmeContent = `# Infinity Scrap - Web Local
+
+Generada el: ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}
+
+## Contenido
+
+- **${snapshot.stats.totalMovies}** películas
+- **${snapshot.stats.totalCollections}** colecciones
+- **${snapshot.stats.totalSeries}** series
+- **${snapshot.stats.totalEpisodes || 0}** episodios
+- **${snapshot.stats.serversCount}** servidores incluidos
+
+## Uso
+
+1. Abre \`index.html\` en tu navegador
+2. Navega por las bibliotecas
+3. Todo funciona sin conexión a internet
+
+## Actualización
+
+Para actualizar esta web, ve al Panel Admin de Infinity Scrap y usa la opción "Actualizar Web Local".
+
+---
+Generado por Infinity Scrap`;
+      
+      archive.append(readmeContent, { name: 'README.md' });
+      
+      // Finalizar el archivo
+      archive.finalize();
+      
+    } catch (error) {
+      console.error('Error generando ZIP:', error);
+      res.status(500).json({ error: error.message });
+    }
+    return;
+  }
+  
+  // Obtener items no encontrados en TMDB
+  if (action === 'get-not-found-items') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    try {
+      const snapshot = await webSnapshotsCollection.findOne({ isActive: true });
+      
+      if (!snapshot) {
+        return res.json({ items: [] });
+      }
+      
+      return res.json({ 
+        items: snapshot.notFoundItems || [],
+        snapshotId: snapshot._id.toString()
+      });
+      
+    } catch (error) {
+      console.error('Error obteniendo items no encontrados:', error);
+      res.status(500).json({ error: error.message });
+    }
+    return;
+  }
+  
+  // Asignar TMDB ID manualmente a un item
+  if (action === 'assign-tmdb-id') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const { snapshotId, ratingKey, serverId, tmdbId } = req.body || req.query;
+    
+    if (!snapshotId || !ratingKey || !serverId || !tmdbId) {
+      return res.status(400).json({ error: 'Faltan parámetros' });
+    }
+    
+    try {
+      // Guardar en manual_mappings
+      const compositeId = `${ratingKey}_${serverId}`;
+      
+      await manualMappingsCollection.updateOne(
+        { snapshotId: new ObjectId(snapshotId) },
+        {
+          $set: {
+            [`manualMappings.${compositeId}`]: {
+              tmdbId: parseInt(tmdbId),
+              assignedAt: new Date(),
+              assignedBy: 'admin',
+              status: 'pending'
+            }
+          }
+        },
+        { upsert: true }
+      );
+      
+      return res.json({ success: true, message: 'TMDB ID asignado correctamente' });
+      
+    } catch (error) {
+      console.error('Error asignando TMDB ID:', error);
+      res.status(500).json({ error: error.message });
+    }
+    return;
+  }
+  
+  // Omitir/ignorar un item permanentemente
+  if (action === 'ignore-item') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const { snapshotId, ratingKey, serverId, title } = req.body || req.query;
+    
+    if (!snapshotId || !ratingKey || !serverId) {
+      return res.status(400).json({ error: 'Faltan parámetros' });
+    }
+    
+    try {
+      const compositeId = `${ratingKey}_${serverId}`;
+      
+      await manualMappingsCollection.updateOne(
+        { snapshotId: new ObjectId(snapshotId) },
+        {
+          $push: {
+            ignored: {
+              compositeId,
+              title: title || 'Sin título',
+              reason: 'No es contenido catalogable',
+              ignoredAt: new Date()
+            }
+          }
+        },
+        { upsert: true }
+      );
+      
+      return res.json({ success: true, message: 'Item ignorado correctamente' });
+      
+    } catch (error) {
+      console.error('Error ignorando item:', error);
+      res.status(500).json({ error: error.message });
+    }
+    return;
+  }
+  
+  // Renderizar contenido del tab "Generar Web"
+  if (action === 'web-generate-tab') {
+    if (adminPassword !== ADMIN_PASSWORD) {
+      return res.status(403).send('No autorizado');
+    }
+    
+    return res.send(`
+      <div class="container">
+        <div class="header">
+          <div class="header-left">
+            <span class="header-icon">🌐</span>
+            <h1 class="header-title">Generar Web Local</h1>
+          </div>
+        </div>
+        
+        <div id="dashboardContainer"></div>
+        <div id="progressContainer" style="display: none;"></div>
+        <div id="notFoundContainer" style="display: none;"></div>
+      </div>
+      
+      <style>
+        .dashboard-card {
+          background: rgba(31, 41, 55, 0.9);
+          border: 2px solid rgba(229, 160, 13, 0.3);
+          border-radius: 16px;
+          padding: 2rem;
+          margin-bottom: 2rem;
+        }
+        .dashboard-title {
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: #e5a00d;
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+        .stat-item {
+          background: rgba(17, 24, 39, 0.8);
+          padding: 1rem;
+          border-radius: 8px;
+          border: 1px solid rgba(229, 160, 13, 0.2);
+        }
+        .stat-label {
+          color: #9ca3af;
+          font-size: 0.875rem;
+          margin-bottom: 0.5rem;
+        }
+        .stat-value {
+          color: #f3f4f6;
+          font-size: 1.5rem;
+          font-weight: 700;
+        }
+        .btn-primary {
+          padding: 1rem 2rem;
+          background: linear-gradient(135deg, #e5a00d 0%, #ffa500 100%);
+          border: none;
+          border-radius: 8px;
+          color: #000;
+          font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 16px rgba(229, 160, 13, 0.3);
+        }
+        .btn-secondary {
+          padding: 1rem 2rem;
+          background: rgba(31, 41, 55, 0.9);
+          border: 2px solid rgba(229, 160, 13, 0.3);
+          border-radius: 8px;
+          color: #f3f4f6;
+          font-weight: 600;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-secondary:hover {
+          background: rgba(229, 160, 13, 0.1);
+        }
+        .progress-bar {
+          width: 100%;
+          height: 24px;
+          background: rgba(17, 24, 39, 0.8);
+          border-radius: 12px;
+          overflow: hidden;
+          margin: 1rem 0;
+        }
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #e5a00d 0%, #ffa500 100%);
+          transition: width 0.3s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #000;
+          font-weight: 700;
+          font-size: 0.875rem;
+        }
+        .log-container {
+          background: rgba(17, 24, 39, 0.8);
+          border: 1px solid rgba(229, 160, 13, 0.2);
+          border-radius: 8px;
+          padding: 1rem;
+          max-height: 400px;
+          overflow-y: auto;
+          font-family: 'Courier New', monospace;
+          font-size: 0.875rem;
+        }
+        .log-entry {
+          padding: 0.25rem 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .log-entry.info { color: #60a5fa; }
+        .log-entry.success { color: #34d399; }
+        .log-entry.warning { color: #fbbf24; }
+        .log-entry.error { color: #f87171; }
+        .button-group {
+          display: flex;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+      </style>
+      
+      <script>
+        let currentSnapshot = null;
+        
+        async function loadDashboard() {
+          try {
+            const password = new URLSearchParams(window.location.search).get('password');
+            const response = await fetch('/api/web-local/status?password=' + encodeURIComponent(password));
+            const data = await response.json();
+            
+            const container = document.getElementById('dashboardContainer');
+            
+            if (!data.exists) {
+              // No hay web generada
+              container.innerHTML = \`
+                <div class="dashboard-card">
+                  <div class="dashboard-title">🆕 NO HAY WEB GENERADA</div>
+                  <p style="color: #9ca3af; margin-bottom: 1.5rem;">
+                    Aún no has generado ninguna web local. Haz clic en el botón de abajo para iniciar el proceso.
+                  </p>
+                  <button class="btn-primary" onclick="startGeneration()">
+                    🌐 Generar Primera Web
+                  </button>
+                </div>
+              \`;
+            } else {
+              // Hay web generada, mostrar estadísticas
+              currentSnapshot = data.snapshot;
+              const stats = data.snapshot.stats;
+              const genDate = new Date(data.snapshot.generatedAt).toLocaleString('es-ES');
+              const timeMins = (stats.generationTimeMs / 1000 / 60).toFixed(1);
+              
+              let serversHtml = data.servers.map(s => \`
+                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: rgba(17, 24, 39, 0.5); border-radius: 4px;">
+                  <span style="font-size: 1.2rem;">\${s.online ? '✅' : '⚠️'}</span>
+                  <span>\${s.name}</span>
+                  <span style="color: #9ca3af; font-size: 0.875rem;">(\${s.online ? 'ONLINE' : 'OFFLINE'})</span>
+                </div>
+              \`).join('');
+              
+              container.innerHTML = \`
+                <div class="dashboard-card">
+                  <div class="dashboard-title">📊 ESTADO DE LA WEB LOCAL</div>
+                  
+                  <div style="background: rgba(17, 24, 39, 0.5); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <div style="color: #9ca3af; font-size: 0.875rem;">Última generación:</div>
+                    <div style="font-weight: 600;">\${genDate}</div>
+                  </div>
+                  
+                  <div class="stats-grid">
+                    <div class="stat-item">
+                      <div class="stat-label">Películas</div>
+                      <div class="stat-value">✅ \${stats.totalMovies}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Series</div>
+                      <div class="stat-value">✅ \${stats.totalSeries}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Colecciones</div>
+                      <div class="stat-value">📚 \${stats.totalCollections}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Episodios</div>
+                      <div class="stat-value">📺 \${stats.totalEpisodes || 0}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">No encontrados</div>
+                      <div class="stat-value">⚠️ \${stats.notFoundCount}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Servidores</div>
+                      <div class="stat-value">📡 \${stats.serversCount}</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Tiempo generación</div>
+                      <div class="stat-value">⏱️ \${timeMins}min</div>
+                    </div>
+                  </div>
+                  
+                  <div style="margin-bottom: 1.5rem;">
+                    <div style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 0.5rem;">📡 SERVIDORES ACTIVOS:</div>
+                    <div style="display: grid; gap: 0.5rem;">
+                      \${serversHtml}
+                    </div>
+                  </div>
+                  
+                  \${stats.notFoundCount > 0 ? \`
+                    <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="font-size: 1.2rem;">⚠️</span>
+                        <strong>Items no encontrados en TMDB</strong>
+                      </div>
+                      <p style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 0.75rem;">
+                        Hay \${stats.notFoundCount} items que no se pudieron identificar automáticamente. 
+                        Puedes asignarles un TMDB ID manualmente o ignorarlos.
+                      </p>
+                      <button class="btn-secondary" onclick="showNotFoundItems()">
+                        Ver y gestionar items
+                      </button>
+                    </div>
+                  \` : ''}
+                  
+                  <div class="button-group">
+                    <button class="btn-primary" onclick="downloadZip()">
+                      📦 Descargar ZIP
+                    </button>
+                    <button class="btn-primary" onclick="startGeneration()">
+                      🔄 Regenerar Web
+                    </button>
+                  </div>
+                </div>
+              \`;
+            }
+          } catch (error) {
+            console.error('Error loading dashboard:', error);
+          }
+        }
+        
+        async function startGeneration() {
+          const password = new URLSearchParams(window.location.search).get('password');
+          
+          document.getElementById('dashboardContainer').style.display = 'none';
+          const progressContainer = document.getElementById('progressContainer');
+          progressContainer.style.display = 'block';
+          progressContainer.innerHTML = \`
+            <div class="dashboard-card">
+              <div class="dashboard-title">🌐 Generando Web Local</div>
+              <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+              </div>
+              <div id="currentMessage" style="color: #9ca3af; margin-bottom: 1rem;">Iniciando...</div>
+              <div class="log-container" id="logContainer"></div>
+            </div>
+          \`;
+          
+          try {
+            const eventSource = new EventSource('/api/web-local/generate?password=' + encodeURIComponent(password));
+            
+            eventSource.onmessage = (event) => {
+              const data = JSON.parse(event.data);
+              const progressFill = document.getElementById('progressFill');
+              const currentMessage = document.getElementById('currentMessage');
+              const logContainer = document.getElementById('logContainer');
+              
+              if (data.percent !== undefined) {
+                progressFill.style.width = data.percent + '%';
+                progressFill.textContent = Math.round(data.percent) + '%';
+              }
+              
+              if (data.message) {
+                currentMessage.textContent = data.message;
+                
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-entry ' + data.type;
+                logEntry.textContent = \`[\${new Date().toLocaleTimeString()}] \${data.message}\`;
+                logContainer.appendChild(logEntry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+              }
+              
+              if (data.type === 'complete') {
+                eventSource.close();
+                setTimeout(() => {
+                  document.getElementById('progressContainer').style.display = 'none';
+                  document.getElementById('dashboardContainer').style.display = 'block';
+                  loadDashboard();
+                }, 2000);
+              }
+              
+              if (data.type === 'error') {
+                eventSource.close();
+              }
+            };
+            
+            eventSource.onerror = () => {
+              eventSource.close();
+              alert('Error en la generación. Por favor, intenta de nuevo.');
+            };
+            
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error iniciando la generación');
+          }
+        }
+        
+        function downloadZip() {
+          const password = new URLSearchParams(window.location.search).get('password');
+          window.location.href = \`/library?action=download-web-zip&password=\${encodeURIComponent(password)}\`;
+        }
+        
+        async function showNotFoundItems() {
+          const password = new URLSearchParams(window.location.search).get('password');
+          try {
+            const response = await fetch('/library?action=get-not-found-items&password=' + encodeURIComponent(password));
+            const data = await response.json();
+            
+            const container = document.getElementById('notFoundContainer');
+            container.style.display = 'block';
+            
+            const itemsHtml = data.items.map((item, index) => \`
+              <div style="background: rgba(17, 24, 39, 0.5); padding: 1rem; border-radius: 8px; border: 1px solid rgba(229, 160, 13, 0.2);">
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">
+                  \${item.type === 'movie' ? '🎬' : '📺'} \${item.title} (\${item.year || 'N/A'})
+                </div>
+                <div style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 0.75rem;">
+                  Servidor: \${item.serverId} | Rating Key: \${item.ratingKey}
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <input type="text" id="tmdbInput\${index}" placeholder="TMDB ID" 
+                    style="flex: 1; padding: 0.5rem; background: rgba(17, 24, 39, 0.8); border: 1px solid rgba(229, 160, 13, 0.3); border-radius: 4px; color: #fff;">
+                  <button onclick="assignTmdbId('\${data.snapshotId}', '\${item.ratingKey}', '\${item.serverId}', \${index})" 
+                    style="padding: 0.5rem 1rem; background: #34d399; border: none; border-radius: 4px; color: #000; font-weight: 600; cursor: pointer;">
+                    ✓ Asignar
+                  </button>
+                  <button onclick="ignoreItem('\${data.snapshotId}', '\${item.ratingKey}', '\${item.serverId}', '\${item.title}')" 
+                    style="padding: 0.5rem 1rem; background: #f87171; border: none; border-radius: 4px; color: #000; font-weight: 600; cursor: pointer;">
+                    ✕ Omitir
+                  </button>
+                </div>
+              </div>
+            \`).join('');
+            
+            container.innerHTML = \`
+              <div class="dashboard-card">
+                <div class="dashboard-title">⚠️ ITEMS NO ENCONTRADOS EN TMDB</div>
+                <p style="color: #9ca3af; margin-bottom: 1.5rem;">
+                  Los siguientes items no se pudieron identificar automáticamente. Puedes asignarles un TMDB ID manualmente o ignorarlos.
+                </p>
+                <div style="display: grid; gap: 1rem; margin-bottom: 1.5rem;">
+                  \${itemsHtml}
+                </div>
+                <button class="btn-secondary" onclick="document.getElementById('notFoundContainer').style.display='none'">
+                  Cerrar
+                </button>
+              </div>
+            \`;
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error cargando items no encontrados');
+          }
+        }
+        
+        async function assignTmdbId(snapshotId, ratingKey, serverId, index) {
+          const tmdbId = document.getElementById('tmdbInput' + index).value;
+          if (!tmdbId) {
+            alert('Por favor, introduce un TMDB ID');
+            return;
+          }
+          
+          const password = new URLSearchParams(window.location.search).get('password');
+          try {
+            const response = await fetch(\`/library?action=assign-tmdb-id&password=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&tmdbId=\${tmdbId}\`);
+            const data = await response.json();
+            
+            if (data.success) {
+              alert('✓ TMDB ID asignado correctamente. Regenera la web para aplicar los cambios.');
+              showNotFoundItems(); // Recargar lista
+            } else {
+              alert('Error: ' + (data.error || 'Unknown'));
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error asignando TMDB ID');
+          }
+        }
+        
+        async function ignoreItem(snapshotId, ratingKey, serverId, title) {
+          if (!confirm(\`¿Seguro que deseas ignorar "\${title}"?\`)) return;
+          
+          const password = new URLSearchParams(window.location.search).get('password');
+          try {
+            const response = await fetch(\`/library?action=ignore-item&password=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&title=\${encodeURIComponent(title)}\`);
+            const data = await response.json();
+            
+            if (data.success) {
+              alert('✓ Item ignorado correctamente');
+              showNotFoundItems(); // Recargar lista
+            } else {
+              alert('Error: ' + (data.error || 'Unknown'));
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error ignorando item');
+          }
+        }
+        
+        // Cargar dashboard al iniciar
+        loadDashboard();
+      </script>
+    `);
+    return;
+  }
+  
   // Mostrar panel de administración HTML
   if (action === 'show-admin-panel') {
     if (adminPassword !== ADMIN_PASSWORD) {
@@ -12011,8 +12674,117 @@ app.post('/api/web-local/generate', async (req, res) => {
           }
         }
         
-        // Procesar series (similar a películas, pero más complejo)
-        // Por ahora lo dejamos simplificado para que compile
+        // Procesar series
+        for (const lib of showLibraries) {
+          const seriesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
+          const seriesXml = await httpsGetXML(seriesUrl);
+          const seriesData = parseXML(seriesXml);
+          
+          if (seriesData && seriesData.MediaContainer && seriesData.MediaContainer.Directory) {
+            for (const series of seriesData.MediaContainer.Directory) {
+              // Buscar en TMDB
+              const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv');
+              
+              if (tmdbResult) {
+                // Agregar a lista procesada
+                processedItems[server.machineIdentifier].series.push(parseInt(series.ratingKey));
+                
+                // Obtener detalles completos
+                const tmdbDetails = await getTMDBDetails(tmdbResult.tmdbId, 'tv');
+                
+                if (tmdbDetails) {
+                  // Obtener info de temporadas/episodios
+                  const seasonsUrl = `${server.baseURI}/library/metadata/${series.ratingKey}/children?X-Plex-Token=${server.accessToken}`;
+                  const seasonsXml = await httpsGetXML(seasonsUrl);
+                  const seasonsData = parseXML(seasonsXml);
+                  
+                  const seasons = [];
+                  if (seasonsData && seasonsData.MediaContainer && seasonsData.MediaContainer.Directory) {
+                    for (const season of seasonsData.MediaContainer.Directory) {
+                      const episodesUrl = `${server.baseURI}/library/metadata/${season.ratingKey}/children?X-Plex-Token=${server.accessToken}`;
+                      const episodesXml = await httpsGetXML(episodesUrl);
+                      const episodesData = parseXML(episodesXml);
+                      
+                      const episodes = [];
+                      if (episodesData && episodesData.MediaContainer && episodesData.MediaContainer.Video) {
+                        for (const episode of episodesData.MediaContainer.Video) {
+                          const media = episode.Media && episode.Media[0] ? episode.Media[0] : {};
+                          const part = media.Part && media.Part[0] ? media.Part[0] : {};
+                          
+                          episodes.push({
+                            ratingKey: episode.ratingKey,
+                            title: episode.title,
+                            episodeNumber: episode.index,
+                            thumb: episode.thumb || '',
+                            duration: episode.duration || 0,
+                            quality: media.videoResolution || 'SD',
+                            resolution: `${media.width || 0}x${media.height || 0}`,
+                            fileSize: part.size ? `${(parseInt(part.size) / 1024 / 1024 / 1024).toFixed(2)} GB` : 'N/A',
+                            fileName: part.file ? part.file.split('/').pop() : 'N/A',
+                            videoCodec: media.videoCodec || 'N/A',
+                            audioCodec: media.audioCodec || 'N/A',
+                            container: media.container || 'N/A',
+                            downloadUrl: `${server.baseURI}${part.key}`,
+                            partKey: part.key
+                          });
+                        }
+                      }
+                      
+                      seasons.push({
+                        ratingKey: season.ratingKey,
+                        seasonNumber: season.index,
+                        title: season.title,
+                        thumb: season.thumb || '',
+                        episodeCount: episodes.length,
+                        episodes
+                      });
+                    }
+                  }
+                  
+                  const seriesDataObj = {
+                    ratingKey: series.ratingKey,
+                    serverId: server.machineIdentifier,
+                    serverName: server.name,
+                    baseURI: server.baseURI,
+                    accessToken: server.accessToken,
+                    seasonCount: seasons.length,
+                    seasons
+                  };
+                  
+                  // Buscar si ya existe esta serie (por tmdbId)
+                  const existingSeries = allSeries.find(s => s.tmdbId === tmdbResult.tmdbId);
+                  
+                  if (existingSeries) {
+                    // Agregar servidor a serie existente
+                    existingSeries.servers.push(seriesDataObj);
+                    existingSeries.serverCount++;
+                  } else {
+                    // Nueva serie
+                    allSeries.push({
+                      tmdbId: tmdbResult.tmdbId,
+                      imdbId: tmdbResult.imdbId,
+                      ...tmdbDetails,
+                      servers: [seriesDataObj],
+                      serverCount: 1
+                    });
+                  }
+                }
+              } else {
+                // No encontrado en TMDB
+                notFoundItems.push({
+                  ratingKey: series.ratingKey,
+                  serverId: server.machineIdentifier,
+                  title: series.title,
+                  year: series.year,
+                  type: 'series'
+                });
+              }
+              
+              // Rate limiting TMDB
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+          }
+        }
         
         serverProgress += progressPerServer;
       } catch (error) {
@@ -12063,7 +12835,28 @@ app.post('/api/web-local/generate', async (req, res) => {
     
     sendProgress({ type: 'progress', message: 'Guardando snapshot en MongoDB...', percent: 90 });
     
-    // 4. Guardar snapshot en MongoDB
+    // 4. Limpiar snapshots antiguos (mantener solo 2: actual + anterior)
+    const existingSnapshots = await webSnapshotsCollection
+      .find()
+      .sort({ generatedAt: -1 })
+      .toArray();
+    
+    if (existingSnapshots.length >= 2) {
+      // Eliminar todos excepto el más reciente (que será el anterior cuando insertemos el nuevo)
+      const toDelete = existingSnapshots.slice(1);
+      if (toDelete.length > 0) {
+        await webSnapshotsCollection.deleteMany({
+          _id: { $in: toDelete.map(s => s._id) }
+        });
+        // También eliminar mappings asociados
+        await manualMappingsCollection.deleteMany({
+          snapshotId: { $in: toDelete.map(s => s._id) }
+        });
+        sendProgress({ type: 'info', message: `🗑️ Limpiados ${toDelete.length} snapshots antiguos` });
+      }
+    }
+    
+    // 5. Guardar nuevo snapshot
     await webSnapshotsCollection.updateMany({}, { $set: { isActive: false } });
     
     const snapshot = await webSnapshotsCollection.insertOne({
@@ -12074,6 +12867,7 @@ app.post('/api/web-local/generate', async (req, res) => {
         totalMovies: allMovies.length,
         totalSeries: allSeries.length,
         totalCollections: collections.length,
+        totalEpisodes: allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
         notFoundCount: notFoundItems.length,
         serversCount: activeServers.length,
         generationTimeMs: Date.now() - startTime
@@ -12088,8 +12882,65 @@ app.post('/api/web-local/generate', async (req, res) => {
       isActive: true
     });
     
-    sendProgress({ type: 'progress', message: 'Generando archivos ZIP...', percent: 95 });
-    sendProgress({ type: 'complete', message: 'Web local generada exitosamente!', percent: 100, snapshotId: snapshot.insertedId.toString() });
+    sendProgress({ type: 'progress', message: 'Generando archivos web...', percent: 95 });
+    
+    // 6. Generar metadata.json
+    const metadataJson = JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      version: 1,
+      snapshotId: snapshot.insertedId.toString(),
+      stats: {
+        movies: allMovies.length,
+        series: allSeries.length,
+        collections: collections.length,
+        episodes: allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
+        notFound: notFoundItems.length,
+        servers: activeServers.length
+      },
+      servers: activeServers.map(s => ({
+        machineIdentifier: s.machineIdentifier,
+        name: s.name
+      }))
+    }, null, 2);
+    
+    // 7. Generar movies.json
+    const moviesJson = JSON.stringify(allMovies, null, 2);
+    
+    // 8. Generar series.json
+    const seriesJson = JSON.stringify(allSeries, null, 2);
+    
+    // 9. Generar collections.json
+    const collectionsJson = JSON.stringify(collections, null, 2);
+    
+    // 10. Guardar archivos en MongoDB temporalmente (para descargar después)
+    const generatedFiles = {
+      metadata: metadataJson,
+      movies: moviesJson,
+      series: seriesJson,
+      collections: collectionsJson
+    };
+    
+    await webSnapshotsCollection.updateOne(
+      { _id: snapshot.insertedId },
+      { $set: { generatedFiles } }
+    );
+    
+    const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+    
+    sendProgress({ 
+      type: 'complete', 
+      message: `✅ Web local generada en ${totalTime} minutos!`, 
+      percent: 100, 
+      snapshotId: snapshot.insertedId.toString(),
+      stats: {
+        movies: allMovies.length,
+        series: allSeries.length,
+        collections: collections.length,
+        notFound: notFoundItems.length,
+        servers: activeServers.length,
+        time: totalTime
+      }
+    });
     
     res.end();
     
