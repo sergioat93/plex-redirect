@@ -14,15 +14,24 @@ app.use(express.json());
 // ========================================
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_DB = process.env.MONGODB_DB;
+const MONGODB_DB = process.env.MONGO_DB; // Railway usa MONGO_DB
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // Validar variables críticas
-if (!TMDB_API_KEY || !MONGODB_URI || !MONGODB_DB || !ADMIN_PASSWORD) {
-  console.error('❌ ERROR: Faltan variables de entorno críticas');
-  console.error('Requeridas: TMDB_API_KEY, MONGODB_URI, MONGODB_DB, ADMIN_PASSWORD');
+const missingVars = [];
+if (!TMDB_API_KEY) missingVars.push('TMDB_API_KEY');
+if (!MONGODB_URI) missingVars.push('MONGODB_URI');
+if (!MONGODB_DB) missingVars.push('MONGO_DB');
+if (!ADMIN_PASSWORD) missingVars.push('ADMIN_PASSWORD');
+
+if (missingVars.length > 0) {
+  console.error('❌ ERROR: Faltan las siguientes variables de entorno:');
+  missingVars.forEach(v => console.error(`   - ${v}`));
+  console.error('\nConfigúralas en Railway: Settings → Variables');
   process.exit(1);
 }
+
+console.log('✅ Variables de entorno cargadas correctamente');
 
 let mongoClient = null;
 let serversCollection = null;
