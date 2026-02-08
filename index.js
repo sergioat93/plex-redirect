@@ -59,6 +59,23 @@ async function connectMongoDB() {
   }
 }
 
+// ========================================
+// PROTECCIÓN CONTRA INSPECCIÓN
+// ========================================
+const antiInspectScript = `
+<script>
+// Protección contra inspección (dificulta, no previene al 100%)
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  if (e.key === 'F12' || 
+      (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+      (e.ctrlKey && e.key === 'U')) {
+    e.preventDefault();
+  }
+});
+</script>
+`;
+
 // Iniciar conexión al arrancar
 connectMongoDB();
 
@@ -6691,6 +6708,7 @@ app.get('/browse', async (req, res) => {
         </style>
       </head>
       <body>
+        ${antiInspectScript}
         <!-- Loading Screen -->
         <div id="loading-screen" style="display:none; position:fixed; inset:0; background:var(--bg-dark); z-index:9999; display:flex; align-items:center; justify-content:center;">
           <div style="text-align:center;"><i class="fas fa-film" style="font-size:3rem; color:var(--primary-color); animation:spin 1s linear infinite;"></i><p style="margin-top:1rem; color:var(--text-secondary);">Cargando biblioteca...</p></div>
@@ -8724,9 +8742,15 @@ app.get('/library', async (req, res) => {
             padding: 0 2rem;
             display: flex;
             align-items: stretch;
-            justify-content: center;
             gap: 0.5rem;
-            flex-wrap: wrap;
+          }
+          
+          .admin-tabs-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            gap: 0.5rem;
           }
           
           .admin-tab-home {
@@ -9478,23 +9502,26 @@ app.get('/library', async (req, res) => {
         </style>
       </head>
       <body>
+        ${antiInspectScript}
         <!-- Tabs Navigation -->
         <div class="admin-tabs">
           <a href="javascript:history.back()" class="admin-tab-home">
             <span>Infinity Scrap</span>
           </a>
-          <button class="admin-tab active" data-tab="servers">
-            <span>🖥️</span>
-            <span>Servidores</span>
-          </button>
-          <button class="admin-tab" data-tab="search">
-            <span>🔍</span>
-            <span>Búsqueda Global</span>
-          </button>
-          <button class="admin-tab" data-tab="generate" disabled style="opacity: 0.5; cursor: not-allowed;">
-            <span>🌐</span>
-            <span>Generar Web</span>
-          </button>
+          <div class="admin-tabs-container">
+            <button class="admin-tab active" data-tab="servers">
+              <span>🖥️</span>
+              <span>Servidores</span>
+            </button>
+            <button class="admin-tab" data-tab="search">
+              <span>🔍</span>
+              <span>Búsqueda Global</span>
+            </button>
+            <button class="admin-tab" data-tab="generate" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <span>🌐</span>
+              <span>Generar Web</span>
+            </button>
+          </div>
         </div>
         
         <!-- Tab Content Container -->
@@ -11128,6 +11155,7 @@ app.get('/library', async (req, res) => {
         </style>
       </head>
       <body>
+        ${antiInspectScript}
         <!-- Botón Panel Admin (solo visible en modo admin) -->
         <div class="btn-admin-panel-header" id="btnAdminPanel" onclick="openAdminPanel()" title="Panel de Control">
           ⚙️
