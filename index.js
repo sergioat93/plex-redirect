@@ -13155,8 +13155,28 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
+              // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
+              let bestGuid = movie.guid; // Fallback al guid principal
+              const movieSection = moviesXml.split(\`ratingKey="\${movie.ratingKey}"\`)[1];
+              if (movieSection) {
+                const endSection = movieSection.indexOf('<Video') > 0 ? movieSection.indexOf('<Video') : movieSection.indexOf('</MediaContainer>');
+                const relevantXml = movieSection.substring(0, endSection);
+                
+                // Buscar <Guid id="tmdb://..."/>
+                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
+                if (tmdbGuidMatch) {
+                  bestGuid = \`tmdb://movie/\${tmdbGuidMatch[1]}\`;
+                } else {
+                  // Si no hay TMDB, buscar IMDB
+                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
+                  if (imdbGuidMatch) {
+                    bestGuid = imdbGuidMatch[1];
+                  }
+                }
+              }
+              
               // Buscar en TMDB
-              const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie', movie.guid);
+              const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie', bestGuid);
               
               if (tmdbResult) {
                 // Agregar a lista procesada
@@ -13265,8 +13285,28 @@ app.get('/api/web-local/generate', async (req, res) => {
                 sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
               }
               
+              // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
+              let bestGuid = series.guid; // Fallback al guid principal
+              const seriesSection = seriesXml.split(\`ratingKey="\${series.ratingKey}"\`)[1];
+              if (seriesSection) {
+                const endSection = seriesSection.indexOf('<Directory') > 0 ? seriesSection.indexOf('<Directory') : seriesSection.indexOf('</MediaContainer>');
+                const relevantXml = seriesSection.substring(0, endSection);
+                
+                // Buscar <Guid id="tmdb://..."/>
+                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
+                if (tmdbGuidMatch) {
+                  bestGuid = \`tmdb://tv/\${tmdbGuidMatch[1]}\`;
+                } else {
+                  // Si no hay TMDB, buscar IMDB
+                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
+                  if (imdbGuidMatch) {
+                    bestGuid = imdbGuidMatch[1];
+                  }
+                }
+              }
+              
               // Buscar en TMDB
-              const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv', series.guid);
+              const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv', bestGuid);
               
               if (tmdbResult) {
                 // Agregar a lista procesada
