@@ -8836,55 +8836,500 @@ app.get('/library', async (req, res) => {
       archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
       archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
       
-      // Agregar index.html (web estática)
+      // Agregar index.html (web estática con estilo Infinity Scrap)
       const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Infinity Scrap - Web Local</title>
+  <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #0f0f17; color: #fff; padding: 20px; }
-    h1 { color: #e5a00d; margin-bottom: 20px; }
-    .libraries { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-    .library-card { background: #1a1a2e; border: 2px solid #e5a00d; border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; transition: transform 0.2s; }
-    .library-card:hover { transform: translateY(-5px); }
-    .library-icon { font-size: 3rem; margin-bottom: 10px; }
-    .library-title { font-size: 1.5rem; font-weight: bold; }
-    .library-count { color: #888; margin-top: 10px; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      color: #f3f4f6;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .header {
+      text-align: center;
+      padding: 40px 20px;
+      margin-bottom: 40px;
+      background: rgba(31, 41, 55, 0.6);
+      border-radius: 16px;
+      border: 2px solid rgba(229, 160, 13, 0.2);
+    }
+    
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+    }
+    
+    .header p {
+      color: #9ca3af;
+      font-size: 1rem;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .tab {
+      padding: 12px 24px;
+      background: rgba(31, 41, 55, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 12px;
+      color: #f3f4f6;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .tab:hover {
+      background: rgba(229, 160, 13, 0.1);
+      border-color: rgba(229, 160, 13, 0.5);
+    }
+    
+    .tab.active {
+      background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+      border-color: #e5a00d;
+      color: #000;
+    }
+    
+    .filters {
+      background: rgba(31, 41, 55, 0.6);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      border: 2px solid rgba(229, 160, 13, 0.2);
+    }
+    
+    .filters-row {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+      padding: 12px 20px;
+      background: rgba(17, 24, 39, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 8px;
+      color: #f3f4f6;
+      font-size: 1rem;
+      outline: none;
+    }
+    
+    .search-box:focus {
+      border-color: #e5a00d;
+    }
+    
+    select {
+      padding: 12px 20px;
+      background: rgba(17, 24, 39, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 8px;
+      color: #f3f4f6;
+      font-size: 0.875rem;
+      cursor: pointer;
+      min-width: 180px;
+    }
+    
+    .btn-clear {
+      padding: 12px 24px;
+      background: rgba(229, 160, 13, 0.15);
+      border: 2px solid rgba(229, 160, 13, 0.4);
+      border-radius: 8px;
+      color: #e5a00d;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-clear:hover {
+      background: rgba(229, 160, 13, 0.3);
+    }
+    
+    .content-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    
+    .content-card {
+      background: rgba(31, 41, 55, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    
+    .content-card:hover {
+      transform: translateY(-5px);
+      border-color: #e5a00d;
+      box-shadow: 0 10px 30px rgba(229, 160, 13, 0.3);
+    }
+    
+    .card-poster {
+      width: 100%;
+      aspect-ratio: 2/3;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      border-bottom: 2px solid rgba(229, 160, 13, 0.2);
+    }
+    
+    .card-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .card-content {
+      padding: 15px;
+    }
+    
+    .card-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    
+    .card-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+    
+    .card-year {
+      color: #e5a00d;
+      font-weight: 600;
+    }
+    
+    .card-server {
+      font-size: 0.75rem;
+      background: rgba(229, 160, 13, 0.2);
+      padding: 3px 8px;
+      border-radius: 4px;
+      color: #e5a00d;
+    }
+    
+    .no-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9ca3af;
+      font-size: 1.2rem;
+    }
+    
+    .stats-bar {
+      background: rgba(31, 41, 55, 0.6);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    
+    .stat-item {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #e5a00d;
+    }
+    
+    .stat-label {
+      color: #9ca3af;
+      font-size: 0.875rem;
+      margin-top: 5px;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .collection-count {
+      background: rgba(229, 160, 13, 0.2);
+      color: #e5a00d;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 8px;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
-  <h1>🌐 Infinity Scrap - Web Local</h1>
-  <p style="margin-bottom: 30px; color: #888;">Generada el ${new Date(snapshot.generatedAt).toLocaleDateString('es-ES')}</p>
-  
-  <div class="libraries">
-    <div class="library-card" onclick="location.href='movies.html'">
-      <div class="library-icon">🎬</div>
-      <div class="library-title">Películas</div>
-      <div class="library-count">${snapshot.stats.totalMovies} películas</div>
+  <div class="header">
+    <h1>🌐 Infinity Scrap - Web Local</h1>
+    <p>Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}</p>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-value">${snapshot.stats.totalMovies}</div>
+      <div class="stat-label">Películas</div>
     </div>
-    
-    <div class="library-card" onclick="location.href='collections.html'">
-      <div class="library-icon">📚</div>
-      <div class="library-title">Colecciones</div>
-      <div class="library-count">${snapshot.stats.totalCollections} colecciones</div>
+    <div class="stat-item">
+      <div class="stat-value">${snapshot.stats.totalSeries}</div>
+      <div class="stat-label">Series</div>
     </div>
-    
-    <div class="library-card" onclick="location.href='series.html'">
-      <div class="library-icon">📺</div>
-      <div class="library-title">Series</div>
-      <div class="library-count">${snapshot.stats.totalSeries} series</div>
+    <div class="stat-item">
+      <div class="stat-value">${snapshot.stats.totalCollections}</div>
+      <div class="stat-label">Colecciones</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">${snapshot.stats.totalEpisodes || 0}</div>
+      <div class="stat-label">Episodios</div>
     </div>
   </div>
-  
-  <div style="margin-top: 40px; padding: 20px; background: rgba(229, 160, 13, 0.1); border-radius: 8px; border: 1px solid #e5a00d;">
-    <h3 style="margin-bottom: 10px;">📊 Estadísticas</h3>
-    <p>✅ ${snapshot.stats.totalMovies} películas en ${snapshot.stats.totalCollections} colecciones</p>
-    <p>✅ ${snapshot.stats.totalSeries} series con ${snapshot.stats.totalEpisodes || 0} episodios</p>
-    <p>📡 ${snapshot.stats.serversCount} servidores incluidos</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="movies">🎬 Películas</button>
+    <button class="tab" data-tab="series">📺 Series</button>
+    <button class="tab" data-tab="collections">📚 Colecciones</button>
   </div>
+
+  <div id="movies-tab" class="tab-content active">
+    <div class="filters">
+      <div class="filters-row">
+        <input type="text" id="search-movies" class="search-box" placeholder="🔍 Buscar películas...">
+        <select id="server-movies">
+          <option value="all">🖥️ Todos los Servidores</option>
+        </select>
+        <button class="btn-clear" onclick="clearFilters('movies')">🗑️ Limpiar</button>
+      </div>
+    </div>
+    <div id="movies-grid" class="content-grid"></div>
+  </div>
+
+  <div id="series-tab" class="tab-content">
+    <div class="filters">
+      <div class="filters-row">
+        <input type="text" id="search-series" class="search-box" placeholder="🔍 Buscar series...">
+        <select id="server-series">
+          <option value="all">🖥️ Todos los Servidores</option>
+        </select>
+        <button class="btn-clear" onclick="clearFilters('series')">🗑️ Limpiar</button>
+      </div>
+    </div>
+    <div id="series-grid" class="content-grid"></div>
+  </div>
+
+  <div id="collections-tab" class="tab-content">
+    <div class="filters">
+      <div class="filters-row">
+        <input type="text" id="search-collections" class="search-box" placeholder="🔍 Buscar colecciones...">
+        <button class="btn-clear" onclick="clearFilters('collections')">🗑️ Limpiar</button>
+      </div>
+    </div>
+    <div id="collections-grid" class="content-grid"></div>
+  </div>
+
+  <script>
+    let allMovies = [];
+    let allSeries = [];
+    let allCollections = [];
+    let allServers = new Set();
+
+    // Cargar datos
+    fetch('data/movies.json')
+      .then(r => r.json())
+      .then(data => {
+        allMovies = data;
+        data.forEach(m => allServers.add(m.serverName));
+        populateServerFilter('movies');
+        renderMovies();
+      });
+
+    fetch('data/series.json')
+      .then(r => r.json())
+      .then(data => {
+        allSeries = data;
+        data.forEach(s => allServers.add(s.serverName));
+        populateServerFilter('series');
+        renderSeries();
+      });
+
+    fetch('data/collections.json')
+      .then(r => r.json())
+      .then(data => {
+        allCollections = data;
+        renderCollections();
+      });
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+      });
+    });
+
+    function populateServerFilter(type) {
+      const select = document.getElementById(\`server-\${type}\`);
+      const servers = Array.from(allServers).sort();
+      servers.forEach(server => {
+        const option = document.createElement('option');
+        option.value = server;
+        option.textContent = server;
+        select.appendChild(option);
+      });
+    }
+
+    function renderMovies() {
+      const search = document.getElementById('search-movies').value.toLowerCase();
+      const server = document.getElementById('server-movies').value;
+      
+      const filtered = allMovies.filter(m => {
+        const matchSearch = m.title.toLowerCase().includes(search);
+        const matchServer = server === 'all' || m.serverName === server;
+        return matchSearch && matchServer;
+      });
+
+      const grid = document.getElementById('movies-grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="no-results">📭 No se encontraron películas</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(m => \`
+        <div class="content-card">
+          <div class="card-poster">
+            \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}">\` : '🎬'}
+          </div>
+          <div class="card-content">
+            <div class="card-title">\${m.title}</div>
+            <div class="card-info">
+              <span class="card-year">\${m.releaseYear || 'N/A'}</span>
+              <span class="card-server">\${m.serverName}</span>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    function renderSeries() {
+      const search = document.getElementById('search-series').value.toLowerCase();
+      const server = document.getElementById('server-series').value;
+      
+      const filtered = allSeries.filter(s => {
+        const matchSearch = s.title.toLowerCase().includes(search);
+        const matchServer = server === 'all' || s.serverName === server;
+        return matchSearch && matchServer;
+      });
+
+      const grid = document.getElementById('series-grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="no-results">📭 No se encontraron series</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(s => \`
+        <div class="content-card">
+          <div class="card-poster">
+            \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}">\` : '📺'}
+          </div>
+          <div class="card-content">
+            <div class="card-title">\${s.title}</div>
+            <div class="card-info">
+              <span class="card-year">\${s.releaseYear || 'N/A'}</span>
+              <span class="card-server">\${s.serverName}</span>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    function renderCollections() {
+      const search = document.getElementById('search-collections').value.toLowerCase();
+      
+      const filtered = allCollections.filter(c => 
+        c.name.toLowerCase().includes(search)
+      );
+
+      const grid = document.getElementById('collections-grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="no-results">📭 No se encontraron colecciones</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(c => \`
+        <div class="content-card">
+          <div class="card-poster">
+            \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}">\` : '📚'}
+          </div>
+          <div class="card-content">
+            <div class="card-title">\${c.name}</div>
+            <div class="collection-count">\${c.movieIds.length} películas</div>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    function clearFilters(type) {
+      document.getElementById(\`search-\${type}\`).value = '';
+      const serverSelect = document.getElementById(\`server-\${type}\`);
+      if (serverSelect) serverSelect.value = 'all';
+      
+      if (type === 'movies') renderMovies();
+      else if (type === 'series') renderSeries();
+      else renderCollections();
+    }
+
+    // Event listeners para búsqueda en tiempo real
+    document.getElementById('search-movies').addEventListener('input', renderMovies);
+    document.getElementById('server-movies').addEventListener('change', renderMovies);
+    
+    document.getElementById('search-series').addEventListener('input', renderSeries);
+    document.getElementById('server-series').addEventListener('change', renderSeries);
+    
+    document.getElementById('search-collections').addEventListener('input', renderCollections);
+  </script>
 </body>
 </html>`;
       
@@ -12439,8 +12884,6 @@ app.get('/api/web-local/generate', async (req, res) => {
     const progressPerServer = 70 / activeServers.length;
     
     for (const server of activeServers) {
-      sendProgress({ type: 'progress', message: `Escaneando ${server.serverName}...`, percent: 10 + serverProgress });
-      
       try {
         // Obtener bibliotecas del servidor
         const librariesUrl = `${server.baseURI}/library/sections?X-Plex-Token=${server.accessToken}`;
@@ -12456,6 +12899,32 @@ app.get('/api/web-local/generate', async (req, res) => {
         
         processedItems[server.machineIdentifier] = { movies: [], series: [] };
         
+        // Contar total de items en este servidor
+        let totalItems = 0;
+        let processedCount = 0;
+        
+        // Contar películas
+        for (const lib of movieLibraries) {
+          const moviesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
+          const moviesXml = await httpsGetXML(moviesUrl);
+          const moviesData = parseXML(moviesXml);
+          if (moviesData && moviesData.MediaContainer && moviesData.MediaContainer.Video) {
+            totalItems += moviesData.MediaContainer.Video.length;
+          }
+        }
+        
+        // Contar series
+        for (const lib of showLibraries) {
+          const seriesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
+          const seriesXml = await httpsGetXML(seriesUrl);
+          const seriesData = parseXML(seriesXml);
+          if (seriesData && seriesData.MediaContainer && seriesData.MediaContainer.Directory) {
+            totalItems += seriesData.MediaContainer.Directory.length;
+          }
+        }
+        
+        sendProgress({ type: 'progress', message: `Escaneando ${server.serverName} (${totalItems} items)...`, percent: 10 + serverProgress });
+        
         // Procesar películas
         for (const lib of movieLibraries) {
           const moviesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
@@ -12464,6 +12933,9 @@ app.get('/api/web-local/generate', async (req, res) => {
           
           if (moviesData && moviesData.MediaContainer && moviesData.MediaContainer.Video) {
             for (const movie of moviesData.MediaContainer.Video) {
+              processedCount++;
+              sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              
               // Buscar en TMDB
               const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie');
               
@@ -12539,6 +13011,9 @@ app.get('/api/web-local/generate', async (req, res) => {
           
           if (seriesData && seriesData.MediaContainer && seriesData.MediaContainer.Directory) {
             for (const series of seriesData.MediaContainer.Directory) {
+              processedCount++;
+              sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              
               // Buscar en TMDB
               const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv');
               
