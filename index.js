@@ -8447,6 +8447,13 @@ app.get('/library', async (req, res) => {
                 const endTagMatch = remainingXml.match(new RegExp(`</${tagType}>`));
                 const itemContent = endTagMatch ? remainingXml.substring(0, endTagMatch.index) : remainingXml.substring(0, 2000);
                 
+                // LOGGING: Imprimir XML COMPLETO del primer match
+                if (matchCount === 0) {
+                  console.log('[XML DEBUG] ======== XML COMPLETO DEL PRIMER MATCH ========');
+                  console.log(itemContent);
+                  console.log('[XML DEBUG] ======== FIN XML COMPLETO ========');
+                }
+                
                 // Buscar tag Media para resolución
                 const mediaTagMatch = itemContent.match(/<Media[^>]*>/);
                 let resolution = 'SD';
@@ -8461,15 +8468,11 @@ app.get('/library', async (req, res) => {
                 // Buscar idioma en Stream tags (streamType="2" = audio)
                 const streamMatch = itemContent.match(/<Stream[^>]*streamType="2"[^>]*>/);
                 if (streamMatch) {
-                  console.log('[XML DEBUG] Stream audio tag:', streamMatch[0]);
                   const langMatch = streamMatch[0].match(/languageCode="([^"]*)"/);  
                   if (langMatch) {
                     audioLanguage = langMatch[1].toLowerCase();
-                    console.log('[XML DEBUG] AudioLanguage encontrado:', audioLanguage);
                   }
                 }
-                
-                console.log('[XML DEBUG] Resolution:', resolution, 'AudioLanguage:', audioLanguage);
                 
                 matchCount++;
                 console.log('[GLOBAL-SEARCH] Match encontrado:', title);
@@ -9532,18 +9535,9 @@ app.get('/library', async (req, res) => {
                   </div>
                   <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <span style="color: #9ca3af; font-size: 0.875rem;">Buscar en:</span>
-                    <div class="custom-dropdown" id="preSearchServersDropdown" style="position: relative; min-width: 250px;">
-                      <div class="dropdown-selected" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                        <span id="preSearchServersLabel">🌐 Todos los Servidores</span>
-                        <span style="margin-left: 0.5rem;">▼</span>
-                      </div>
-                      <div class="dropdown-options" id="preSearchServersOptions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                        <div style="display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(229,160,13,0.1)'" onmouseout="this.style.background='transparent'">
-                          <input type="checkbox" value="all" checked style="margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;">
-                          <span style="color: #f3f4f6; font-size: 0.875rem; user-select: none;">🌐 Todos los Servidores</span>
-                        </div>
-                      </div>
-                    </div>
+                    <select id="preSearchServersSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; min-width: 250px;">
+                      <option value="all">🌐 Todos los Servidores</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -9552,32 +9546,20 @@ app.get('/library', async (req, res) => {
               <div id="postSearchFilters" style="display: none; background: rgba(17, 24, 39, 0.6); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                 <div style="color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">🔍 Filtrar Resultados</div>
                 <div style="display: flex; gap: 0.75rem; align-items: flex-start; flex-wrap: wrap;">
-                  <!-- Dropdown Servidores -->
-                  <div class="custom-dropdown" style="position: relative; min-width: 200px;">
-                    <div class="dropdown-selected" onclick="toggleDropdown('serverFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                      <span id="serverFilterLabel">🖥️ Todos los Servidores</span>
-                      <span style="margin-left: 0.5rem;">▼</span>
-                    </div>
-                    <div class="dropdown-options" id="serverFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
-                  </div>
+                  <!-- Select Servidores -->
+                  <select id="serverFilterSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; min-width: 200px;">
+                    <option value="all">🖥️ Todos los Servidores</option>
+                  </select>
                   
-                  <!-- Dropdown Calidad -->
-                  <div class="custom-dropdown" style="position: relative; min-width: 180px;">
-                    <div class="dropdown-selected" onclick="toggleDropdown('qualityFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                      <span id="qualityFilterLabel">📺 Todas las Calidades</span>
-                      <span style="margin-left: 0.5rem;">▼</span>
-                    </div>
-                    <div class="dropdown-options" id="qualityFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
-                  </div>
+                  <!-- Select Calidad -->
+                  <select id="qualityFilterSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; min-width: 180px;">
+                    <option value="all">📺 Todas las Calidades</option>
+                  </select>
                   
-                  <!-- Dropdown Idiomas -->
-                  <div class="custom-dropdown" style="position: relative; min-width: 180px;">
-                    <div class="dropdown-selected" onclick="toggleDropdown('audioFilterDropdown')" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                      <span id="audioFilterLabel">🌍 Todos los Idiomas</span>
-                      <span style="margin-left: 0.5rem;">▼</span>
-                    </div>
-                    <div class="dropdown-options" id="audioFilterDropdown" style="display: none; position: absolute; top: 100%; left: 0; min-width: 100%; background: #1a1a24; border: 2px solid rgba(229, 160, 13, 0.3); border-radius: 8px; margin-top: 0.25rem; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
-                  </div>
+                  <!-- Select Idiomas -->
+                  <select id="audioFilterSelect" style="padding: 0.5rem 1rem; background: rgba(17, 24, 39, 0.8); border: 2px solid rgba(229, 160, 13, 0.2); border-radius: 8px; color: #f3f4f6; font-size: 0.875rem; cursor: pointer; min-width: 180px;">
+                    <option value="all">🌍 Todos los Idiomas</option>
+                  </select>
                   
                   <button id="clearFiltersBtn" style="padding: 0.5rem 1.5rem; background: rgba(229, 160, 13, 0.15); border: 2px solid rgba(229, 160, 13, 0.4); border-radius: 8px; color: #e5a00d; font-weight: 600; cursor: pointer; font-size: 0.875rem;">🗑️ Limpiar</button>
                 </div>
@@ -9608,10 +9590,10 @@ app.get('/library', async (req, res) => {
         <script>
           const adminPassword = '${adminPassword}';
           let currentSearchType = 'all';
-          let currentServerFilter = []; // Array para multi-select
-          let currentQualityFilter = []; // Array para multi-select
-          let currentLanguageFilter = []; // Array para multi-select
-          let preSearchServers = []; // Servidores seleccionados ANTES de buscar
+          let currentServerFilter = 'all'; // Selección única
+          let currentQualityFilter = 'all'; // Selección única
+          let currentLanguageFilter = 'all'; // Selección única
+          let preSearchServer = 'all'; // Servidor seleccionado ANTES de buscar
           let availableServers = [];
           let searchTimeout = null;
           
@@ -9887,96 +9869,31 @@ app.get('/library', async (req, res) => {
               const data = await response.json();
               
               if (data.servers && data.servers.length > 0) {
-                const dropdown = document.getElementById('preSearchServersDropdown');
-                const optionsContainer = document.getElementById('preSearchServersOptions');
-                const label = document.getElementById('preSearchServersLabel');
+                const select = document.getElementById('preSearchServersSelect');
+                if (!select) return;
                 
-                if (!dropdown || !optionsContainer || !label) return;
-                
-                // Agregar servidores al dropdown
+                // Agregar servidores al select
                 data.servers.forEach(server => {
-                  const serverDiv = document.createElement('div');
-                  serverDiv.style.cssText = 'display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s;';
-                  serverDiv.onmouseover = function() { this.style.background = 'rgba(229,160,13,0.1)'; };
-                  serverDiv.onmouseout = function() { this.style.background = 'transparent'; };
-                  
-                  const checkbox = document.createElement('input');
-                  checkbox.type = 'checkbox';
-                  checkbox.value = server.serverName;
-                  checkbox.style.cssText = 'margin-right: 0.75rem; width: 16px; height: 16px; cursor: pointer; pointer-events: none;';
-                  
-                  const text = document.createElement('span');
-                  text.style.cssText = 'color: #f3f4f6; font-size: 0.875rem; user-select: none;';
-                  text.textContent = '🖥️ ' + server.serverName;
-                  
-                  // Click en todo el div
-                  serverDiv.onclick = function(e) {
-                    e.stopPropagation();
-                    checkbox.checked = !checkbox.checked;
-                    console.log('[PRE-SEARCH CHECKBOX] Server clicked:', checkbox.value, 'checked:', checkbox.checked);
-                    handlePreSearchServerChange.call(checkbox, e);
-                  };
-                  
-                  serverDiv.appendChild(checkbox);
-                  serverDiv.appendChild(text);
-                  optionsContainer.appendChild(serverDiv);
+                  const option = document.createElement('option');
+                  option.value = server.serverName;
+                  option.textContent = '🖥️ ' + server.serverName;
+                  select.appendChild(option);
                 });
                 
-                // Toggle dropdown al hacer click
-                dropdown.querySelector('.dropdown-selected').onclick = function(e) {
-                  e.stopPropagation();
-                  toggleDropdown('preSearchServersOptions');
-                };
-                
-                // Actualizar el checkbox "Todos" del HTML inicial
-                const firstDiv = optionsContainer.querySelector('div');
-                if (firstDiv) {
-                  const allCheckbox = firstDiv.querySelector('input[value="all"]');
-                  if (allCheckbox) {
-                    allCheckbox.style.pointerEvents = 'none';
-                    firstDiv.onclick = function(e) {
-                      e.stopPropagation();
-                      allCheckbox.checked = !allCheckbox.checked;
-                      console.log('[PRE-SEARCH CHECKBOX] All clicked, checked:', allCheckbox.checked);
-                      handlePreSearchServerChange.call(allCheckbox, e);
-                    };
+                // Listener para cambios
+                select.addEventListener('change', function() {
+                  preSearchServer = this.value;
+                  console.log('[PRE-SEARCH] Server seleccionado:', preSearchServer);
+                  
+                  // Re-ejecutar búsqueda si hay texto
+                  const searchInput = document.getElementById('searchInput');
+                  if (searchInput && searchInput.value.trim().length >= 3) {
+                    performSearch();
                   }
-                }
+                });
               }
             } catch (error) {
               console.error('Error cargando servidores:', error);
-            }
-          }
-          
-          function handlePreSearchServerChange() {
-            console.log('[PRE-SEARCH HANDLER] handlePreSearchServerChange called');
-            const optionsContainer = document.getElementById('preSearchServersOptions');
-            const label = document.getElementById('preSearchServersLabel');
-            const allCheckbox = optionsContainer.querySelector('input[value="all"]');
-            const serverCheckboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]:not([value="all"])'));
-            
-            if (allCheckbox && allCheckbox.checked) {
-              serverCheckboxes.forEach(cb => cb.checked = false);
-              preSearchServers = [];
-              label.textContent = '🌐 Todos los Servidores';
-            } else {
-              const selected = serverCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
-              
-              if (selected.length === 0) {
-                if (allCheckbox) allCheckbox.checked = true;
-                preSearchServers = [];
-                label.textContent = '🌐 Todos los Servidores';
-              } else {
-                if (allCheckbox) allCheckbox.checked = false;
-                preSearchServers = selected;
-                label.textContent = selected.length === 1 ? '🖥️ ' + selected[0] : '🖥️ ' + selected.length + ' servidores';
-              }
-            }
-            
-            // Re-ejecutar búsqueda si hay texto
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput && searchInput.value.trim().length >= 3) {
-              performSearch();
             }
           }
           
@@ -10024,9 +9941,9 @@ app.get('/library', async (req, res) => {
             try {
               let url = '/library?action=global-search&adminPassword=' + encodeURIComponent(adminPassword) + '&query=' + encodeURIComponent(query) + '&type=' + currentSearchType;
               
-              // Agregar servidores seleccionados si no es "todos"
-              if (preSearchServers.length > 0) {
-                url += '&servers=' + encodeURIComponent(JSON.stringify(preSearchServers));
+              // Agregar servidor seleccionado si no es "todos"
+              if (preSearchServer !== 'all') {
+                url += '&servers=' + encodeURIComponent(JSON.stringify([preSearchServer]));
               }
               
               console.log('[SEARCH] Fetching:', url);
@@ -10071,29 +9988,70 @@ app.get('/library', async (req, res) => {
               console.log('[SEARCH] Calidades únicas:', availableQualities);
               console.log('[SEARCH] Audios únicos:', availableAudio);
               
-              // Poblar dropdowns personalizados POST-búsqueda
-              populateCustomDropdown('serverFilterDropdown', 'serverFilterLabel', availableServers, '🖥️', 'Servidores', handleServerFilterChange);
-              populateCustomDropdown('qualityFilterDropdown', 'qualityFilterLabel', availableQualities, '📺', 'Calidades', handleQualityFilterChange);
-              populateCustomDropdown('audioFilterDropdown', 'audioFilterLabel', availableAudio, '🌍', 'Idiomas', handleAudioFilterChange);
+              // Poblar selects nativos POST-búsqueda
+              const serverSelect = document.getElementById('serverFilterSelect');
+              const qualitySelect = document.getElementById('qualityFilterSelect');
+              const audioSelect = document.getElementById('audioFilterSelect');
+              
+              // Limpiar y poblar select de servidores
+              serverSelect.innerHTML = '<option value="all">🖥️ Todos los Servidores</option>';
+              availableServers.forEach(server => {
+                const option = document.createElement('option');
+                option.value = server;
+                option.textContent = '🖥️ ' + server;
+                serverSelect.appendChild(option);
+              });
+              serverSelect.value = 'all';
+              serverSelect.onchange = () => {
+                currentServerFilter = serverSelect.value;
+                renderFilteredResults(data.results);
+              };
+              
+              // Limpiar y poblar select de calidades
+              qualitySelect.innerHTML = '<option value="all">📺 Todas las Calidades</option>';
+              availableQualities.forEach(quality => {
+                const option = document.createElement('option');
+                option.value = quality;
+                option.textContent = '📺 ' + quality.toUpperCase();
+                qualitySelect.appendChild(option);
+              });
+              qualitySelect.value = 'all';
+              qualitySelect.onchange = () => {
+                currentQualityFilter = qualitySelect.value;
+                renderFilteredResults(data.results);
+              };
+              
+              // Limpiar y poblar select de idiomas
+              audioSelect.innerHTML = '<option value="all">🌍 Todos los Idiomas</option>';
+              availableAudio.forEach(audio => {
+                const option = document.createElement('option');
+                option.value = audio;
+                option.textContent = '🌍 ' + audio.toUpperCase();
+                audioSelect.appendChild(option);
+              });
+              audioSelect.value = 'all';
+              audioSelect.onchange = () => {
+                currentLanguageFilter = audioSelect.value;
+                renderFilteredResults(data.results);
+              };
               
               // Mostrar filtros
               document.getElementById('postSearchFilters').style.display = 'block';
               
               // Botón limpiar filtros
               document.getElementById('clearFiltersBtn').onclick = () => {
-                currentServerFilter = [];
-                currentQualityFilter = [];
-                currentLanguageFilter = [];
+                currentServerFilter = 'all';
+                currentQualityFilter = 'all';
+                currentLanguageFilter = 'all';
                 
-                // Limpiar todos los checkboxes
-                clearDropdown('serverFilterDropdown', 'serverFilterLabel', '🖥️ Todos los Servidores');
-                clearDropdown('qualityFilterDropdown', 'qualityFilterLabel', '📺 Todas las Calidades');
-                clearDropdown('audioFilterDropdown', 'audioFilterLabel', '🌍 Todos los Idiomas');
+                serverSelect.value = 'all';
+                qualitySelect.value = 'all';
+                audioSelect.value = 'all';
                 
                 renderFilteredResults(data.results);
               };
               
-              currentServerFilter = [];
+              currentServerFilter = 'all';
               window.searchResultsData = data.results;
               renderFilteredResults(data.results);
               
@@ -10109,21 +10067,21 @@ app.get('/library', async (req, res) => {
           function renderFilteredResults(allResults) {
             const results = document.getElementById('searchResults');
             
-            // Aplicar todos los filtros (ahora con arrays)
+            // Aplicar todos los filtros (selección única)
             let filteredResults = allResults.filter(item => {
-              // Filtro de servidor (multi-select)
-              if (currentServerFilter.length > 0) {
-                if (!item.servers.some(s => currentServerFilter.includes(s.serverName))) return false;
+              // Filtro de servidor
+              if (currentServerFilter !== 'all') {
+                if (!item.servers.some(s => s.serverName === currentServerFilter)) return false;
               }
               
-              // Filtro de calidad (multi-select)
-              if (currentQualityFilter.length > 0) {
-                if (!item.servers.some(s => currentQualityFilter.includes(s.resolution))) return false;
+              // Filtro de calidad
+              if (currentQualityFilter !== 'all') {
+                if (!item.servers.some(s => s.resolution === currentQualityFilter)) return false;
               }
               
-              // Filtro de idioma (multi-select)
-              if (currentLanguageFilter.length > 0) {
-                if (!item.servers.some(s => currentLanguageFilter.includes(s.audioLanguage))) return false;
+              // Filtro de idioma
+              if (currentLanguageFilter !== 'all') {
+                if (!item.servers.some(s => s.audioLanguage === currentLanguageFilter)) return false;
               }
               
               return true;
@@ -10167,10 +10125,10 @@ app.get('/library', async (req, res) => {
             const title = document.getElementById('serverModalTitle');
             const options = document.getElementById('serverOptions');
             
-            // Filtrar servidores si hay filtro activo (multi-select)
+            // Filtrar servidores si hay filtro activo (selección única)
             let serversToShow = item.servers;
-            if (currentServerFilter.length > 0) {
-              serversToShow = item.servers.filter(server => currentServerFilter.includes(server.serverName));
+            if (currentServerFilter !== 'all') {
+              serversToShow = item.servers.filter(server => server.serverName === currentServerFilter);
             }
             
             // Crear encabezado con poster, título y año (estilo Plex)
