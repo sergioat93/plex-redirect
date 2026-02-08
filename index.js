@@ -809,6 +809,7 @@ app.get('/', (req, res) => {
       </script>
     </head>
     <body>
+      ${antiInspectScript}
       <div class="container">
         <div class="logo-container">
           <div class="logo">
@@ -1565,6 +1566,7 @@ app.get('/episode', async (req, res) => {
       </style>
     </head>
     <body>
+      ${antiInspectScript}
       <div class="modal-overlay" onclick="window.location.href='${backToSeasonUrl}'"></div>
       <div class="episode-container">
         <!-- Header con backdrop -->
@@ -4369,6 +4371,7 @@ app.get('/movie', async (req, res) => {
       </style>
     </head>
     <body>
+      ${antiInspectScript}
       <div class="modal-overlay" onclick="closeMovieModal()"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
@@ -5318,6 +5321,7 @@ app.get('/series', async (req, res) => {
       </style>
     </head>
     <body>
+      ${antiInspectScript}
       <div class="modal-overlay" onclick="window.location.href='/browse?accessToken=${encodeURIComponent(accessToken)}&baseURI=${encodeURIComponent(baseURI)}&libraryKey=${encodeURIComponent(libraryKey)}&libraryTitle=${encodeURIComponent(libraryTitle)}&libraryType=show'"></div>
       <div class="modal-content">
         <!-- Header con backdrop -->
