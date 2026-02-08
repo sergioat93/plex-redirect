@@ -9012,13 +9012,10 @@ Generado por Infinity Scrap`;
   
   // Renderizar contenido del tab "Generar Web"
   if (action === 'web-generate-tab') {
-    console.log('[DEBUG] Endpoint web-generate-tab llamado');
     if (adminPassword !== ADMIN_PASSWORD) {
-      console.log('[DEBUG] Password incorrecto');
       return res.status(403).send('No autorizado');
     }
     
-    console.log('[DEBUG] Devolviendo HTML del tab Generar Web');
     return res.send(`
       <div class="container">
         <div class="header">
@@ -9150,9 +9147,7 @@ Generado por Infinity Scrap`;
         
         async function loadDashboard() {
           try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const password = urlParams.get('password') || urlParams.get('adminPassword');
-            const response = await fetch('/api/web-local/status?password=' + encodeURIComponent(password));
+            const response = await fetch('/api/web-local/status');
             const data = await response.json();
             
             const container = document.getElementById('dashboardContainer');
@@ -9265,9 +9260,6 @@ Generado por Infinity Scrap`;
         }
         
         async function startGeneration() {
-          const urlParams = new URLSearchParams(window.location.search);
-          const password = urlParams.get('password') || urlParams.get('adminPassword');
-          
           document.getElementById('dashboardContainer').style.display = 'none';
           const progressContainer = document.getElementById('progressContainer');
           progressContainer.style.display = 'block';
@@ -9283,7 +9275,7 @@ Generado por Infinity Scrap`;
           \`;
           
           try {
-            const eventSource = new EventSource('/api/web-local/generate?password=' + encodeURIComponent(password));
+            const eventSource = new EventSource('/api/web-local/generate');
             
             eventSource.onmessage = (event) => {
               const data = JSON.parse(event.data);
@@ -10446,15 +10438,11 @@ Generado por Infinity Scrap`;
           
           // Wait for DOM to be ready
           document.addEventListener('DOMContentLoaded', function() {
-            console.log('[DEBUG CLIENT] DOMContentLoaded - Panel Admin cargado');
-            console.log('[DEBUG CLIENT] Tabs encontrados:', document.querySelectorAll('.admin-tab').length);
-            console.log('[DEBUG CLIENT] Tab generate existe:', !!document.getElementById('tab-generate'));
             
             // Tab switching
             document.querySelectorAll('.admin-tab').forEach(tab => {
               tab.addEventListener('click', async () => {
                 const tabName = tab.dataset.tab;
-                console.log('[DEBUG CLIENT] Click en tab:', tabName);
                 
                 // Update active tab
                 document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
@@ -10465,10 +10453,8 @@ Generado por Infinity Scrap`;
                 
                 // Si es el tab "generate", cargar contenido dinámicamente
                 if (tabName === 'generate') {
-                  console.log('[DEBUG CLIENT] Tab es generate, iniciando carga...');
                   const urlParams = new URLSearchParams(window.location.search);
                   const password = urlParams.get('password') || urlParams.get('adminPassword');
-                  console.log('[DEBUG CLIENT] Password obtenido:', password ? 'SÍ' : 'NO');
                   if (password) {
                     try {
                       const generatePane = document.getElementById('tab-generate');
@@ -10480,17 +10466,12 @@ Generado por Infinity Scrap`;
                       }
                       
                       // Cargar contenido via AJAX
-                      console.log('[DEBUG CLIENT] Llamando a web-generate-tab...');
                       const response = await fetch(\`/library?action=web-generate-tab&adminPassword=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
-                      console.log('[DEBUG CLIENT] HTML recibido, longitud:', html.length);
-                      console.log('[DEBUG CLIENT] Primeros 200 chars:', html.substring(0, 200));
                       
                       if (generatePane) {
                         // Insertar HTML directamente (es un fragmento válido)
-                        console.log('[DEBUG CLIENT] Insertando HTML en generatePane...');
                         generatePane.innerHTML = html;
-                        console.log('[DEBUG CLIENT] HTML insertado, contenido:', generatePane.innerHTML.substring(0, 200));
                         
                         // Ejecutar los scripts del contenido cargado
                         const scripts = generatePane.querySelectorAll('script');
