@@ -12832,14 +12832,96 @@ app.get('/api/web-local/generate', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Evitar buffering en proxies
   
   const sendProgress = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
   
+  // Keepalive cada 15 segundos para mantener conexión viva
+  const keepaliveInterval = setInterval(() => {
+    res.write(': keepalive\n\n');
+  }, 15000);
+  
+  // Limpiar keepalive al finalizar
+  const cleanup = () => {
+    clearInterval(keepaliveInterval);
+  };
+  
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+  
   try {
     const startTime = Date.now();
-    sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
+    
+    // Verificar si hay progreso guardado
+    let progressSnapshot = await webSnapshotsCollection.findOne({ 
+      inProgress: true,
+      projectName: 'infinity-plex-web' 
+    });
+    
+    let allMovies = [];
+    let allSeries = [];
+    let collectionsMap = new Map();
+    let notFoundItems = [];
+    let processedItems = {};
+    let resuming = false;
+    let startServerIndex = 0;
+    
+    if (progressSnapshot && progressSnapshot.progressState) {
+      // Hay progreso guardado, continuar desde ahí
+      resuming = true;
+      allMovies = progressSnapshot.progressState.allMovies || [];
+      allSeries = progressSnapshot.progressState.allSeries || [];
+      collectionsMap = new Map(progressSnapshot.progressState.collectionsMap || []);
+      notFoundItems = progressSnapshot.progressState.notFoundItems || [];
+      processedItems = progressSnapshot.progressState.processedItems || {};
+      startServerIndex = progressSnapshot.progressState.currentServerIndex || 0;
+      
+      sendProgress({ 
+        type: 'info', 
+        message: `♻️ Continuando generación anterior (${allMovies.length + allSeries.length} items ya procesados)...` 
+      });
+    } else {
+      // Nueva generación, crear snapshot de progreso
+      progressSnapshot = await webSnapshotsCollection.insertOne({
+        projectName: 'infinity-plex-web',
+        inProgress: true,
+        startedAt: new Date(),
+        progressState: {
+          allMovies: [],
+          allSeries: [],
+          collectionsMap: [],
+          notFoundItems: [],
+          processedItems: {},
+          currentServerIndex: 0
+        }
+      });
+      progressSnapshot._id = progressSnapshot.insertedId;
+      sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
+    }
+    
+    // Función para guardar progreso
+    const saveProgress = async (serverIndex, movies, series, collections, notFound, processed) => {
+      try {
+        await webSnapshotsCollection.updateOne(
+          { _id: progressSnapshot._id },
+          { 
+            $set: { 
+              'progressState.allMovies': movies,
+              'progressState.allSeries': series,
+              'progressState.collectionsMap': Array.from(collections.entries()),
+              'progressState.notFoundItems': notFound,
+              'progressState.processedItems': processed,
+              'progressState.currentServerIndex': serverIndex,
+              'progressState.lastSavedAt': new Date()
+            } 
+          }
+        );
+      } catch (err) {
+        console.error('Error guardando progreso:', err);
+      }
+    };
     
     // 1. Obtener todos los servidores activos
     sendProgress({ type: 'progress', message: 'Conectando a servidores...', percent: 5 });
@@ -12869,21 +12951,23 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     if (activeServers.length === 0) {
       sendProgress({ type: 'error', message: 'No hay servidores activos disponibles' });
+      cleanup();
       return res.end();
     }
     
     sendProgress({ type: 'progress', message: `${activeServers.length} servidores activos detectados`, percent: 10 });
     
-    // 2. Escanear contenido de todos los servidores
-    const allMovies = [];
-    const allSeries = [];
-    const processedItems = {};
-    const notFoundItems = [];
-    
-    let serverProgress = 0;
+    // 2. Escanear contenido de todos los servidores (continuar desde donde se quedó)
+    let serverProgress = startServerIndex * (70 / activeServers.length);
     const progressPerServer = 70 / activeServers.length;
     
-    for (const server of activeServers) {
+    // Saltar servidores ya procesados
+    const serversToProcess = activeServers.slice(startServerIndex);
+    
+    for (let i = 0; i < serversToProcess.length; i++) {
+      const server = serversToProcess[i];
+      const actualServerIndex = startServerIndex + i;
+      
       try {
         // Obtener bibliotecas del servidor
         const librariesUrl = `${server.baseURI}/library/sections?X-Plex-Token=${server.accessToken}`;
@@ -12934,7 +13018,17 @@ app.get('/api/web-local/generate', async (req, res) => {
           if (moviesData && moviesData.MediaContainer && moviesData.MediaContainer.Video) {
             for (const movie of moviesData.MediaContainer.Video) {
               processedCount++;
-              sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              
+              // Solo enviar progreso cada 10 items para no saturar SSE
+              if (processedCount % 10 === 0 || processedCount === totalItems) {
+                sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              }
+              
+              // Guardar progreso cada 50 items
+              if (processedCount % 50 === 0) {
+                await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
+                sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
+              }
               
               // Buscar en TMDB
               const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie');
@@ -13012,7 +13106,17 @@ app.get('/api/web-local/generate', async (req, res) => {
           if (seriesData && seriesData.MediaContainer && seriesData.MediaContainer.Directory) {
             for (const series of seriesData.MediaContainer.Directory) {
               processedCount++;
-              sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              
+              // Solo enviar progreso cada 10 items para no saturar SSE
+              if (processedCount % 10 === 0 || processedCount === totalItems) {
+                sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
+              }
+              
+              // Guardar progreso cada 50 items
+              if (processedCount % 50 === 0) {
+                await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
+                sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
+              }
               
               // Buscar en TMDB
               const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv');
@@ -13126,9 +13230,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     sendProgress({ type: 'progress', message: 'Generando colecciones...', percent: 85 });
     
-    // 3. Generar colecciones
-    const collectionsMap = new Map();
-    
+    // 3. Generar colecciones (collectionsMap ya existe desde el inicio)
     for (const movie of allMovies) {
       if (movie.collectionId) {
         if (!collectionsMap.has(movie.collectionId)) {
@@ -13188,8 +13290,9 @@ app.get('/api/web-local/generate', async (req, res) => {
       }
     }
     
-    // 5. Guardar nuevo snapshot
+    // 5. Desactivar todos los snapshots anteriores y eliminar snapshot de progreso
     await webSnapshotsCollection.updateMany({}, { $set: { isActive: false } });
+    await webSnapshotsCollection.deleteOne({ _id: progressSnapshot._id }); // Eliminar progreso guardado
     
     const snapshot = await webSnapshotsCollection.insertOne({
       projectName: 'infinity-plex-web',
@@ -13274,12 +13377,33 @@ app.get('/api/web-local/generate', async (req, res) => {
       }
     });
     
+    cleanup();
     res.end();
     
   } catch (error) {
     console.error('Error generando web:', error);
-    sendProgress({ type: 'error', message: `Error: ${error.message}` });
+    sendProgress({ type: 'error', message: `❌ Error: ${error.message}. El progreso se ha guardado, puedes continuar más tarde.` });
+    // NO eliminamos el progreso en caso de error, para poder continuar después
+    cleanup();
     res.end();
+  }
+});
+
+// Endpoint: Cancelar generación y limpiar progreso
+app.delete('/api/web-local/progress', async (req, res) => {
+  try {
+    const result = await webSnapshotsCollection.deleteMany({ 
+      inProgress: true,
+      projectName: 'infinity-plex-web' 
+    });
+    
+    res.json({ 
+      success: true, 
+      message: `Progreso eliminado. ${result.deletedCount} snapshot(s) de progreso eliminados.` 
+    });
+  } catch (error) {
+    console.error('Error eliminando progreso:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
