@@ -8875,7 +8875,7 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       min-height: 100vh;
     }
-    .container { max-width: 1800px; margin: 0 auto; padding: 0 2rem; }
+    .container { max-width: 1920px; margin: 0 auto; padding: 0 0.5rem; }
     
     /* NAVBAR */
     .navbar {
@@ -8887,12 +8887,12 @@ app.get('/library', async (req, res) => {
       z-index: 1000;
       backdrop-filter: blur(10px);
     }
-    .navbar .container { padding: 0 1rem; }
+    .navbar .container { padding: 0 0.5rem; }
     .nav-content {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 1rem;
+      gap: 0.5rem;
     }
     .navbar-brand {
       text-decoration: none;
@@ -8928,9 +8928,9 @@ app.get('/library', async (req, res) => {
       transition: all 0.2s;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
       white-space: nowrap;
-      padding: 0.5rem 0.65rem;
+      padding: 0.4rem 0.5rem;
       border-radius: 6px;
       font-size: 0.875rem;
       cursor: pointer;
@@ -8950,7 +8950,7 @@ app.get('/library', async (req, res) => {
     }
     .navbar-controls {
       display: flex;
-      gap: 1rem;
+      gap: 0.5rem;
       align-items: center;
     }
     .search-container {
@@ -9030,7 +9030,7 @@ app.get('/library', async (req, res) => {
     .filters-bar {
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
-      padding: 0.75rem 0;
+      padding: 0.4rem 0;
       position: sticky;
       top: 49px;
       z-index: 999;
@@ -9039,12 +9039,12 @@ app.get('/library', async (req, res) => {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 1rem;
+      gap: 0.5rem;
     }
     .filters-left {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.5rem;
       flex: 1;
     }
     .items-counter {
@@ -9056,7 +9056,7 @@ app.get('/library', async (req, res) => {
     }
     .filters-group {
       display: flex;
-      gap: 0.4rem;
+      gap: 0.3rem;
       align-items: center;
       flex-wrap: nowrap;
       flex: 1;
@@ -9099,7 +9099,7 @@ app.get('/library', async (req, res) => {
     }
     .view-controls {
       display: flex;
-      gap: 0.75rem;
+      gap: 0.5rem;
       align-items: center;
     }
     .grid-size-control {
@@ -9160,12 +9160,12 @@ app.get('/library', async (req, res) => {
     
     /* MAIN CONTENT */
     .main-content {
-      padding: 2rem 0;
+      padding: 1rem 0;
     }
     .movie-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
-      gap: 1.5rem;
+      gap: 1rem;
     }
     .movie-grid.list-view {
       grid-template-columns: 1fr;
@@ -9314,8 +9314,8 @@ app.get('/library', async (req, res) => {
     .content-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
-      gap: 20px;
-      padding: 20px 0;
+      gap: 15px;
+      padding: 15px 0;
     }
     .content-grid.list-view {
       grid-template-columns: 1fr;
@@ -9339,8 +9339,9 @@ app.get('/library', async (req, res) => {
     .content-grid.list-view .content-card {
       display: flex;
       flex-direction: row;
-      align-items: stretch;
-      height: 180px;
+      align-items: center;
+      height: auto;
+      min-height: 140px;
       padding: 0;
     }
     
@@ -9394,8 +9395,8 @@ app.get('/library', async (req, res) => {
     }
     .content-grid.list-view .card-poster {
       aspect-ratio: 2/3;
-      width: 120px;
-      height: 180px;
+      width: 100px;
+      height: 150px;
       flex-shrink: 0;
       margin: 0;
       border-radius: 8px 0 0 8px;
@@ -9746,21 +9747,23 @@ app.get('/library', async (req, res) => {
       background: linear-gradient(135deg, #e5a00d 0%, #f59e0b 100%);
       color: white;
       border: none;
-      padding: 0.75rem 1.5rem;
+      padding: 0.85rem 1.75rem;
       border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
+      font-size: 1.05rem;
+      font-weight: 700;
       cursor: pointer;
       transition: all 0.3s;
       text-decoration: none;
-      margin-bottom: 1.5rem;
+      margin: 1.5rem 0;
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
     }
     .download-button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(229, 160, 13, 0.4);
+      box-shadow: 0 8px 20px rgba(229, 160, 13, 0.5);
+      background: linear-gradient(135deg, #f59e0b 0%, #e5a00d 100%);
     }
     .download-button i {
-      font-size: 1.1rem;
+      font-size: 1.2rem;
     }
     
     .modal-details-table {
@@ -10140,9 +10143,9 @@ app.get('/library', async (req, res) => {
         </a>
         <div class="navbar-links">
           <div id="library-links">
-            <a href="#" class="active library-link" data-tab="movies">🎬 Películas</a>
-            <a href="#" class="library-link" data-tab="series">📺 Series</a>
-            <a href="#" class="library-link" data-tab="collections">📚 Colecciones</a>
+            <a href="#" class="active library-link" id="movies-tab" data-tab="movies">🎬 Películas</a>
+            <a href="#" class="library-link" id="series-tab" data-tab="series">📺 Series</a>
+            <a href="#" class="library-link" id="collections-tab" data-tab="collections">📚 Colecciones</a>
           </div>
         </div>
         <div class="navbar-controls">
@@ -10630,7 +10633,7 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(c => \`
-        <div class="content-card" onclick="goToCollectionMovies(\${c.tmdbId}, '\${c.name.replace(/'/g, "\\\\'")}')">
+        <div class="content-card" onclick="window.goToCollectionMovies(\${c.tmdbId}, '\${c.name.replace(/'/g, "\\\\'")}')">
           <div class="card-poster">
             \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📚</div>'}
             <span class="collection-count">\${c.movieIds.length} películas</span>
@@ -10843,15 +10846,18 @@ app.get('/library', async (req, res) => {
               <h1 class="modal-title">\${movie.title}</h1>
               \${movie.tagline ? \`<div class="modal-tagline">\${movie.tagline}</div>\` : ''}
               <div class="modal-badges">
-                \${movie.releaseYear ? \`<span class="year-badge clickable-badge" onclick="filterByYear('\${movie.releaseYear}', 'movie'); closeModal();" title="Ver películas de \${movie.releaseYear}">\${movie.releaseYear}</span>\` : ''}
+                \${movie.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${movie.releaseYear}', 'movie'); window.closeModal();" title="Ver películas de \${movie.releaseYear}">\${movie.releaseYear}</span>\` : ''}
                 \${movie.runtime ? \`<span class="runtime-badge">\${formatRuntime(movie.runtime)}</span>\` : ''}
                 \${movie.filesize ? \`<span class="filesize-badge">\${formatFilesize(movie.filesize)}</span>\` : ''}
                 \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
-                \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag clickable-badge" onclick="filterByGenre('\${g.replace(/'/g, "\\\\'") }', 'movie'); closeModal();" title="Ver películas de \${g}">\${g}</span>\`).join('') : ''}
+                \${movie.genres ? movie.genres.slice(0, 3).map(g => {
+                  const safeGenre = g.replace(/'/g, "\\\\'");
+                  return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'movie'); window.closeModal();" title="Ver películas de \${g}">\${g}</span>\`;
+                }).join('') : ''}
               </div>
               \${movieCollection ? \`
                 <div style="margin-top: 0.75rem;">
-                  <span class="collection-badge" onclick="goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>
+                  <span class="collection-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>
                 </div>
               \` : ''}
               <div class="modal-icons-row">
@@ -10946,11 +10952,14 @@ app.get('/library', async (req, res) => {
             <div class="modal-header-content">
               <h1 class="modal-title">\${series.title}</h1>
               <div class="modal-badges">
-                \${series.releaseYear ? \`<span class="year-badge clickable-badge" onclick="filterByYear('\${series.releaseYear}', 'series'); closeModal();" title="Ver series de \${series.releaseYear}">\${series.releaseYear}</span>\` : ''}
+                \${series.releaseYear ? \`<span class="year-badge clickable-badge" onclick="window.filterByYear('\${series.releaseYear}', 'series'); window.closeModal();" title="Ver series de \${series.releaseYear}">\${series.releaseYear}</span>\` : ''}
                 \${series.numberOfSeasons ? \`<span class="runtime-badge">\${series.numberOfSeasons} temporadas</span>\` : ''}
                 \${series.numberOfEpisodes ? \`<span class="runtime-badge">\${series.numberOfEpisodes} episodios</span>\` : ''}
                 \${series.voteAverage ? \`<span class="rating-badge">⭐ \${series.voteAverage}</span>\` : ''}
-                \${series.genres ? series.genres.slice(0, 3).map(g => \`<span class="genre-tag clickable-badge" onclick="filterByGenre('\${g.replace(/'/g, "\\\\'")}', 'series'); closeModal();" title="Ver series de \${g}">\${g}</span>\`).join('') : ''}
+                \${series.genres ? series.genres.slice(0, 3).map(g => {
+                  const safeGenre = g.replace(/'/g, "\\\\'");
+                  return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'series'); window.closeModal();" title="Ver series de \${g}">\${g}</span>\`;
+                }).join('') : ''}
               </div>
               <div class="modal-icons-row">
                 \${tmdbId ? \`<a href="https://www.themoviedb.org/tv/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
@@ -11083,6 +11092,20 @@ app.get('/library', async (req, res) => {
         toggle.textContent = 'Ver más';
       }
     }
+
+    // Exponer funciones al scope global para que funcionen con onclick
+    window.goToCollectionMovies = goToCollectionMovies;
+    window.filterByGenre = filterByGenre;
+    window.filterByYear = filterByYear;
+    window.openMovieModal = openMovieModal;
+    window.openSeriesModal = openSeriesModal;
+    window.openCollectionModal = openCollectionModal;
+    window.closeModal = closeModal;
+    window.toggleSeason = toggleSeason;
+    window.toggleSynopsis = toggleSynopsis;
+    window.openServerModal = openServerModal;
+    window.closeServerModal = closeServerModal;
+    window.selectServer = selectServer;
 
     // MODAL DE SELECCIÓN DE SERVIDOR
     function openServerModal(tmdbId, type) {
