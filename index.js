@@ -265,7 +265,9 @@ function decodeHtmlEntities(text) {
 function parseXML(xmlString) {
     const result = {
         MediaContainer: {
-            Metadata: []
+            Metadata: [],
+            Directory: [],
+            Video: []
         }
     };
     
@@ -279,6 +281,25 @@ function parseXML(xmlString) {
             const [, key, value] = attrMatch;
             result.MediaContainer[key] = value;
         }
+    }
+    
+    // Extraer tags Directory (para bibliotecas)
+    const directoryTagRegex = /<Directory\s+([^>]*?)(?:\/?>|>[\s\S]*?<\/Directory>)/g;
+    const directoryMatches = xmlString.matchAll(directoryTagRegex);
+    
+    for (const dirMatch of directoryMatches) {
+        const dirAttrs = dirMatch[1];
+        const directory = {};
+        
+        // Extraer atributos del tag Directory
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(dirAttrs)) !== null) {
+            const [, key, value] = attrMatch;
+            directory[key] = value;
+        }
+        
+        result.MediaContainer.Directory.push(directory);
     }
     
     // Extraer tag Video principal (solo el primer nivel, no los anidados)
@@ -337,6 +358,7 @@ function parseXML(xmlString) {
         }
         
         result.MediaContainer.Metadata.push(episode);
+        result.MediaContainer.Video.push(episode);
     }
     
     return result;
@@ -12344,10 +12366,13 @@ app.get('/api/web-local/status', async (req, res) => {
       }
     }
     
+    // Filtrar solo servidores ONLINE
+    const onlineServers = serverStatuses.filter(s => s.online);
+    
     res.json({
       exists: true,
       snapshot: snapshot,
-      servers: serverStatuses
+      servers: onlineServers
     });
     
   } catch (error) {
