@@ -10476,7 +10476,7 @@ Generado por Infinity Scrap`;
                       // Cargar contenido via AJAX
                       console.log('[DEBUG CLIENT] Llamando a web-generate-tab...');
                       alert('Cargando tab Generar Web...'); // ALERT TEMPORAL PARA DEBUG
-                      const response = await fetch(\`/library?action=web-generate-tab&password=\${encodeURIComponent(password)}\`);
+                      const response = await fetch(\`/library?action=web-generate-tab&adminPassword=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
                       alert('HTML recibido: ' + html.length + ' bytes'); // ALERT TEMPORAL PARA DEBUG
                       console.log('[DEBUG CLIENT] HTML recibido, longitud:', html.length);
