@@ -8875,7 +8875,7 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       min-height: 100vh;
     }
-    .container { max-width: 1920px; margin: 0 auto; padding: 0 1.5rem; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
     
     /* NAVBAR */
     .navbar {
@@ -9554,7 +9554,7 @@ app.get('/library', async (req, res) => {
       z-index: 999;
       overflow-y: auto;
       display: none;
-      padding: 20px;
+      padding: 40px 20px;
     }
     .modal-container.active {
       display: block;
@@ -9563,7 +9563,7 @@ app.get('/library', async (req, res) => {
     .modal-content {
       position: relative;
       max-width: 1200px;
-      margin: 40px auto;
+      margin: 0 auto;
       background: #282828;
       border-radius: 12px;
       overflow: hidden;
@@ -9612,6 +9612,27 @@ app.get('/library', async (req, res) => {
       background: rgba(229, 160, 13, 0.9);
       border-color: #e5a00d;
       transform: scale(1.1);
+    }
+    
+    .collection-badge-top {
+      position: absolute;
+      top: 1.5rem;
+      left: 2rem;
+      z-index: 3;
+      background: rgba(229, 160, 13, 0.95);
+      color: #000;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    .collection-badge-top:hover {
+      background: rgba(229, 160, 13, 1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
     }
     
     .modal-title {
@@ -9728,7 +9749,7 @@ app.get('/library', async (req, res) => {
       position: relative;
     }
     .modal-synopsis.truncated {
-      max-height: 4.5em;
+      max-height: 5.2em;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 3;
@@ -9747,21 +9768,23 @@ app.get('/library', async (req, res) => {
     }
     
     .download-button {
-      display: inline-flex;
+      display: flex;
       align-items: center;
+      justify-content: center;
       gap: 0.5rem;
       background: linear-gradient(135deg, #e5a00d 0%, #f59e0b 100%);
       color: white;
       border: none;
-      padding: 0.85rem 1.75rem;
-      border-radius: 8px;
-      font-size: 1.05rem;
-      font-weight: 700;
+      padding: 0.75rem 1.25rem;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.3s;
       text-decoration: none;
-      margin: 1.5rem 0;
-      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
+      margin: 1rem 0;
+      box-shadow: 0 2px 8px rgba(229, 160, 13, 0.3);
+      width: 100%;
     }
     .download-button:hover {
       transform: translateY(-2px);
@@ -10414,19 +10437,18 @@ app.get('/library', async (req, res) => {
       });
 
       // Mostrar/ocultar filtros según tab
-      const filtersBar = document.querySelector('.filters-bar');
       if (tab === 'collections') {
         // Ocultar filtros que no aplican a colecciones
-        document.getElementById('genre-filter').parentElement.style.display = 'none';
-        document.getElementById('year-filter').parentElement.style.display = 'none';
-        document.getElementById('country-filter').parentElement.style.display = 'none';
-        document.getElementById('rating-filter').parentElement.style.display = 'none';
+        document.getElementById('genre-filter').style.display = 'none';
+        document.getElementById('year-filter').style.display = 'none';
+        document.getElementById('country-filter').style.display = 'none';
+        document.getElementById('rating-filter').style.display = 'none';
       } else {
         // Mostrar todos los filtros para movies y series
-        document.getElementById('genre-filter').parentElement.style.display = '';
-        document.getElementById('year-filter').parentElement.style.display = '';
-        document.getElementById('country-filter').parentElement.style.display = '';
-        document.getElementById('rating-filter').parentElement.style.display = '';
+        document.getElementById('genre-filter').style.display = '';
+        document.getElementById('year-filter').style.display = '';
+        document.getElementById('country-filter').style.display = '';
+        document.getElementById('rating-filter').style.display = '';
       }
 
       // Limpiar filtros y repopular
@@ -10856,6 +10878,7 @@ app.get('/library', async (req, res) => {
         <div class="modal-content">
           <div class="modal-backdrop-header" style="background-image: url('\${movie.backdropPath || movie.posterPath}');">
             <button class="close-button" onclick="closeModal()">&times;</button>
+            \${movieCollection ? \`<div class="collection-badge-top" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</div>\` : ''}
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
               <h1 class="modal-title">\${movie.title}</h1>
@@ -10870,7 +10893,6 @@ app.get('/library', async (req, res) => {
                     const safeGenre = g.replace(/'/g, "\\\\'");
                     return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'movie'); window.closeModal();" title="Ver películas de \${g}">\${g}</span>\`;
                   }).join('') : ''}
-                  \${movieCollection ? \`<span class="collection-badge clickable-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
                 </div>
                 <div class="modal-icons-row">
                   \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
