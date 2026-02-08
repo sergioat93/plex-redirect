@@ -9,16 +9,20 @@ const app = express();
 // Middleware para parsear JSON en el body de las peticiones
 app.use(express.json());
 
-// ⚠️ IMPORTANTE: Reemplaza esto con tu propia API Key de TMDB
-// Obtén una gratis en: https://www.themoviedb.org/settings/api
-const TMDB_API_KEY = '5aaa0a6844d70ade130e868275ee2cc2';
+// ========================================
+// CONFIGURACIÓN - Variables de Entorno
+// ========================================
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_DB = process.env.MONGODB_DB;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-// ========================================
-// CONFIGURACIÓN MONGODB
-// ========================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://plexadmin:Sporting1905.@plex-redirect.nrifwco.mongodb.net/?appName=Plex-Redirect';
-const MONGODB_DB = process.env.MONGODB_DB || 'plex_servers';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '159357456';
+// Validar variables críticas
+if (!TMDB_API_KEY || !MONGODB_URI || !MONGODB_DB || !ADMIN_PASSWORD) {
+  console.error('❌ ERROR: Faltan variables de entorno críticas');
+  console.error('Requeridas: TMDB_API_KEY, MONGODB_URI, MONGODB_DB, ADMIN_PASSWORD');
+  process.exit(1);
+}
 
 let mongoClient = null;
 let serversCollection = null;
@@ -10794,6 +10798,17 @@ app.get('/library', async (req, res) => {
             border-color: #f5b81d;
           }
           
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: scale(0.8);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+          
           /* Botón Panel Admin - A la izquierda del icono admin */
           .btn-admin-panel-header {
             position: fixed;
@@ -11109,8 +11124,8 @@ app.get('/library', async (req, res) => {
           ⚙️
         </div>
         
-        <!-- Icono Admin (esquina superior derecha) -->
-        <div class="admin-icon" id="adminIcon" onclick="toggleAdminLogin()">
+        <!-- Icono Admin (esquina superior derecha) - OCULTO por defecto -->
+        <div class="admin-icon" id="adminIcon" onclick="toggleAdminLogin()" style="display: none;">
           🔐
         </div>
         
@@ -11138,7 +11153,7 @@ app.get('/library', async (req, res) => {
         
         <div class="container">
           <div class="header">
-            <div class="logo">
+            <div class="logo" id="mainLogo" style="user-select: none;">
               <div class="logo-icon">☁</div>
               <span class="logo-text">Infinity Scrap</span>
             </div>
@@ -11171,6 +11186,25 @@ app.get('/library', async (req, res) => {
           const currentURI = '${baseURI}';
           let isAdminMode = sessionStorage.getItem('adminMode') === 'true';
           let adminPasswordStored = sessionStorage.getItem('adminPassword');
+          
+          // Triple click en logo para mostrar login de admin
+          let logoClickCount = 0;
+          let logoClickTimer = null;
+          document.getElementById('mainLogo').addEventListener('click', function() {
+            logoClickCount++;
+            if (logoClickCount === 1) {
+              logoClickTimer = setTimeout(() => {
+                logoClickCount = 0;
+              }, 800);
+            } else if (logoClickCount === 3) {
+              clearTimeout(logoClickTimer);
+              logoClickCount = 0;
+              const adminIcon = document.getElementById('adminIcon');
+              adminIcon.style.display = 'flex';
+              adminIcon.style.animation = 'fadeIn 0.3s ease-in-out';
+              setTimeout(() => toggleAdminLogin(), 100);
+            }
+          });
           
           // Inicializar al cargar
           window.addEventListener('DOMContentLoaded', () => {
