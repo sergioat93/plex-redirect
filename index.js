@@ -13163,12 +13163,12 @@ app.get('/api/web-local/generate', async (req, res) => {
                 const relevantXml = movieSection.substring(0, endSection);
                 
                 // Buscar <Guid id="tmdb://..."/>
-                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
+                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\/\/(\d+)"\/>/);
                 if (tmdbGuidMatch) {
                   bestGuid = 'tmdb://movie/' + tmdbGuidMatch[1];
                 } else {
                   // Si no hay TMDB, buscar IMDB
-                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
+                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\/\/tt\d+)"\/>/);
                   if (imdbGuidMatch) {
                     bestGuid = imdbGuidMatch[1];
                   }
@@ -13293,12 +13293,12 @@ app.get('/api/web-local/generate', async (req, res) => {
                 const relevantXml = seriesSection.substring(0, endSection);
                 
                 // Buscar <Guid id="tmdb://..."/>
-                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\\/\\/(\\d+)"\\/>/);
+                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\/\/(\d+)"\/>/);
                 if (tmdbGuidMatch) {
                   bestGuid = 'tmdb://tv/' + tmdbGuidMatch[1];
                 } else {
                   // Si no hay TMDB, buscar IMDB
-                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\\/\\/tt\\d+)"\\/>/);
+                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\/\/tt\d+)"\/>/);
                   if (imdbGuidMatch) {
                     bestGuid = imdbGuidMatch[1];
                   }
