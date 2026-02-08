@@ -9150,7 +9150,8 @@ Generado por Infinity Scrap`;
         
         async function loadDashboard() {
           try {
-            const password = new URLSearchParams(window.location.search).get('password');
+            const urlParams = new URLSearchParams(window.location.search);
+            const password = urlParams.get('password') || urlParams.get('adminPassword');
             const response = await fetch('/api/web-local/status?password=' + encodeURIComponent(password));
             const data = await response.json();
             
@@ -9264,7 +9265,8 @@ Generado por Infinity Scrap`;
         }
         
         async function startGeneration() {
-          const password = new URLSearchParams(window.location.search).get('password');
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
           
           document.getElementById('dashboardContainer').style.display = 'none';
           const progressContainer = document.getElementById('progressContainer');
@@ -9330,14 +9332,16 @@ Generado por Infinity Scrap`;
         }
         
         function downloadZip() {
-          const password = new URLSearchParams(window.location.search).get('password');
-          window.location.href = \`/library?action=download-web-zip&password=\${encodeURIComponent(password)}\`;
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
+          window.location.href = \`/library?action=download-web-zip&adminPassword=\${encodeURIComponent(password)}\`;
         }
         
         async function showNotFoundItems() {
-          const password = new URLSearchParams(window.location.search).get('password');
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
           try {
-            const response = await fetch('/library?action=get-not-found-items&password=' + encodeURIComponent(password));
+            const response = await fetch('/library?action=get-not-found-items&adminPassword=' + encodeURIComponent(password));
             const data = await response.json();
             
             const container = document.getElementById('notFoundContainer');
@@ -9393,9 +9397,10 @@ Generado por Infinity Scrap`;
             return;
           }
           
-          const password = new URLSearchParams(window.location.search).get('password');
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
           try {
-            const response = await fetch(\`/library?action=assign-tmdb-id&password=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&tmdbId=\${tmdbId}\`);
+            const response = await fetch(\`/library?action=assign-tmdb-id&adminPassword=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&tmdbId=\${tmdbId}\`);
             const data = await response.json();
             
             if (data.success) {
@@ -9413,9 +9418,10 @@ Generado por Infinity Scrap`;
         async function ignoreItem(snapshotId, ratingKey, serverId, title) {
           if (!confirm(\`¿Seguro que deseas ignorar "\${title}"?\`)) return;
           
-          const password = new URLSearchParams(window.location.search).get('password');
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
           try {
-            const response = await fetch(\`/library?action=ignore-item&password=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&title=\${encodeURIComponent(title)}\`);
+            const response = await fetch(\`/library?action=ignore-item&adminPassword=\${encodeURIComponent(password)}&snapshotId=\${snapshotId}&ratingKey=\${ratingKey}&serverId=\${serverId}&title=\${encodeURIComponent(title)}\`);
             const data = await response.json();
             
             if (data.success) {
@@ -10475,10 +10481,8 @@ Generado por Infinity Scrap`;
                       
                       // Cargar contenido via AJAX
                       console.log('[DEBUG CLIENT] Llamando a web-generate-tab...');
-                      alert('Cargando tab Generar Web...'); // ALERT TEMPORAL PARA DEBUG
                       const response = await fetch(\`/library?action=web-generate-tab&adminPassword=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
-                      alert('HTML recibido: ' + html.length + ' bytes'); // ALERT TEMPORAL PARA DEBUG
                       console.log('[DEBUG CLIENT] HTML recibido, longitud:', html.length);
                       console.log('[DEBUG CLIENT] Primeros 200 chars:', html.substring(0, 200));
                       
