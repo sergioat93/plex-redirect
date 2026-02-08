@@ -8877,69 +8877,283 @@ app.get('/library', async (req, res) => {
     }
     .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
     
-    /* HEADER */
-    .header {
-      text-align: center;
-      padding: 40px 20px;
-      margin-bottom: 20px;
-      background: rgba(31, 41, 55, 0.6);
-      border-radius: 16px;
-      border: 2px solid rgba(229, 160, 13, 0.2);
+    /* NAVBAR */
+    .navbar {
+      background: #000;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(229, 160, 13, 0.2);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
     }
-    .header h1 {
-      font-size: 2.5rem;
-      font-weight: 800;
-      background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 10px;
-    }
-    .header p { color: #9ca3af; font-size: 1rem; }
-    
-    /* STATS BAR */
-    .stats-bar {
-      background: rgba(31, 41, 55, 0.6);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-      border: 2px solid rgba(229, 160, 13, 0.2);
+    .navbar .container { padding: 0 1rem; }
+    .nav-content {
       display: flex;
-      justify-content: space-around;
-      flex-wrap: wrap;
-      gap: 20px;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
     }
-    .stat-item { text-align: center; }
-    .stat-value {
-      font-size: 2rem;
+    .navbar-brand {
+      text-decoration: none;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+    }
+    .logo-title {
+      color: var(--primary-color);
+      font-size: 1.5rem;
       font-weight: 700;
-      color: #e5a00d;
+      white-space: nowrap;
     }
-    .stat-label {
-      color: #9ca3af;
+    .navbar-links {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+      flex-wrap: nowrap;
+      flex: 1;
+      justify-content: center;
+    }
+    .navbar-links #library-links {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+    .navbar-links a,
+    .library-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
       font-size: 0.875rem;
-      margin-top: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+    .navbar-links a:hover,
+    .library-link:hover {
+      color: var(--primary-color);
+      background: rgba(229, 160, 13, 0.1);
+    }
+    .navbar-links a.active,
+    .library-link.active {
+      color: var(--primary-color);
+      background: rgba(229, 160, 13, 0.15);
+      font-weight: 600;
+    }
+    .navbar-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .search-container {
+      position: relative;
+      width: 250px;
+    }
+    .search-container input {
+      width: 100%;
+      padding: 0.5rem 2.5rem 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+    }
+    .search-container input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .search-container i {
+      position: absolute;
+      right: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+      pointer-events: none;
     }
     
-    /* TABS */
-    .tabs {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-      justify-content: center;
-      flex-wrap: wrap;
+    /* MOBILE SEARCH BAR */
+    .mobile-search-bar {
+      display: none;
+      background: var(--bg-secondary);
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      position: relative;
+      z-index: 998;
     }
-    .tab {
-      padding: 12px 24px;
-      background: rgba(31, 41, 55, 0.8);
-      border: 2px solid rgba(229, 160, 13, 0.2);
-      border-radius: 12px;
-      color: #f3f4f6;
+    .mobile-search-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .mobile-search-wrapper input {
+      flex: 1;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+    }
+    .mobile-search-wrapper input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .mobile-search-btn {
+      background: var(--primary-color);
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      color: #000;
+      font-size: 1.125rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .mobile-search-btn:hover {
+      background: var(--primary-dark);
+    }
+    
+    /* FILTERS BAR */
+    .filters-bar {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 0;
+      position: sticky;
+      top: 49px;
+      z-index: 999;
+    }
+    .filters-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .filters-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .filter-select {
+      padding: 0.5rem 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .btn-clear-filters {
+      padding: 0.5rem 1rem;
+      background: rgba(229, 160, 13, 0.1);
+      border: 1px solid rgba(229, 160, 13, 0.3);
+      border-radius: 6px;
+      color: var(--primary-color);
+      font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .tab:hover {
+    .btn-clear-filters:hover {
+      background: rgba(229, 160, 13, 0.2);
+    }
+    .view-controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .grid-size-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .grid-size-control input[type="range"] {
+      width: 80px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .grid-size-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--primary-color);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .grid-size-control input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: var(--primary-color);
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+    .grid-size-control i {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+    .view-buttons {
+      display: flex;
+      gap: 0.25rem;
+    }
+    .view-btn {
+      padding: 0.5rem 0.75rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .view-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .view-btn.active {
+      color: var(--primary-color);
+      background: rgba(229, 160, 13, 0.15);
+      border-color: rgba(229, 160, 13, 0.3);
+    }
+    
+    /* MAIN CONTENT */
+    .main-content {
+      padding: 2rem 0;
+    }
+    .movie-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
+      gap: 1.5rem;
+    }
+    .movie-grid.list-view {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    
+    /* TAB CONTENT (hidden by default) */
       background: rgba(229, 160, 13, 0.1);
       border-color: rgba(229, 160, 13, 0.5);
     }
@@ -9770,190 +9984,107 @@ app.get('/library', async (req, res) => {
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>🌐 Infinity Scrap - Web Local</h1>
-      <p id="generation-date">Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}</p>
-    </div>
-
-    <div class="stats-bar">
-      <div class="stat-item">
-        <div class="stat-value" id="stat-movies">${snapshot.stats.totalMovies}</div>
-        <div class="stat-label">Películas</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="stat-series">${snapshot.stats.totalSeries}</div>
-        <div class="stat-label">Series</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="stat-collections">${snapshot.stats.totalCollections}</div>
-        <div class="stat-label">Colecciones</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="stat-episodes">${snapshot.stats.totalEpisodes || 0}</div>
-        <div class="stat-label">Episodios</div>
-      </div>
-    </div>
-
-    <div class="tabs">
-      <button class="tab active" data-tab="movies">🎬 Películas</button>
-      <button class="tab" data-tab="series">📺 Series</button>
-      <button class="tab" data-tab="collections">📚 Colecciones</button>
-    </div>
-
-    <!-- Movies Tab -->
-    <div id="movies-tab" class="tab-content active">
-      <div class="search-bar">
-        <input type="text" id="search-movies" class="search-input" placeholder="🔍 Buscar películas...">
-      </div>
-      
-      <div class="library-controls">
-        <div class="controls-row">
-          <div class="filters-group">
-            <select id="genre-filter-movies" class="filter-select">
-              <option value="">Todos los géneros</option>
-            </select>
-            <select id="year-filter-movies" class="filter-select">
-              <option value="">Todos los años</option>
-            </select>
-            <select id="country-filter-movies" class="filter-select">
-              <option value="">Todos los países</option>
-            </select>
-            <select id="rating-filter-movies" class="filter-select">
-              <option value="">Todas las valoraciones</option>
-              <option value="9">⭐ 9.0+</option>
-              <option value="8">⭐ 8.0+</option>
-              <option value="7">⭐ 7.0+</option>
-              <option value="6">⭐ 6.0+</option>
-            </select>
-            <select id="sort-filter-movies" class="filter-select">
-              <option value="title">Título A-Z</option>
-              <option value="title-desc">Título Z-A</option>
-              <option value="year-desc">Año ↓</option>
-              <option value="year-asc">Año ↑</option>
-              <option value="rating-desc">Valoración ↓</option>
-              <option value="rating-asc">Valoración ↑</option>
-            </select>
-            <select id="server-filter-movies" class="filter-select">
-              <option value="">Todos los servidores</option>
-            </select>
-            <button class="btn-clear-filters" onclick="clearFilters('movies')">🗑️ Limpiar</button>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-content">
+        <a class="navbar-brand" href="#">
+          <div class="logo-container">
+            <span class="logo-title">Infinity Scrap</span>
           </div>
-          <div class="view-controls">
-            <div class="grid-size-control" id="grid-size-control-movies">
-              <input type="range" id="grid-size-slider-movies" min="120" max="250" value="180" step="10">
-              <span>📏</span>
-            </div>
-            <div class="view-buttons">
-              <button class="view-btn active" id="grid-view-btn-movies" onclick="toggleView('movies', 'grid')">
-                <span>⊞</span>
-              </button>
-              <button class="view-btn" id="list-view-btn-movies" onclick="toggleView('movies', 'list')">
-                <span>☰</span>
-              </button>
-            </div>
+        </a>
+        <div class="navbar-links">
+          <div id="library-links">
+            <a href="#" class="active library-link" data-tab="movies">🎬 Películas</a>
+            <a href="#" class="library-link" data-tab="series">📺 Series</a>
+            <a href="#" class="library-link" data-tab="collections">📚 Colecciones</a>
+          </div>
+        </div>
+        <div class="navbar-controls">
+          <div class="search-container">
+            <input type="text" id="search-input" placeholder="Buscar...">
+            <i class="fas fa-search"></i>
           </div>
         </div>
       </div>
-      
-      <div id="movies-grid" class="content-grid"></div>
     </div>
+  </nav>
 
-    <!-- Series Tab -->
-    <div id="series-tab" class="tab-content">
-      <div class="search-bar">
-        <input type="text" id="search-series" class="search-input" placeholder="🔍 Buscar series...">
-      </div>
-      
-      <div class="library-controls">
-        <div class="controls-row">
-          <div class="filters-group">
-            <select id="genre-filter-series" class="filter-select">
-              <option value="">Todos los géneros</option>
-            </select>
-            <select id="year-filter-series" class="filter-select">
-              <option value="">Todos los años</option>
-            </select>
-            <select id="country-filter-series" class="filter-select">
-              <option value="">Todos los países</option>
-            </select>
-            <select id="rating-filter-series" class="filter-select">
-              <option value="">Todas las valoraciones</option>
-              <option value="9">⭐ 9.0+</option>
-              <option value="8">⭐ 8.0+</option>
-              <option value="7">⭐ 7.0+</option>
-              <option value="6">⭐ 6.0+</option>
-            </select>
-            <select id="sort-filter-series" class="filter-select">
-              <option value="title">Título A-Z</option>
-              <option value="title-desc">Título Z-A</option>
-              <option value="year-desc">Año ↓</option>
-              <option value="year-asc">Año ↑</option>
-              <option value="rating-desc">Valoración ↓</option>
-              <option value="rating-asc">Valoración ↑</option>
-            </select>
-            <select id="server-filter-series" class="filter-select">
-              <option value="">Todos los servidores</option>
-            </select>
-            <button class="btn-clear-filters" onclick="clearFilters('series')">🗑️ Limpiar</button>
-          </div>
-          <div class="view-controls">
-            <div class="grid-size-control" id="grid-size-control-series">
-              <input type="range" id="grid-size-slider-series" min="120" max="250" value="180" step="10">
-              <span>📏</span>
-            </div>
-            <div class="view-buttons">
-              <button class="view-btn active" id="grid-view-btn-series" onclick="toggleView('series', 'grid')">
-                <span>⊞</span>
-              </button>
-              <button class="view-btn" id="list-view-btn-series" onclick="toggleView('series', 'list')">
-                <span>☰</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div id="series-grid" class="content-grid"></div>
-    </div>
-
-    <!-- Collections Tab -->
-    <div id="collections-tab" class="tab-content">
-      <div class="search-bar">
-        <input type="text" id="search-collections" class="search-input" placeholder="🔍 Buscar colecciones...">
-      </div>
-      
-      <div class="library-controls">
-        <div class="controls-row">
-          <div class="filters-group">
-            <select id="sort-filter-collections" class="filter-select">
-              <option value="name">Nombre A-Z</option>
-              <option value="name-desc">Nombre Z-A</option>
-              <option value="count-desc">Más películas</option>
-              <option value="count-asc">Menos películas</option>
-            </select>
-            <button class="btn-clear-filters" onclick="clearFilters('collections')">🗑️ Limpiar</button>
-          </div>
-          <div class="view-controls">
-            <div class="grid-size-control" id="grid-size-control-collections">
-              <input type="range" id="grid-size-slider-collections" min="120" max="250" value="180" step="10">
-              <span>📏</span>
-            </div>
-            <div class="view-buttons">
-              <button class="view-btn active" id="grid-view-btn-collections" onclick="toggleView('collections', 'grid')">
-                <span>⊞</span>
-              </button>
-              <button class="view-btn" id="list-view-btn-collections" onclick="toggleView('collections', 'list')">
-                <span>☰</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div id="collections-grid" class="content-grid"></div>
+  <!-- Mobile Search Bar -->
+  <div class="mobile-search-bar">
+    <div class="mobile-search-wrapper">
+      <input type="text" id="search-input-mobile" placeholder="Buscar...">
+      <button class="mobile-search-btn" id="mobile-search-btn">
+        <i class="fas fa-search"></i>
+      </button>
     </div>
   </div>
+
+  <!-- Desktop Filters -->
+  <div class="filters-bar">
+    <div class="container">
+      <div class="filters-wrapper">
+        <!-- Left: Filters -->
+        <div class="filters-group" id="filters-group">
+          <select id="genre-filter" class="filter-select">
+            <option value="">Todos los géneros</option>
+          </select>
+          <select id="year-filter" class="filter-select">
+            <option value="">Todos los años</option>
+          </select>
+          <select id="country-filter" class="filter-select">
+            <option value="">Todos los países</option>
+          </select>
+          <select id="rating-filter" class="filter-select">
+            <option value="">Todas las valoraciones</option>
+            <option value="9">⭐ 9.0+</option>
+            <option value="8">⭐ 8.0+</option>
+            <option value="7">⭐ 7.0+</option>
+            <option value="6">⭐ 6.0+</option>
+          </select>
+          <select id="server-filter" class="filter-select">
+            <option value="">Todos los servidores</option>
+          </select>
+          <select id="sort-filter" class="filter-select">
+            <option value="title">Título A-Z</option>
+            <option value="title-desc">Título Z-A</option>
+            <option value="year-desc">Año ↓</option>
+            <option value="year-asc">Año ↑</option>
+            <option value="rating-desc">Valoración ↓</option>
+            <option value="rating-asc">Valoración ↑</option>
+          </select>
+          <button id="clear-filters" class="btn-clear-filters">
+            <i class="fas fa-broom"></i> Limpiar
+          </button>
+        </div>
+        
+        <!-- Right: View Controls -->
+        <div class="view-controls">
+          <div class="grid-size-control" id="grid-size-control">
+            <input type="range" id="grid-size-slider" min="120" max="250" value="180" step="10">
+            <i class="fas fa-expand-alt"></i>
+          </div>
+          <div class="view-buttons">
+            <button class="view-btn active" id="grid-view-btn" title="Vista grid">
+              <i class="fas fa-th"></i>
+            </button>
+            <button class="view-btn" id="list-view-btn" title="Vista lista">
+              <i class="fas fa-list"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      <div id="content-grid" class="movie-grid">
+        <!-- Content will be rendered here -->
+      </div>
+    </div>
+  </main>
 
   <!-- Modal Overlay -->
   <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
@@ -9985,13 +10116,6 @@ app.get('/library', async (req, res) => {
       // Popular filtros dinámicos
       populateFilters('movies', movies);
       populateFilters('series', series);
-      
-      // Actualizar stats
-      document.getElementById('generation-date').textContent = 'Generada el ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}';
-      document.getElementById('stat-movies').textContent = ${snapshot.stats.totalMovies};
-      document.getElementById('stat-series').textContent = ${snapshot.stats.totalSeries};
-      document.getElementById('stat-collections').textContent = ${snapshot.stats.totalCollections};
-      document.getElementById('stat-episodes').textContent = ${snapshot.stats.totalEpisodes || 0};
       
       // Renderizar inicial
       renderMovies();
