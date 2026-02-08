@@ -10440,10 +10440,15 @@ Generado por Infinity Scrap`;
           
           // Wait for DOM to be ready
           document.addEventListener('DOMContentLoaded', function() {
+            console.log('[DEBUG CLIENT] DOMContentLoaded - Panel Admin cargado');
+            console.log('[DEBUG CLIENT] Tabs encontrados:', document.querySelectorAll('.admin-tab').length);
+            console.log('[DEBUG CLIENT] Tab generate existe:', !!document.getElementById('tab-generate'));
+            
             // Tab switching
             document.querySelectorAll('.admin-tab').forEach(tab => {
               tab.addEventListener('click', async () => {
                 const tabName = tab.dataset.tab;
+                console.log('[DEBUG CLIENT] Click en tab:', tabName);
                 
                 // Update active tab
                 document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
@@ -10454,6 +10459,7 @@ Generado por Infinity Scrap`;
                 
                 // Si es el tab "generate", cargar contenido dinámicamente
                 if (tabName === 'generate') {
+                  console.log('[DEBUG CLIENT] Tab es generate, iniciando carga...');
                   const password = new URLSearchParams(window.location.search).get('password');
                   if (password) {
                     try {
@@ -10467,8 +10473,10 @@ Generado por Infinity Scrap`;
                       
                       // Cargar contenido via AJAX
                       console.log('[DEBUG CLIENT] Llamando a web-generate-tab...');
+                      alert('Cargando tab Generar Web...'); // ALERT TEMPORAL PARA DEBUG
                       const response = await fetch(\`/library?action=web-generate-tab&password=\${encodeURIComponent(password)}\`);
                       const html = await response.text();
+                      alert('HTML recibido: ' + html.length + ' bytes'); // ALERT TEMPORAL PARA DEBUG
                       console.log('[DEBUG CLIENT] HTML recibido, longitud:', html.length);
                       console.log('[DEBUG CLIENT] Primeros 200 chars:', html.substring(0, 200));
                       
