@@ -8808,6 +8808,15 @@ app.get('/library', async (req, res) => {
     const { snapshotId } = req.query;
     
     try {
+      // Asegurar conexión a MongoDB
+      if (!webSnapshotsCollection) {
+        await connectMongoDB();
+      }
+      
+      if (!webSnapshotsCollection) {
+        return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+      }
+      
       const snapshot = snapshotId 
         ? await webSnapshotsCollection.findOne({ _id: new ObjectId(snapshotId) })
         : await webSnapshotsCollection.findOne({ isActive: true });
@@ -14269,6 +14278,15 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
 // Endpoint: Obtener estado actual de la web local
 app.get('/api/web-local/status', async (req, res) => {
   try {
+    // Asegurar conexión a MongoDB
+    if (!webSnapshotsCollection || !serversCollection) {
+      await connectMongoDB();
+    }
+    
+    if (!webSnapshotsCollection || !serversCollection) {
+      return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+    }
+    
     const lastSnapshot = await webSnapshotsCollection
       .find({ isActive: true })
       .sort({ generatedAt: -1 })
@@ -14363,6 +14381,18 @@ app.get('/api/web-local/generate', async (req, res) => {
   
   try {
     const startTime = Date.now();
+    
+    // Asegurar conexión a MongoDB
+    if (!webSnapshotsCollection) {
+      await connectMongoDB();
+    }
+    
+    if (!webSnapshotsCollection) {
+      sendProgress({ type: 'error', message: '❌ Error de conexión a la base de datos' });
+      res.write('data: {"type":"error","message":"Error de conexión a la base de datos"}\n\n');
+      cleanup();
+      return res.end();
+    }
     
     // Verificar si hay progreso guardado
     let progressSnapshot = await webSnapshotsCollection.findOne({ 
