@@ -12766,6 +12766,26 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
       data = await response.json();
     }
     
+    // PRIORIDAD 6: Si falla, probar limpiando paréntesis y texto entre ellos
+    if (!data.results || data.results.length === 0) {
+      const cleanTitle = title.replace(/\([^)]*\)/g, '').trim();
+      if (cleanTitle !== title && cleanTitle.length > 0) {
+        searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanTitle)}`;
+        if (year && parseInt(year) > 1900) {
+          searchUrl += `&year=${year}`;
+        }
+        response = await fetch(searchUrl);
+        data = await response.json();
+        
+        // Si aún falla, sin año
+        if ((!data.results || data.results.length === 0) && year && parseInt(year) > 1900) {
+          searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanTitle)}`;
+          response = await fetch(searchUrl);
+          data = await response.json();
+        }
+      }
+    }
+    
     if (data.results && data.results.length > 0) {
       const result = data.results[0];
       const tmdbId = result.id;
@@ -13137,6 +13157,14 @@ app.get('/api/web-local/generate', async (req, res) => {
               
               // Buscar en TMDB
               const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie', movie.guid);
+              
+              if (tmdbResult) {
+                // Agregar a lista procesada
+                processedItems[server.machineIdentifier].movies.push(parseInt(movie.ratingKey));
+              } else {
+                // Log para debug
+                console.log(`[TMDB NOT FOUND] "${movie.title}" (${movie.year}) | GUID: ${movie.guid || 'NO GUID'}`);
+              }
               
               if (tmdbResult) {
                 // Agregar a lista procesada
