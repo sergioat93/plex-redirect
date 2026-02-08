@@ -12301,12 +12301,16 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
 app.get('/api/web-local/status', async (req, res) => {
   try {
     const lastSnapshot = await webSnapshotsCollection
-      .findOne({ isActive: true })
-      .sort({ generatedAt: -1 });
+      .find({ isActive: true })
+      .sort({ generatedAt: -1 })
+      .limit(1)
+      .toArray();
     
-    if (!lastSnapshot) {
+    if (!lastSnapshot || lastSnapshot.length === 0) {
       return res.json({ exists: false });
     }
+    
+    const snapshot = lastSnapshot[0];
     
     // Obtener servidores activos actuales
     const allServers = await serversCollection.find().toArray();
@@ -12333,7 +12337,7 @@ app.get('/api/web-local/status', async (req, res) => {
     
     res.json({
       exists: true,
-      snapshot: lastSnapshot,
+      snapshot: snapshot,
       servers: serverStatuses
     });
     
@@ -12344,7 +12348,7 @@ app.get('/api/web-local/status', async (req, res) => {
 });
 
 // Endpoint: Generar web local (primera vez o completa)
-app.post('/api/web-local/generate', async (req, res) => {
+app.get('/api/web-local/generate', async (req, res) => {
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
