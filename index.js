@@ -9063,7 +9063,7 @@ app.get('/library', async (req, res) => {
     }
     .filter-select {
       padding: 0.4rem 0.65rem;
-      background: var(--bg-dark);
+      background: #000;
       border: 1px solid var(--border-color);
       border-radius: 6px;
       color: var(--text-primary);
@@ -9533,7 +9533,7 @@ app.get('/library', async (req, res) => {
     }
     
     .container {
-      max-width: calc(100% - 150px);
+      max-width: calc(100% - 200px);
       margin: 0 auto;
       padding: 0 2rem;
     }
@@ -9578,13 +9578,13 @@ app.get('/library', async (req, res) => {
     
     .modal-collection-tag {
       position: absolute;
-      top: 1rem;
-      left: 1rem;
+      top: 0.5rem;
+      left: 3rem;
       z-index: 10;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.3);
       backdrop-filter: blur(8px);
       border: 1px solid rgba(229, 160, 13, 0.2);
-      border-radius: 6px;
+      border-radius: 16px;
       padding: 0.4rem 0.75rem;
       font-size: 0.75rem;
       color: rgba(229, 160, 13, 0.7);
@@ -9758,7 +9758,7 @@ app.get('/library', async (req, res) => {
       line-height: 1.7;
       font-size: 1.05rem;
       text-align: justify;
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.5rem;
       color: #cccccc;
       position: relative;
     }
@@ -9798,11 +9798,6 @@ app.get('/library', async (req, res) => {
       text-decoration: none;
       transition: all 0.3s ease;
       margin-top: 1rem;
-    }
-      cursor: pointer;
-      transition: all 0.3s;
-      text-decoration: none;
-      margin: 1.5rem 0;
       box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
     }
     .download-button:hover {
@@ -11035,7 +11030,6 @@ app.get('/library', async (req, res) => {
               \${downloadButtonHTML}
             </div>
             <div class="modal-main-info">
-              <div class="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
               <div class="modal-details-table">
                 \${series.createdBy ? \`<div class="detail-item"><strong>Creador:</strong><span>\${series.createdBy}</span></div>\` : ''}
                 \${series.cast && series.cast.length > 0 ? \`<div class="detail-item"><strong>Reparto:</strong><span>\${series.cast.slice(0, 5).map(a => a.name).join(', ')}</span></div>\` : ''}
@@ -11045,23 +11039,11 @@ app.get('/library', async (req, res) => {
                 \${series.countries ? \`<div class="detail-item"><strong>Países:</strong><span>\${series.countries}</span></div>\` : ''}
                 \${series.languages ? \`<div class="detail-item"><strong>Idiomas:</strong><span>\${series.languages}</span></div>\` : ''}
               </div>
+              <div class="modal-synopsis truncated" id="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
+              \${series.overview && series.overview.length > 250 ? \`<button class="synopsis-toggle" onclick="toggleSynopsis()">Ver más</button>\` : ''}
             </div>
           </div>
           \${seasonsHTML}
-          \${series.trailerKey ? \`
-            <div style="padding: 2rem; background: rgba(0,0,0,0.3);">
-              <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Tráiler</h2>
-              <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-                <iframe 
-                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
-                  src="https://www.youtube.com/embed/\${series.trailerKey}" 
-                  frameborder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowfullscreen>
-                </iframe>
-              </div>
-            </div>
-          \` : ''}
         </div>
       \`;
 
@@ -15279,12 +15261,22 @@ app.get('/api/web-local/generate', async (req, res) => {
                   // Construir nombre de archivo personalizado para descarga
                   const movieYear = movie.year || tmdbDetails.releaseYear || '';
                   const safeTitle = (tmdbDetails.title || movie.title).replace(/[<>:"\/\\|?*]/g, '_');
-                  const fileName = part.file ? part.file.split('/').pop() : 'file.mkv';
-                  const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+                  const originalFileName = part.file ? part.file.split('/').pop() : 'video.mkv';
+                  const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
                   const customFileName = `${safeTitle} (${movieYear})${fileExtension}`;
                   
+                  // Extraer partKey sin el nombre del archivo
+                  let partKey = part.key || '';
+                  if (partKey && originalFileName) {
+                    // Remover el nombre del archivo del final de partKey
+                    const fileNameInPath = '/' + originalFileName;
+                    if (partKey.endsWith(fileNameInPath)) {
+                      partKey = partKey.substring(0, partKey.length - fileNameInPath.length);
+                    }
+                  }
+                  
                   // Construir URL de descarga completa (funcional) con nombre personalizado
-                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}&filename=${encodeURIComponent(customFileName)}` : '';
+                  const downloadUrl = partKey ? `${server.baseURI}${partKey}/${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                   
                   movieCount++; // Incrementar contador de películas procesadas
                   
@@ -15460,12 +15452,21 @@ app.get('/api/web-local/generate', async (req, res) => {
                           const seasonNum = String(season.index || 0).padStart(2, '0');
                           const episodeNum = String(episode.index || 0).padStart(2, '0');
                           const safeEpisodeTitle = (episode.title || 'Sin título').replace(/[<>:"\\/\\|?*]/g, '_');
-                          const fileName = part.file ? part.file.split('/').pop() : 'file.mkv';
-                          const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+                          const originalFileName = part.file ? part.file.split('/').pop() : 'video.mkv';
+                          const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
                           const customFileName = `${safeSeriesName} - S${seasonNum}E${episodeNum} - ${safeEpisodeTitle}${fileExtension}`;
                           
-                          // Construir URL de descarga completa (funcional) con nombre personalizado
-                          const downloadUrl = part.key ? `${server.baseURI}${part.key}?download=0&X-Plex-Token=${server.accessToken}&filename=${encodeURIComponent(customFileName)}` : '';
+                          // Extraer partKey sin el nombre del archivo
+                          let partKey = part.key || '';
+                          if (partKey && originalFileName) {
+                            const fileNameInPath = '/' + originalFileName;
+                            if (partKey.endsWith(fileNameInPath)) {
+                              partKey = partKey.substring(0, partKey.length - fileNameInPath.length);
+                            }
+                          }
+                          
+                          // Construir URL de descarga completa con nombre personalizado
+                          const downloadUrl = partKey ? `${server.baseURI}${partKey}/${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                           
                           episodes.push({
                             ratingKey: episode.ratingKey,
