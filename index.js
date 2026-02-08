@@ -12707,9 +12707,10 @@ Generado por Infinity Scrap`;
 async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
   // PRIORIDAD 1: Si viene TMDB ID directo en el GUID
   if (guid) {
-    const tmdbMatch = guid.match(/tmdb:\/\/(movie|tv)\/(\d+)/i);
+    // Aceptar tanto tmdb://11674 como tmdb://movie/11674
+    const tmdbMatch = guid.match(/tmdb:\/\/(?:movie\/|tv\/)?(\d+)/i);
     if (tmdbMatch) {
-      const tmdbId = parseInt(tmdbMatch[2]);
+      const tmdbId = parseInt(tmdbMatch[1]);
       return { tmdbId, imdbId: null, fromCache: false, source: 'guid-tmdb' };
     }
     
@@ -13155,22 +13156,42 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
-              let bestGuid = movie.guid; // Fallback al guid principal
-              const movieSection = moviesXml.split('ratingKey="' + movie.ratingKey + '"')[1];
-              if (movieSection) {
-                const endSection = movieSection.indexOf('<Video') > 0 ? movieSection.indexOf('<Video') : movieSection.indexOf('</MediaContainer>');
-                const relevantXml = movieSection.substring(0, endSection);
+              // Extraer GUIDs correctos del XML de forma más directa
+              let bestGuid = movie.guid;
+              
+              // Buscar el bloque de este ratingKey específico en el XML
+              const ratingKeyPattern = 'ratingKey="' + movie.ratingKey + '"';
+              const startPos = moviesXml.indexOf(ratingKeyPattern);
+              
+              if (startPos !== -1) {
+                // Tomar desde este ratingKey hasta el próximo <Video> o fin
+                const xmlAfter = moviesXml.substring(startPos);
+                const nextVideoPos = xmlAfter.indexOf('<Video', 10); // Empezar búsqueda después del actual
+                const endPos = nextVideoPos !== -1 ? nextVideoPos : xmlAfter.length;
+                const thisMovieXml = xmlAfter.substring(0, endPos);
                 
-                // Buscar <Guid id="tmdb://..."/>
-                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\/\/(\d+)"\/>/);
-                if (tmdbGuidMatch) {
-                  bestGuid = 'tmdb://movie/' + tmdbGuidMatch[1];
-                } else {
+                // Buscar TODOS los <Guid id="..."/> en este bloque
+                const guidMatches = thisMovieXml.match(/<Guid id="([^"]+)"\s*\/>/g);
+                
+                if (guidMatches) {
+                  // Buscar TMDB primero
+                  for (const guidTag of guidMatches) {
+                    const tmdbMatch = guidTag.match(/tmdb:\/\/(\d+)/);
+                    if (tmdbMatch) {
+                      bestGuid = 'tmdb://' + tmdbMatch[1];
+                      break;
+                    }
+                  }
+                  
                   // Si no hay TMDB, buscar IMDB
-                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\/\/tt\d+)"\/>/);
-                  if (imdbGuidMatch) {
-                    bestGuid = imdbGuidMatch[1];
+                  if (bestGuid === movie.guid) {
+                    for (const guidTag of guidMatches) {
+                      const imdbMatch = guidTag.match(/imdb:\/\/(tt\d+)/);
+                      if (imdbMatch) {
+                        bestGuid = 'imdb://' + imdbMatch[1];
+                        break;
+                      }
+                    }
                   }
                 }
               }
@@ -13285,22 +13306,42 @@ app.get('/api/web-local/generate', async (req, res) => {
                 sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
               }
               
-              // Extraer GUIDs correctos del XML (buscar tags <Guid> anidados)
-              let bestGuid = series.guid; // Fallback al guid principal
-              const seriesSection = seriesXml.split('ratingKey="' + series.ratingKey + '"')[1];
-              if (seriesSection) {
-                const endSection = seriesSection.indexOf('<Directory') > 0 ? seriesSection.indexOf('<Directory') : seriesSection.indexOf('</MediaContainer>');
-                const relevantXml = seriesSection.substring(0, endSection);
+              // Extraer GUIDs correctos del XML de forma más directa
+              let bestGuid = series.guid;
+              
+              // Buscar el bloque de este ratingKey específico en el XML
+              const ratingKeyPattern = 'ratingKey="' + series.ratingKey + '"';
+              const startPos = seriesXml.indexOf(ratingKeyPattern);
+              
+              if (startPos !== -1) {
+                // Tomar desde este ratingKey hasta el próximo <Directory> o fin
+                const xmlAfter = seriesXml.substring(startPos);
+                const nextDirPos = xmlAfter.indexOf('<Directory', 10); // Empezar búsqueda después del actual
+                const endPos = nextDirPos !== -1 ? nextDirPos : xmlAfter.length;
+                const thisSeriesXml = xmlAfter.substring(0, endPos);
                 
-                // Buscar <Guid id="tmdb://..."/>
-                const tmdbGuidMatch = relevantXml.match(/<Guid id="tmdb:\/\/(\d+)"\/>/);
-                if (tmdbGuidMatch) {
-                  bestGuid = 'tmdb://tv/' + tmdbGuidMatch[1];
-                } else {
+                // Buscar TODOS los <Guid id="..."/> en este bloque
+                const guidMatches = thisSeriesXml.match(/<Guid id="([^"]+)"\s*\/>/g);
+                
+                if (guidMatches) {
+                  // Buscar TMDB primero
+                  for (const guidTag of guidMatches) {
+                    const tmdbMatch = guidTag.match(/tmdb:\/\/(\d+)/);
+                    if (tmdbMatch) {
+                      bestGuid = 'tmdb://' + tmdbMatch[1];
+                      break;
+                    }
+                  }
+                  
                   // Si no hay TMDB, buscar IMDB
-                  const imdbGuidMatch = relevantXml.match(/<Guid id="(imdb:\/\/tt\d+)"\/>/);
-                  if (imdbGuidMatch) {
-                    bestGuid = imdbGuidMatch[1];
+                  if (bestGuid === series.guid) {
+                    for (const guidTag of guidMatches) {
+                      const imdbMatch = guidTag.match(/imdb:\/\/(tt\d+)/);
+                      if (imdbMatch) {
+                        bestGuid = 'imdb://' + imdbMatch[1];
+                        break;
+                      }
+                    }
                   }
                 }
               }
