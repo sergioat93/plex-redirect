@@ -8875,12 +8875,12 @@ app.get('/library', async (req, res) => {
       color: var(--text-primary);
       min-height: 100vh;
     }
-    .container { max-width: 1920px; margin: 0 auto; padding: 0 0.5rem; }
+    .container { max-width: 1920px; margin: 0 auto; padding: 0 1.5rem; }
     
     /* NAVBAR */
     .navbar {
       background: #000;
-      padding: 0.5rem 0;
+      padding: 0.75rem 0;
       border-bottom: 1px solid rgba(229, 160, 13, 0.2);
       position: sticky;
       top: 0;
@@ -9030,7 +9030,7 @@ app.get('/library', async (req, res) => {
     .filters-bar {
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
-      padding: 0.4rem 0;
+      padding: 0.75rem 0;
       position: sticky;
       top: 49px;
       z-index: 999;
@@ -9556,7 +9556,7 @@ app.get('/library', async (req, res) => {
     
     .modal-content {
       position: relative;
-      max-width: 1000px;
+      max-width: 1200px;
       margin: 40px auto;
       background: #282828;
       border-radius: 12px;
@@ -10245,7 +10245,7 @@ app.get('/library', async (req, res) => {
   <!-- Main Content -->
   <main class="main-content">
     <div class="container">
-      <div id="content-grid" class="movie-grid">
+      <div id="content-grid" class="content-grid">
         <!-- Content will be rendered here -->
       </div>
     </div>
@@ -10490,6 +10490,9 @@ app.get('/library', async (req, res) => {
       // Actualizar filtros dinámicos basados en resultados
       populateFilters(filtered);
 
+      // Ordenar películas
+      filtered = sortItems(filtered, sort);
+
       // Actualizar contador
       updateCounter(filtered.length);
 
@@ -10500,7 +10503,7 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(m => \`
-        <div class="content-card" onclick="openMovieModal(\${m.tmdbId})">
+        <div class="content-card" onclick="window.openMovieModal(\${m.tmdbId})">
           <div class="card-poster">
             \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">🎬</div>'}
           </div>
@@ -10570,6 +10573,9 @@ app.get('/library', async (req, res) => {
       // Actualizar filtros dinámicos basados en resultados
       populateFilters(filtered);
 
+      // Ordenar series
+      filtered = sortItems(filtered, sort);
+
       // Actualizar contador
       updateCounter(filtered.length);
 
@@ -10580,7 +10586,7 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(s => \`
-        <div class="content-card" onclick="openSeriesModal(\${s.tmdbId})">
+        <div class="content-card" onclick="window.openSeriesModal(\${s.tmdbId})">
           <div class="card-poster">
             \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📺</div>'}
           </div>
@@ -10827,12 +10833,13 @@ app.get('/library', async (req, res) => {
       };
       
       // Botón de descarga o selección de servidor
+      const firstServer = movie.servers && movie.servers[0];
       const downloadButtonHTML = hasMultipleServers 
         ? \`<button class="download-button" onclick="openServerModal(\${tmdbId}, 'movie')">
              <i class="fas fa-download"></i> Elegir Servidor para Descargar
            </button>\`
-        : movie.downloadUrl 
-          ? \`<a href="\${movie.downloadUrl}" class="download-button" download>
+        : (firstServer && firstServer.downloadUrl)
+          ? \`<a href="\${firstServer.downloadUrl}" class="download-button" download>
                <i class="fas fa-download"></i> Descargar
              </a>\`
           : '';
@@ -10854,12 +10861,8 @@ app.get('/library', async (req, res) => {
                   const safeGenre = g.replace(/'/g, "\\\\'");
                   return \`<span class="genre-tag clickable-badge" onclick="window.filterByGenre('\${safeGenre}', 'movie'); window.closeModal();" title="Ver películas de \${g}">\${g}</span>\`;
                 }).join('') : ''}
+                \${movieCollection ? \`<span class="collection-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
               </div>
-              \${movieCollection ? \`
-                <div style="margin-top: 0.75rem;">
-                  <span class="collection-badge" onclick="window.goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); window.closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>
-                </div>
-              \` : ''}
               <div class="modal-icons-row">
                 \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
                 \${movie.imdbId ? \`<a href="https://www.imdb.com/title/\${movie.imdbId}" target="_blank" rel="noopener noreferrer" title="Ver en IMDb" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/IMDB.png" alt="IMDb" class="badge-icon"></a>\` : ''}
