@@ -10305,7 +10305,7 @@ app.get('/library', async (req, res) => {
       
       // Botón de descarga o selección de servidor
       const downloadButtonHTML = hasMultipleServers 
-        ? \`<button class="download-button" onclick="openServerModal(${tmdbId}, 'movie')">
+        ? \`<button class="download-button" onclick="openServerModal(\${tmdbId}, 'movie')">
              <i class="fas fa-download"></i> Elegir Servidor para Descargar
            </button>\`
         : movie.downloadUrl 
@@ -10385,7 +10385,7 @@ app.get('/library', async (req, res) => {
       
       // Botón de descarga o selección de servidor
       const downloadButtonHTML = hasMultipleServers 
-        ? \`<button class="download-button" onclick="openServerModal(${tmdbId}, 'series')">
+        ? \`<button class="download-button" onclick="openServerModal(\${tmdbId}, 'series')">
              <i class="fas fa-download"></i> Elegir Servidor para Descargar
            </button>\`
         : '';
