@@ -12318,7 +12318,16 @@ app.get('/api/web-local/status', async (req, res) => {
     
     for (const server of allServers) {
       try {
-        const response = await fetch(`${server.baseURI}/?X-Plex-Token=${server.accessToken}`, { 
+        const token = server.tokens && server.tokens.length > 0 ? server.tokens[0].accessToken : null;
+        if (!token) {
+          serverStatuses.push({
+            machineIdentifier: server.machineIdentifier,
+            name: server.serverName,
+            online: false
+          });
+          continue;
+        }
+        const response = await fetch(`${server.baseURI}/?X-Plex-Token=${token}`, { 
           timeout: 5000 
         });
         serverStatuses.push({
@@ -12369,8 +12378,15 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     for (const server of allServers) {
       try {
-        const response = await fetch(`${server.baseURI}/?X-Plex-Token=${server.accessToken}`, { timeout: 5000 });
+        const token = server.tokens && server.tokens.length > 0 ? server.tokens[0].accessToken : null;
+        if (!token) {
+          sendProgress({ type: 'warning', message: `⚠️ ${server.serverName} - SIN TOKEN (excluido)` });
+          continue;
+        }
+        const response = await fetch(`${server.baseURI}/?X-Plex-Token=${token}`, { timeout: 5000 });
         if (response.ok) {
+          // Agregar el token al objeto para usarlo después
+          server.accessToken = token;
           activeServers.push(server);
           sendProgress({ type: 'info', message: `✅ ${server.serverName} - ONLINE` });
         } else {
