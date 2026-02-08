@@ -10460,10 +10460,8 @@ Generado por Infinity Scrap`;
                       const html = await response.text();
                       
                       if (generatePane) {
-                        // Parsear solo el body del HTML recibido
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        generatePane.innerHTML = doc.body.innerHTML;
+                        // Insertar HTML directamente (es un fragmento válido)
+                        generatePane.innerHTML = html;
                         
                         // Ejecutar los scripts del contenido cargado
                         const scripts = generatePane.querySelectorAll('script');
