@@ -10460,7 +10460,9 @@ Generado por Infinity Scrap`;
                 // Si es el tab "generate", cargar contenido dinámicamente
                 if (tabName === 'generate') {
                   console.log('[DEBUG CLIENT] Tab es generate, iniciando carga...');
-                  const password = new URLSearchParams(window.location.search).get('password');
+                  const urlParams = new URLSearchParams(window.location.search);
+                  const password = urlParams.get('password') || urlParams.get('adminPassword');
+                  console.log('[DEBUG CLIENT] Password obtenido:', password ? 'SÍ' : 'NO');
                   if (password) {
                     try {
                       const generatePane = document.getElementById('tab-generate');
