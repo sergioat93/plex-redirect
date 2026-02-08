@@ -9030,7 +9030,7 @@ app.get('/library', async (req, res) => {
     .filters-bar {
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
-      padding: 1rem 0;
+      padding: 0.75rem 0;
       position: sticky;
       top: 49px;
       z-index: 999;
@@ -9041,42 +9041,61 @@ app.get('/library', async (req, res) => {
       align-items: center;
       gap: 1rem;
     }
+    .filters-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex: 1;
+    }
+    .items-counter {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--primary-color);
+      white-space: nowrap;
+      min-width: fit-content;
+    }
     .filters-group {
       display: flex;
-      gap: 0.5rem;
+      gap: 0.4rem;
       align-items: center;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       flex: 1;
     }
     .filter-select {
-      padding: 0.5rem 0.75rem;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0.4rem 0.65rem;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
       border-radius: 6px;
       color: var(--text-primary);
-      font-size: 0.875rem;
+      font-size: 0.75rem;
       cursor: pointer;
+      min-width: fit-content;
+      max-width: none;
+    }
+    .filter-select option {
+      white-space: normal;
     }
     .filter-select:focus {
       outline: none;
       border-color: var(--primary-color);
     }
     .btn-clear-filters {
-      padding: 0.5rem 1rem;
-      background: rgba(229, 160, 13, 0.1);
-      border: 1px solid rgba(229, 160, 13, 0.3);
+      padding: 0.4rem 0.8rem;
+      background: var(--primary-color);
+      border: none;
       border-radius: 6px;
-      color: var(--primary-color);
-      font-size: 0.875rem;
+      color: #000;
+      font-size: 0.75rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.35rem;
+      white-space: nowrap;
     }
     .btn-clear-filters:hover {
-      background: rgba(229, 160, 13, 0.2);
+      background: var(--primary-dark);
     }
     .view-controls {
       display: flex;
@@ -9356,7 +9375,7 @@ app.get('/library', async (req, res) => {
     .modal-icons-row {
       display: flex;
       gap: 0.75rem;
-      justify-content: center;
+      justify-content: flex-end;
       align-items: center;
       margin-top: 1rem;
     }
@@ -9490,14 +9509,17 @@ app.get('/library', async (req, res) => {
     }
     
     .collection-count {
-      background: rgba(229, 160, 13, 0.2);
-      color: #e5a00d;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin-top: 8px;
-      display: inline-block;
+      position: absolute;
+      top: 0.5rem;
+      left: 0.5rem;
+      background: rgba(229, 160, 13, 0.95);
+      color: #000;
+      padding: 0.35rem 0.65rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
     
     .container {
@@ -9632,6 +9654,24 @@ app.get('/library', async (req, res) => {
       border-radius: 15px;
       font-size: 0.85rem;
       color: rgba(255,255,255,0.9);
+    }
+    
+    .collection-badge {
+      background: rgba(229, 160, 13, 0.2);
+      border: 2px solid #e5a00d;
+      padding: 0.3rem 0.8rem;
+      border-radius: 15px;
+      font-size: 0.85rem;
+      color: #e5a00d;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .collection-badge:hover {
+      background: rgba(229, 160, 13, 0.4);
+      transform: scale(1.05);
     }
     
     .modal-hero {
@@ -10097,8 +10137,10 @@ app.get('/library', async (req, res) => {
   <div class="filters-bar">
     <div class="container">
       <div class="filters-wrapper">
-        <!-- Left: Filters -->
-        <div class="filters-group" id="filters-group">
+        <!-- Left: Counter & Filters -->
+        <div class="filters-left">
+          <span id="items-counter" class="items-counter"></span>
+          <div class="filters-group" id="filters-group">
           <select id="genre-filter" class="filter-select">
             <option value="">Todos los géneros</option>
           </select>
@@ -10109,11 +10151,28 @@ app.get('/library', async (req, res) => {
             <option value="">Todos los países</option>
           </select>
           <select id="rating-filter" class="filter-select">
-            <option value="">Todas las valoraciones</option>
+            <option value="">Valoración</option>
+            <option value="10">⭐ 10</option>
+            <option value="9.5">⭐ 9.5+</option>
             <option value="9">⭐ 9.0+</option>
+            <option value="8.5">⭐ 8.5+</option>
             <option value="8">⭐ 8.0+</option>
+            <option value="7.5">⭐ 7.5+</option>
             <option value="7">⭐ 7.0+</option>
+            <option value="6.5">⭐ 6.5+</option>
             <option value="6">⭐ 6.0+</option>
+            <option value="5.5">⭐ 5.5+</option>
+            <option value="5">⭐ 5.0+</option>
+            <option value="4.5">⭐ 4.5+</option>
+            <option value="4">⭐ 4.0+</option>
+            <option value="3.5">⭐ 3.5+</option>
+            <option value="3">⭐ 3.0+</option>
+            <option value="2.5">⭐ 2.5+</option>
+            <option value="2">⭐ 2.0+</option>
+            <option value="1.5">⭐ 1.5+</option>
+            <option value="1">⭐ 1.0+</option>
+            <option value="0.5">⭐ 0.5+</option>
+            <option value="0">⭐ 0+</option>
           </select>
           <select id="sort-filter" class="filter-select">
             <option value="title">Título A-Z</option>
@@ -10123,9 +10182,10 @@ app.get('/library', async (req, res) => {
             <option value="rating-desc">Valoración ↓</option>
             <option value="rating-asc">Valoración ↑</option>
           </select>
-          <button id="clear-filters" class="btn-clear-filters">
+          <button id="clear-filters-btn" class="btn-clear-filters">
             <i class="fas fa-broom"></i> Limpiar
           </button>
+          </div>
         </div>
         
         <!-- Right: View Controls -->
@@ -10395,8 +10455,8 @@ app.get('/library', async (req, res) => {
       // Actualizar filtros dinámicos basados en resultados
       populateFilters(filtered);
 
-      // Ordenar
-      filtered = sortItems(filtered, sort);
+      // Actualizar contador
+      updateCounter(filtered.length);
 
       const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
@@ -10475,8 +10535,8 @@ app.get('/library', async (req, res) => {
       // Actualizar filtros dinámicos basados en resultados
       populateFilters(filtered);
 
-      // Ordenar
-      filtered = sortItems(filtered, sort);
+      // Actualizar contador
+      updateCounter(filtered.length);
 
       const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
@@ -10528,6 +10588,9 @@ app.get('/library', async (req, res) => {
         filtered.sort((a, b) => a.movieIds.length - b.movieIds.length);
       }
 
+      // Actualizar contador
+      updateCounter(filtered.length);
+
       const grid = document.getElementById('content-grid');
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="no-results">📭 No se encontraron colecciones</div>';
@@ -10535,16 +10598,69 @@ app.get('/library', async (req, res) => {
       }
 
       grid.innerHTML = filtered.map(c => \`
-        <div class="content-card" onclick="openCollectionModal(\${c.tmdbId})">
+        <div class="content-card" onclick="goToCollectionMovies(\${c.tmdbId}, '\${c.name.replace(/'/g, "\\\\'")}')">
           <div class="card-poster">
             \${c.posterPath ? \`<img src="\${c.posterPath}" alt="\${c.name}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📚</div>'}
+            <span class="collection-count">\${c.movieIds.length} películas</span>
           </div>
           <div class="card-content">
             <div class="card-title">\${c.name}</div>
-            <div class="collection-count">\${c.movieIds.length} películas</div>
           </div>
         </div>
       \`).join('');
+    }
+
+    // UPDATE COUNTER
+    function updateCounter(count) {
+      const counter = document.getElementById('items-counter');
+      if (counter) {
+        counter.textContent = \`\${count} elementos\`;
+      }
+    }
+
+    // GO TO COLLECTION MOVIES
+    function goToCollectionMovies(collectionId, collectionName) {
+      // Cambiar a la pestaña de películas
+      document.getElementById('movies-tab').click();
+      
+      // Limpiar filtros
+      document.getElementById('search-input').value = '';
+      document.getElementById('genre-filter').value = '';
+      document.getElementById('year-filter').value = '';
+      document.getElementById('country-filter').value = '';
+      document.getElementById('rating-filter').value = '';
+      document.getElementById('sort-filter').value = 'title';
+      
+      // Filtrar por colección
+      const collection = allCollections.find(c => c.tmdbId === collectionId);
+      if (collection && collection.movieIds && collection.movieIds.length > 0) {
+        // Filtrar películas que pertenecen a esta colección
+        const filtered = allMovies.filter(m => collection.movieIds.includes(m.tmdbId));
+        
+        updateCounter(filtered.length);
+        
+        const grid = document.getElementById('content-grid');
+        if (filtered.length === 0) {
+          grid.innerHTML = '<div class="no-results">📭 No se encontraron películas en esta colección</div>';
+          return;
+        }
+
+        grid.innerHTML = filtered.map(m => \`
+          <div class="content-card" onclick="openMovieModal(\${m.tmdbId})">
+            <div class="card-poster">
+              \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">🎬</div>'}
+            </div>
+            <div class="card-content">
+              <div class="card-title">\${m.title}</div>
+              <div class="card-info">
+                <span class="card-year">\${m.releaseYear || 'N/A'}</span>
+                \${m.voteAverage ? \`<span class="card-rating"><i class="fas fa-star"></i> \${m.voteAverage}</span>\` : ''}
+              </div>
+              \${m.genres ? \`<div class="card-genres">\${m.genres.slice(0, 2).join(', ')}</div>\` : ''}
+            </div>
+          </div>
+        \`).join('');
+      }
     }
 
     // SORT FUNCTION
@@ -10609,6 +10725,9 @@ app.get('/library', async (req, res) => {
       const allVariants = allMovies.filter(m => m.tmdbId === tmdbId);
       const hasMultipleServers = allVariants.length > 1;
       
+      // Obtener colección si existe
+      const movieCollection = allCollections.find(c => c.movieIds && c.movieIds.includes(tmdbId));
+      
       // Botón de descarga o selección de servidor
       const downloadButtonHTML = hasMultipleServers 
         ? \`<button class="download-button" onclick="openServerModal(\${tmdbId}, 'movie')">
@@ -10633,6 +10752,7 @@ app.get('/library', async (req, res) => {
                 \${movie.runtime ? \`<span class="runtime-badge">\${movie.runtime}</span>\` : ''}
                 \${movie.voteAverage ? \`<span class="rating-badge">⭐ \${movie.voteAverage}</span>\` : ''}
                 \${movie.genres ? movie.genres.slice(0, 3).map(g => \`<span class="genre-tag">\${g}</span>\`).join('') : ''}
+                \${movieCollection ? \`<span class="collection-badge" onclick="goToCollectionMovies(\${movieCollection.tmdbId}, '\${movieCollection.name.replace(/'/g, "\\\\'")}'); closeModal();" title="Ver colección: \${movieCollection.name}">📚 \${movieCollection.name}</span>\` : ''}
               </div>
               <div class="modal-icons-row">
                 \${tmdbId ? \`<a href="https://www.themoviedb.org/movie/\${tmdbId}" target="_blank" rel="noopener noreferrer" title="Ver en TMDB" class="badge-icon-link"><img loading="lazy" src="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/TMDB.png" alt="TMDB" class="badge-icon"></a>\` : ''}
@@ -10648,8 +10768,6 @@ app.get('/library', async (req, res) => {
               </div>
             </div>
             <div class="modal-main-info">
-              <div class="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
-              \${downloadButtonHTML}
               <div class="modal-details-table">
                 \${movie.director ? \`<div class="detail-item"><strong>Director:</strong><span>\${movie.director}</span></div>\` : ''}
                 \${movie.cast && movie.cast.length > 0 ? \`<div class="detail-item"><strong>Reparto:</strong><span>\${movie.cast.slice(0, 5).map(a => a.name).join(', ')}</span></div>\` : ''}
@@ -10661,22 +10779,10 @@ app.get('/library', async (req, res) => {
                 \${movie.budget ? \`<div class="detail-item"><strong>Presupuesto:</strong><span>$\${movie.budget.toLocaleString()}</span></div>\` : ''}
                 \${movie.revenue ? \`<div class="detail-item"><strong>Recaudación:</strong><span>$\${movie.revenue.toLocaleString()}</span></div>\` : ''}
               </div>
+              <div class="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
+              \${downloadButtonHTML}
             </div>
           </div>
-          \${movie.trailerKey ? \`
-            <div style="padding: 2rem; background: rgba(0,0,0,0.3);">
-              <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Tráiler</h2>
-              <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-                <iframe 
-                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
-                  src="https://www.youtube.com/embed/\${movie.trailerKey}" 
-                  frameborder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowfullscreen>
-                </iframe>
-              </div>
-            </div>
-          \` : ''}
         </div>
       \`;
 
