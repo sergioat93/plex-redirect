@@ -8836,14 +8836,16 @@ app.get('/library', async (req, res) => {
       archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
       archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
       
-      // Agregar InfinityScrap.html (diseño COMPLETO idéntico a Infinity Scrap con TODOS los filtros)
+      // Agregar InfinityScrap.html (COPIA EXACTA de la web principal con adaptaciones para offline)
       const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=1.0, maximum-scale=5.0">
+  <meta name="theme-color" content="#e5a00d">
   <title>Infinity Scrap - Web Local Offline</title>
   <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/sergioat93/plex-redirect/main/favicon.ico">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -8860,10 +8862,11 @@ app.get('/library', async (req, res) => {
     html { scroll-behavior: smooth; }
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      background: var(--bg-dark);
       color: var(--text-primary);
       min-height: 100vh;
     }
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
     
     /* HEADER */
     .header {
@@ -9368,6 +9371,30 @@ app.get('/library', async (req, res) => {
       color: #cccccc;
     }
     
+    .download-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, #e5a00d 0%, #f59e0b 100%);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+    }
+    .download-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(229, 160, 13, 0.4);
+    }
+    .download-button i {
+      font-size: 1.1rem;
+    }
+    
     .modal-details-table {
       display: grid;
       gap: 0.5rem;
@@ -9449,10 +9476,40 @@ app.get('/library', async (req, res) => {
       color: #e5a00d;
       min-width: 60px;
     }
-    .episode-title {
+    .episode-info {
       flex: 1;
+    }
+    .episode-title {
       color: white;
       font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .episode-overview {
+      color: #9ca3af;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+      line-height: 1.4;
+    }
+    .episode-download-btn {
+      background: linear-gradient(135deg, #e5a00d 0%, #f59e0b 100%);
+      color: white;
+      border: none;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+    }
+    .episode-download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
+    }
+    .episode-download-btn i {
+      font-size: 0.9rem;
     }
     
     /* Colecciones: Películas */
@@ -9499,6 +9556,160 @@ app.get('/library', async (req, res) => {
       text-align: center;
     }
     
+    /* SERVER SELECTION MODAL (estilo Panel Admin - Búsqueda Global) */
+    .server-selection-modal {
+      max-width: 700px;
+    }
+    .server-selection-header {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 1rem 0;
+      border-bottom: 1px solid rgba(229, 160, 13, 0.2);
+      margin-bottom: 1.5rem;
+    }
+    .server-selection-poster {
+      width: 100px;
+      height: 150px;
+      border-radius: 8px;
+      object-fit: cover;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      flex-shrink: 0;
+    }
+    .server-selection-info {
+      flex: 1;
+    }
+    .server-selection-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+    .server-selection-meta {
+      font-size: 1rem;
+      color: #9ca3af;
+    }
+    .server-selection-subtitle {
+      font-size: 0.875rem;
+      color: #6b7280;
+      margin-top: 0.5rem;
+    }
+    .server-options-container {
+      max-height: 450px;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+    .server-options-container::-webkit-scrollbar {
+      width: 8px;
+    }
+    .server-options-container::-webkit-scrollbar-track {
+      background: rgba(17, 24, 39, 0.5);
+      border-radius: 4px;
+    }
+    .server-options-container::-webkit-scrollbar-thumb {
+      background: rgba(229, 160, 13, 0.5);
+      border-radius: 4px;
+    }
+    .server-options-container::-webkit-scrollbar-thumb:hover {
+      background: rgba(229, 160, 13, 0.7);
+    }
+    .server-option {
+      background: rgba(17, 24, 39, 0.8);
+      border: 2px solid rgba(229, 160, 13, 0.2);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .server-option:hover {
+      border-color: #e5a00d;
+      background: rgba(17, 24, 39, 1);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(229, 160, 13, 0.2);
+    }
+    .server-option-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .server-option-name {
+      font-weight: 700;
+      color: #e5a00d;
+      font-size: 1.1rem;
+    }
+    .server-option-quality {
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+    }
+    .quality-4k, .quality-2160 {
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      color: white;
+    }
+    .quality-1080 {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+    }
+    .quality-720 {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+    .quality-sd {
+      background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+      color: white;
+    }
+    .server-option-details {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+    .server-detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .server-detail-label {
+      font-size: 0.75rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .server-detail-value {
+      color: #f3f4f6;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .download-button {
+      background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
+      color: #000;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .download-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.4);
+    }
+    .download-button i {
+      font-size: 1rem;
+    }
+    
     @media (max-width: 768px) {
       .container {
         padding: 0 1rem;
@@ -9537,6 +9748,14 @@ app.get('/library', async (req, res) => {
       }
       .seasons-container, .collection-movies-container {
         padding: 1rem;
+      }
+      .server-selection-header {
+        flex-direction: column;
+        text-align: center;
+      }
+      .server-option-details {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
       }
     }
   </style>
@@ -9738,6 +9957,7 @@ app.get('/library', async (req, res) => {
     let allSeries = [];
     let allCollections = [];
     let allServers = new Set();
+    let currentContentForServerModal = null;
 
     // Cargar datos y popular filtros
     Promise.all([
@@ -10069,6 +10289,21 @@ app.get('/library', async (req, res) => {
     function openMovieModal(tmdbId) {
       const movie = allMovies.find(m => m.tmdbId === tmdbId);
       if (!movie) return;
+      
+      // Agrupar todas las variantes del mismo movie por servidor
+      const allVariants = allMovies.filter(m => m.tmdbId === tmdbId);
+      const hasMultipleServers = allVariants.length > 1;
+      
+      // Botón de descarga o selección de servidor
+      const downloadButtonHTML = hasMultipleServers 
+        ? \`<button class="download-button" onclick="openServerModal(${tmdbId}, 'movie')">
+             <i class="fas fa-download"></i> Elegir Servidor para Descargar
+           </button>\`
+        : movie.downloadUrl 
+          ? \`<a href="\${movie.downloadUrl}" class="download-button" download>
+               <i class="fas fa-download"></i> Descargar
+             </a>\`
+          : '';
 
       const modalHTML = \`
         <div class="modal-content">
@@ -10094,14 +10329,34 @@ app.get('/library', async (req, res) => {
             </div>
             <div class="modal-main-info">
               <div class="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
+              \${downloadButtonHTML}
               <div class="modal-details-table">
                 \${movie.director ? \`<div class="detail-item"><strong>Director:</strong><span>\${movie.director}</span></div>\` : ''}
+                \${movie.cast && movie.cast.length > 0 ? \`<div class="detail-item"><strong>Reparto:</strong><span>\${movie.cast.slice(0, 5).map(a => a.name).join(', ')}</span></div>\` : ''}
                 \${movie.productionCompanies ? \`<div class="detail-item"><strong>Productora:</strong><span>\${movie.productionCompanies}</span></div>\` : ''}
-                \${movie.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${movie.serverName}</span></div>\` : ''}
+                \${hasMultipleServers ? \`<div class="detail-item"><strong>Servidores:</strong><span>\${allVariants.map(v => v.serverName).join(', ')}</span></div>\` : movie.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${movie.serverName}</span></div>\` : ''}
                 \${movie.releaseDate ? \`<div class="detail-item"><strong>Estreno:</strong><span>\${movie.releaseDate}</span></div>\` : ''}
+                \${movie.countries ? \`<div class="detail-item"><strong>Países:</strong><span>\${movie.countries}</span></div>\` : ''}
+                \${movie.languages ? \`<div class="detail-item"><strong>Idiomas:</strong><span>\${movie.languages}</span></div>\` : ''}
+                \${movie.budget ? \`<div class="detail-item"><strong>Presupuesto:</strong><span>$\${movie.budget.toLocaleString()}</span></div>\` : ''}
+                \${movie.revenue ? \`<div class="detail-item"><strong>Recaudación:</strong><span>$\${movie.revenue.toLocaleString()}</span></div>\` : ''}
               </div>
             </div>
           </div>
+          \${movie.trailerKey ? \`
+            <div style="padding: 2rem; background: rgba(0,0,0,0.3);">
+              <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Tráiler</h2>
+              <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+                <iframe 
+                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+                  src="https://www.youtube.com/embed/\${movie.trailerKey}" 
+                  frameborder="0" 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                  allowfullscreen>
+                </iframe>
+              </div>
+            </div>
+          \` : ''}
         </div>
       \`;
 
@@ -10114,6 +10369,17 @@ app.get('/library', async (req, res) => {
     function openSeriesModal(tmdbId) {
       const series = allSeries.find(s => s.tmdbId === tmdbId);
       if (!series) return;
+      
+      // Agrupar todas las variantes de la misma serie por servidor
+      const allVariants = allSeries.filter(s => s.tmdbId === tmdbId);
+      const hasMultipleServers = allVariants.length > 1;
+      
+      // Botón de descarga o selección de servidor
+      const downloadButtonHTML = hasMultipleServers 
+        ? \`<button class="download-button" onclick="openServerModal(${tmdbId}, 'series')">
+             <i class="fas fa-download"></i> Elegir Servidor para Descargar
+           </button>\`
+        : '';
 
       const seasonsHTML = series.seasons && series.seasons.length > 0 ? \`
         <div class="seasons-container">
@@ -10128,7 +10394,13 @@ app.get('/library', async (req, res) => {
                 \${season.episodes ? season.episodes.map(ep => \`
                   <div class="episode-item">
                     <div class="episode-number">E\${ep.episodeNumber || '?'}</div>
-                    <div class="episode-title">\${ep.name || 'Sin título'}</div>
+                    <div class="episode-info">
+                      <div class="episode-title">\${ep.name || 'Sin título'}</div>
+                      \${ep.overview ? \`<div class="episode-overview">\${ep.overview}</div>\` : ''}
+                    </div>
+                    \${ep.downloadUrl ? \`<a href="\${ep.downloadUrl}" class="episode-download-btn" download title="Descargar episodio">
+                      <i class="fas fa-download"></i>
+                    </a>\` : ''}
                   </div>
                 \`).join('') : '<p style="color: #999; padding: 1rem;">No hay episodios disponibles</p>'}
               </div>
@@ -10161,15 +10433,33 @@ app.get('/library', async (req, res) => {
             </div>
             <div class="modal-main-info">
               <div class="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
+              \${downloadButtonHTML}
               <div class="modal-details-table">
                 \${series.createdBy ? \`<div class="detail-item"><strong>Creador:</strong><span>\${series.createdBy}</span></div>\` : ''}
+                \${series.cast && series.cast.length > 0 ? \`<div class="detail-item"><strong>Reparto:</strong><span>\${series.cast.slice(0, 5).map(a => a.name).join(', ')}</span></div>\` : ''}
                 \${series.productionCompanies ? \`<div class="detail-item"><strong>Productora:</strong><span>\${series.productionCompanies}</span></div>\` : ''}
-                \${series.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${series.serverName}</span></div>\` : ''}
+                \${hasMultipleServers ? \`<div class="detail-item"><strong>Servidores:</strong><span>\${allVariants.map(v => v.serverName).join(', ')}</span></div>\` : series.serverName ? \`<div class="detail-item"><strong>Servidor:</strong><span>\${series.serverName}</span></div>\` : ''}
                 \${series.firstAirDate ? \`<div class="detail-item"><strong>Estreno:</strong><span>\${series.firstAirDate}</span></div>\` : ''}
+                \${series.countries ? \`<div class="detail-item"><strong>Países:</strong><span>\${series.countries}</span></div>\` : ''}
+                \${series.languages ? \`<div class="detail-item"><strong>Idiomas:</strong><span>\${series.languages}</span></div>\` : ''}
               </div>
             </div>
           </div>
           \${seasonsHTML}
+          \${series.trailerKey ? \`
+            <div style="padding: 2rem; background: rgba(0,0,0,0.3);">
+              <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Tráiler</h2>
+              <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+                <iframe 
+                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+                  src="https://www.youtube.com/embed/\${series.trailerKey}" 
+                  frameborder="0" 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                  allowfullscreen>
+                </iframe>
+              </div>
+            </div>
+          \` : ''}
         </div>
       \`;
 
@@ -10244,6 +10534,145 @@ app.get('/library', async (req, res) => {
       document.getElementById('modalOverlay').classList.remove('active');
       document.getElementById('modalContainer').classList.remove('active');
       document.body.style.overflow = 'auto';
+    }
+
+    // MODAL DE SELECCIÓN DE SERVIDOR
+    function openServerModal(tmdbId, type) {
+      const items = type === 'movie' ? allMovies : allSeries;
+      const allVariants = items.filter(item => item.tmdbId === tmdbId);
+      
+      if (allVariants.length === 0) return;
+      
+      const firstItem = allVariants[0];
+      currentContentForServerModal = { tmdbId, type, variants: allVariants };
+      
+      // Función helper para determinar calidad
+      const getQualityClass = (resolution) => {
+        if (!resolution) return 'quality-sd';
+        const res = resolution.toLowerCase();
+        if (res.includes('2160') || res.includes('4k')) return 'quality-4k';
+        if (res.includes('1080')) return 'quality-1080';
+        if (res.includes('720')) return 'quality-720';
+        return 'quality-sd';
+      };
+      
+      const getQualityLabel = (resolution) => {
+        if (!resolution) return 'SD';
+        const res = resolution.toLowerCase();
+        if (res.includes('2160') || res.includes('4k')) return '4K';
+        if (res.includes('1080')) return '1080p';
+        if (res.includes('720')) return '720p';
+        return 'SD';
+      };
+      
+      const formatFileSize = (bytes) => {
+        if (!bytes) return 'N/A';
+        const gb = (bytes / (1024 ** 3)).toFixed(2);
+        return \`\${gb} GB\`;
+      };
+      
+      const formatBitrate = (bitrate) => {
+        if (!bitrate) return 'N/A';
+        const mbps = (bitrate / 1000).toFixed(1);
+        return \`\${mbps} Mbps\`;
+      };
+      
+      const serversHTML = allVariants.map((variant, idx) => {
+        const qualityClass = getQualityClass(variant.videoResolution);
+        const qualityLabel = getQualityLabel(variant.videoResolution);
+        
+        return \`
+          <div class="server-option" onclick="selectServer(\${idx})">
+            <div class="server-option-header">
+              <div class="server-name">
+                <i class="fas fa-server"></i> \${variant.serverName}
+              </div>
+              <span class="quality-badge \${qualityClass}">\${qualityLabel}</span>
+            </div>
+            <div class="server-details">
+              \${variant.videoResolution ? \`<div class="server-detail-item">
+                <i class="fas fa-film"></i> Resolución: <strong>\${variant.videoResolution}</strong>
+              </div>\` : ''}
+              \${variant.videoCodec ? \`<div class="server-detail-item">
+                <i class="fas fa-video"></i> Códec Video: <strong>\${variant.videoCodec}</strong>
+              </div>\` : ''}
+              \${variant.audioCodec ? \`<div class="server-detail-item">
+                <i class="fas fa-volume-up"></i> Códec Audio: <strong>\${variant.audioCodec} \${variant.audioChannels ? variant.audioChannels : ''}</strong>
+              </div>\` : ''}
+              \${variant.fileSize ? \`<div class="server-detail-item">
+                <i class="fas fa-hdd"></i> Tamaño: <strong>\${formatFileSize(variant.fileSize)}</strong>
+              </div>\` : ''}
+              \${variant.bitrate ? \`<div class="server-detail-item">
+                <i class="fas fa-tachometer-alt"></i> Bitrate: <strong>\${formatBitrate(variant.bitrate)}</strong>
+              </div>\` : ''}
+              \${variant.duration ? \`<div class="server-detail-item">
+                <i class="fas fa-clock"></i> Duración: <strong>\${Math.floor(variant.duration / 60000)} min</strong>
+              </div>\` : ''}
+            </div>
+          </div>
+        \`;
+      }).join('');
+      
+      const serverModalHTML = \`
+        <div class="server-selection-modal">
+          <div class="server-selection-header">
+            <img src="\${firstItem.posterPath}" alt="\${firstItem.title}" class="server-modal-poster">
+            <div class="server-modal-info">
+              <h2>\${firstItem.title}</h2>
+              <p>Selecciona un servidor para descargar</p>
+            </div>
+            <button class="close-button" onclick="closeServerModal()">&times;</button>
+          </div>
+          <div class="server-options-container">
+            \${serversHTML}
+          </div>
+        </div>
+      \`;
+      
+      // Crear overlay adicional para el modal de servidor
+      const serverOverlay = document.createElement('div');
+      serverOverlay.id = 'serverModalOverlay';
+      serverOverlay.className = 'modal-overlay active';
+      serverOverlay.style.zIndex = '10001';
+      serverOverlay.onclick = closeServerModal;
+      
+      const serverContainer = document.createElement('div');
+      serverContainer.id = 'serverModalContainer';
+      serverContainer.className = 'modal-container active';
+      serverContainer.style.zIndex = '10002';
+      serverContainer.innerHTML = serverModalHTML;
+      
+      document.body.appendChild(serverOverlay);
+      document.body.appendChild(serverContainer);
+    }
+    
+    function closeServerModal() {
+      const overlay = document.getElementById('serverModalOverlay');
+      const container = document.getElementById('serverModalContainer');
+      
+      if (overlay) overlay.remove();
+      if (container) container.remove();
+      
+      currentContentForServerModal = null;
+    }
+    
+    function selectServer(variantIndex) {
+      if (!currentContentForServerModal) return;
+      
+      const variant = currentContentForServerModal.variants[variantIndex];
+      
+      if (variant && variant.downloadUrl) {
+        // Crear enlace temporal para descarga
+        const link = document.createElement('a');
+        link.href = variant.downloadUrl;
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Cerrar modal de servidor
+        closeServerModal();
+      }
     }
 
     // Cerrar modal con ESC
@@ -13750,23 +14179,74 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
 // Helper: Obtener detalles completos de TMDB
 async function getTMDBDetails(tmdbId, type = 'movie') {
   try {
-    const detailsUrl = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=credits`;
+    const detailsUrl = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&language=es-ES&append_to_response=credits,keywords,videos`;
     const response = await fetch(detailsUrl);
     const data = await response.json();
+    
+    // Extraer cast (primeros 10 actores)
+    const cast = data.credits && data.credits.cast 
+      ? data.credits.cast.slice(0, 10).map(actor => ({
+          name: actor.name,
+          character: actor.character,
+          profile: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null
+        }))
+      : [];
+    
+    // Extraer director (películas) o creador (series)
+    let director = '';
+    let createdBy = '';
+    if (type === 'movie' && data.credits && data.credits.crew) {
+      const directorObj = data.credits.crew.find(person => person.job === 'Director');
+      if (directorObj) director = directorObj.name;
+    } else if (type === 'tv' && data.created_by) {
+      createdBy = data.created_by.map(c => c.name).join(', ');
+    }
+    
+    // Productoras
+    const productionCompanies = data.production_companies 
+      ? data.production_companies.map(c => c.name).join(', ')
+      : '';
+    
+    // Países
+    const countries = data.production_countries 
+      ? data.production_countries.map(c => c.name).join(', ')
+      : '';
+    
+    // Idiomas
+    const languages = data.spoken_languages
+      ? data.spoken_languages.map(l => l.english_name).join(', ')
+      : '';
+    
+    // Trailer (YouTube)
+    let trailerKey = '';
+    if (data.videos && data.videos.results) {
+      const trailer = data.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+      if (trailer) trailerKey = trailer.key;
+    }
     
     return {
       title: data.title || data.name,
       originalTitle: data.original_title || data.original_name,
-      year: parseInt((data.release_date || data.first_air_date || '').substring(0, 4)),
+      releaseYear: parseInt((data.release_date || data.first_air_date || '').substring(0, 4)) || 0,
+      releaseDate: data.release_date || data.first_air_date || '',
       overview: data.overview || '',
-      poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
-      backdrop: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null,
+      posterPath: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
+      backdropPath: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null,
       genres: (data.genres || []).map(g => g.name),
-      rating: data.vote_average || 0,
+      voteAverage: data.vote_average ? parseFloat(data.vote_average.toFixed(1)) : 0,
       voteCount: data.vote_count || 0,
-      runtime: data.runtime || null,
+      runtime: data.runtime || (data.episode_run_time ? data.episode_run_time[0] : null),
       tagline: data.tagline || '',
       status: data.status || '',
+      budget: data.budget || 0,
+      revenue: data.revenue || 0,
+      director,
+      createdBy,
+      cast,
+      productionCompanies,
+      countries,
+      languages,
+      trailerKey,
       // Colección (solo películas)
       collectionId: data.belongs_to_collection ? data.belongs_to_collection.id : null,
       collectionName: data.belongs_to_collection ? data.belongs_to_collection.name : null,
@@ -13774,6 +14254,11 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
         ? `https://image.tmdb.org/t/p/w500${data.belongs_to_collection.poster_path}` : null,
       collectionBackdrop: data.belongs_to_collection && data.belongs_to_collection.backdrop_path 
         ? `https://image.tmdb.org/t/p/original${data.belongs_to_collection.backdrop_path}` : null,
+      // Series específico
+      numberOfSeasons: data.number_of_seasons || 0,
+      numberOfEpisodes: data.number_of_episodes || 0,
+      firstAirDate: data.first_air_date || '',
+      lastAirDate: data.last_air_date || ''
     };
   } catch (error) {
     console.error('Error obteniendo detalles de TMDB:', error);
@@ -14130,25 +14615,43 @@ app.get('/api/web-local/generate', async (req, res) => {
                 const tmdbDetails = await getTMDBDetails(tmdbResult.tmdbId, 'movie');
                 
                 if (tmdbDetails) {
-                  // Extraer info del archivo
+                  // Extraer info del archivo - MEJORADO con más detalles
                   const media = movie.Media && movie.Media[0] ? movie.Media[0] : {};
                   const part = media.Part && media.Part[0] ? media.Part[0] : {};
+                  
+                  // Construir URL de descarga completa (funcional)
+                  const downloadUrl = part.key ? `${server.baseURI}${part.key}?X-Plex-Token=${server.accessToken}&download=1` : '';
                   
                   const movieData = {
                     ratingKey: movie.ratingKey,
                     serverId: server.machineIdentifier,
-                    serverName: server.name,
+                    serverName: server.serverName,
                     baseURI: server.baseURI,
                     accessToken: server.accessToken,
-                    quality: media.videoResolution || 'SD',
-                    resolution: `${media.width || 0}x${media.height || 0}`,
-                    fileSize: part.size ? `${(parseInt(part.size) / 1024 / 1024 / 1024).toFixed(2)} GB` : 'N/A',
-                    fileName: part.file ? part.file.split('/').pop() : 'N/A',
-                    videoCodec: media.videoCodec || 'N/A',
-                    audioCodec: media.audioCodec || 'N/A',
-                    container: media.container || 'N/A',
-                    downloadUrl: `${server.baseURI}${part.key}`,
-                    partKey: part.key
+                    libraryKey: lib.key,
+                    libraryTitle: lib.title,
+                    // Calidad y resolución
+                    videoResolution: media.videoResolution || 'sd',
+                    width: media.width || 0,
+                    height: media.height || 0,
+                    // Códecs
+                    videoCodec: media.videoCodec || 'unknown',
+                    audioCodec: media.audioCodec || 'unknown',
+                    audioChannels: media.audioChannels || 0,
+                    // Archivo
+                    fileSize: part.size ? parseInt(part.size) : 0,
+                    fileSizeGB: part.size ? parseFloat((parseInt(part.size) / 1024 / 1024 / 1024).toFixed(2)) : 0,
+                    fileName: part.file ? part.file.split('/').pop() : '',
+                    container: media.container || 'unknown',
+                    // Bitrate y duración
+                    bitrate: media.bitrate || 0,
+                    duration: media.duration || movie.duration || 0,
+                    // URLs de descarga
+                    downloadUrl,
+                    partKey: part.key || '',
+                    // Metadatos adicionales del XML de Plex
+                    addedAt: movie.addedAt ? new Date(parseInt(movie.addedAt) * 1000).toISOString() : '',
+                    updatedAt: movie.updatedAt ? new Date(parseInt(movie.updatedAt) * 1000).toISOString() : ''
                   };
                   
                   // Buscar si ya existe esta película (por tmdbId)
@@ -14285,21 +14788,36 @@ app.get('/api/web-local/generate', async (req, res) => {
                           const media = episode.Media && episode.Media[0] ? episode.Media[0] : {};
                           const part = media.Part && media.Part[0] ? media.Part[0] : {};
                           
+                          // Construir URL de descarga completa (funcional)
+                          const downloadUrl = part.key ? `${server.baseURI}${part.key}?X-Plex-Token=${server.accessToken}&download=1` : '';
+                          
                           episodes.push({
                             ratingKey: episode.ratingKey,
                             title: episode.title,
                             episodeNumber: episode.index,
                             thumb: episode.thumb || '',
+                            overview: episode.summary || '',
                             duration: episode.duration || 0,
-                            quality: media.videoResolution || 'SD',
-                            resolution: `${media.width || 0}x${media.height || 0}`,
-                            fileSize: part.size ? `${(parseInt(part.size) / 1024 / 1024 / 1024).toFixed(2)} GB` : 'N/A',
-                            fileName: part.file ? part.file.split('/').pop() : 'N/A',
-                            videoCodec: media.videoCodec || 'N/A',
-                            audioCodec: media.audioCodec || 'N/A',
-                            container: media.container || 'N/A',
-                            downloadUrl: `${server.baseURI}${part.key}`,
-                            partKey: part.key
+                            // Calidad y resolución
+                            videoResolution: media.videoResolution || 'sd',
+                            width: media.width || 0,
+                            height: media.height || 0,
+                            // Códecs
+                            videoCodec: media.videoCodec || 'unknown',
+                            audioCodec: media.audioCodec || 'unknown',
+                            audioChannels: media.audioChannels || 0,
+                            // Archivo
+                            fileSize: part.size ? parseInt(part.size) : 0,
+                            fileSizeGB: part.size ? parseFloat((parseInt(part.size) / 1024 / 1024 / 1024).toFixed(2)) : 0,
+                            fileName: part.file ? part.file.split('/').pop() : '',
+                            container: media.container || 'unknown',
+                            // Bitrate
+                            bitrate: media.bitrate || 0,
+                            // URLs de descarga
+                            downloadUrl,
+                            partKey: part.key || '',
+                            // Metadatos adicionales
+                            addedAt: episode.addedAt ? new Date(parseInt(episode.addedAt) * 1000).toISOString() : ''
                           });
                         }
                       }
@@ -14318,11 +14836,17 @@ app.get('/api/web-local/generate', async (req, res) => {
                   const seriesDataObj = {
                     ratingKey: series.ratingKey,
                     serverId: server.machineIdentifier,
-                    serverName: server.name,
+                    serverName: server.serverName,
                     baseURI: server.baseURI,
                     accessToken: server.accessToken,
+                    libraryKey: lib.key,
+                    libraryTitle: lib.title,
                     seasonCount: seasons.length,
-                    seasons
+                    episodeCount: seasons.reduce((sum, s) => sum + s.episodeCount, 0),
+                    seasons,
+                    // Metadatos adicionales
+                    addedAt: series.addedAt ? new Date(parseInt(series.addedAt) * 1000).toISOString() : '',
+                    updatedAt: series.updatedAt ? new Date(parseInt(series.updatedAt) * 1000).toISOString() : ''
                   };
                   
                   // Buscar si ya existe esta serie (por tmdbId)
