@@ -8711,7 +8711,9 @@ app.get('/library', async (req, res) => {
             padding: 0 2rem;
             display: flex;
             align-items: stretch;
+            justify-content: center;
             gap: 0.5rem;
+            flex-wrap: wrap;
           }
           
           .admin-tab-home {
@@ -9150,8 +9152,57 @@ app.get('/library', async (req, res) => {
               align-items: stretch;
             }
             .admin-tabs {
+              padding: 0 0.5rem;
+              gap: 0.25rem;
+            }
+            .admin-tab,
+            .admin-tab-home {
+              padding: 0.75rem 1rem;
+              font-size: 0.875rem;
+            }
+            .container {
               padding: 0 1rem;
-              overflow-x: auto;
+            }
+            .search-bar {
+              flex-direction: column;
+            }
+            .search-btn {
+              width: 100%;
+            }
+            .table-header {
+              display: none;
+            }
+            .server-row {
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 0.5rem;
+              padding: 1rem;
+            }
+            .server-row > div {
+              width: 100%;
+              text-align: left !important;
+            }
+            .results-grid {
+              grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+              gap: 1rem;
+            }
+            .result-poster {
+              height: 210px;
+            }
+            .result-title {
+              font-size: 0.875rem;
+            }
+            .result-year {
+              font-size: 0.75rem;
+            }
+            .filter-buttons {
+              flex-wrap: wrap;
+              justify-content: center;
+            }
+            .modal {
+              width: 95%;
+              max-width: 500px;
+              padding: 1.5rem;
             }
           }
           
@@ -9195,6 +9246,37 @@ app.get('/library', async (req, res) => {
           .search-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 16px rgba(229, 160, 13, 0.4);
+          }
+          
+          @media (max-width: 768px) {
+            .results-grid {
+              grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+              gap: 1rem;
+            }
+            .result-poster {
+              height: 210px;
+            }
+            .result-title {
+              font-size: 0.875rem;
+            }
+            .result-year {
+              font-size: 0.75rem;
+            }
+            .filter-buttons {
+              flex-wrap: wrap;
+            }
+            .table-header {
+              display: none;
+            }
+            .server-row {
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 0.5rem;
+              padding: 1rem;
+            }
+            .server-row > div {
+              width: 100%;
+            }
           }
           
           .filter-buttons {
@@ -9396,6 +9478,10 @@ app.get('/library', async (req, res) => {
             <span>🔍</span>
             <span>Búsqueda Global</span>
           </button>
+          <button class="admin-tab" data-tab="generate" disabled style="opacity: 0.5; cursor: not-allowed;">
+            <span>🌐</span>
+            <span>Generar Web</span>
+          </button>
         </div>
         
         <!-- Tab Content Container -->
@@ -9545,6 +9631,23 @@ app.get('/library', async (req, res) => {
             <div id="searchStatus" class="search-status" style="display: none;"></div>
             
             <div id="searchResults" class="results-grid"></div>
+          </div>
+        </div>
+        
+        <!-- Generate Web Tab (Pending Implementation) -->
+        <div class="tab-pane" id="tab-generate">
+          <div class="container">
+            <div class="header">
+              <div class="header-left">
+                <span class="header-icon">🌐</span>
+                <h1 class="header-title">Generar Web</h1>
+              </div>
+            </div>
+            <div style="text-align: center; padding: 4rem 2rem; color: #9ca3af;">
+              <div style="font-size: 3rem; margin-bottom: 1rem;">🚧</div>
+              <h2 style="color: #f3f4f6; margin-bottom: 0.5rem;">Próximamente</h2>
+              <p>Esta función estará disponible en futuras actualizaciones.</p>
+            </div>
           </div>
         </div>
         
