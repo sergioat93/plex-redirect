@@ -9675,18 +9675,21 @@ app.get('/library', async (req, res) => {
       position: relative;
       z-index: 2;
       width: 100%;
+    }
+    /* Solo para modal de temporada: poster + título en flex */
+    .season-modal-header .modal-header-content {
       display: flex;
       align-items: flex-end;
       gap: 2rem;
     }
-    .modal-header-content .modal-poster {
+    .season-modal-header .modal-poster {
       width: 150px;
       height: auto;
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.5);
       flex-shrink: 0;
     }
-    .modal-header-content .modal-title {
+    .season-modal-header .modal-title {
       flex: 1;
     }
     
@@ -11382,7 +11385,7 @@ app.get('/library', async (req, res) => {
       
       const modalHTML = \`
         <div class="modal-content" onclick="event.stopPropagation()">
-          <div class="modal-backdrop-header" style="background-image: url('\${season.thumb || series.posterPath}');">
+          <div class="modal-backdrop-header season-modal-header" style="background-image: url('\${season.thumb || series.posterPath}');">
             <button class="close-button" onclick="closeModal()">&times;</button>
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
@@ -11743,31 +11746,34 @@ app.get('/library', async (req, res) => {
         const qualityLabel = getQualityLabel(variant.videoResolution);
         
         return \`
-          <div class="server-option" onclick="selectServer(\${idx})">
-            <div class="server-option-header">
-              <div class="server-name">
-                <i class="fas fa-server"></i> \${variant.serverName}
+          <div class="server-option" onclick="selectServer(\${idx})" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1.5rem; cursor: pointer; transition: all 0.3s; margin-bottom: 1rem;" onmouseover="this.style.background='rgba(229,160,13,0.1)'; this.style.borderColor='var(--primary-color)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='rgba(255,255,255,0.1)'">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <i class="fas fa-server" style="color: var(--primary-color); font-size: 1.25rem;"></i>
+                <strong style="color: white; font-size: 1.1rem;">\${variant.serverName}</strong>
               </div>
               <span class="quality-badge \${qualityClass}">\${qualityLabel}</span>
             </div>
-            <div class="server-details">
-              \${variant.videoResolution ? \`<div class="server-detail-item">
-                <i class="fas fa-film"></i> Resolución: <strong>\${variant.videoResolution}</strong>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+              \${variant.videoResolution ? \`<div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; color: #ccc;">
+                <i class="fas fa-film"></i>
+                <span>\${variant.videoResolution}</span>
               </div>\` : ''}
-              \${variant.videoCodec ? \`<div class="server-detail-item">
-                <i class="fas fa-video"></i> Códec Video: <strong>\${variant.videoCodec}</strong>
+              \${variant.videoCodec ? \`<div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; color: #ccc;">
+                <i class="fas fa-video"></i>
+                <span>\${variant.videoCodec}</span>
               </div>\` : ''}
-              \${variant.audioCodec ? \`<div class="server-detail-item">
-                <i class="fas fa-volume-up"></i> Códec Audio: <strong>\${variant.audioCodec} \${variant.audioChannels ? variant.audioChannels : ''}</strong>
+              \${variant.audioCodec ? \`<div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; color: #ccc;">
+                <i class="fas fa-volume-up"></i>
+                <span>\${variant.audioCodec} \${variant.audioChannels ? variant.audioChannels + 'ch' : ''}</span>
               </div>\` : ''}
-              \${variant.fileSize ? \`<div class="server-detail-item">
-                <i class="fas fa-hdd"></i> Tamaño: <strong>\${formatFileSize(variant.fileSize)}</strong>
+              \${variant.fileSize ? \`<div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; color: #ccc;">
+                <i class="fas fa-hdd"></i>
+                <span>\${formatFileSize(variant.fileSize)}</span>
               </div>\` : ''}
-              \${variant.bitrate ? \`<div class="server-detail-item">
-                <i class="fas fa-tachometer-alt"></i> Bitrate: <strong>\${formatBitrate(variant.bitrate)}</strong>
-              </div>\` : ''}
-              \${variant.duration ? \`<div class="server-detail-item">
-                <i class="fas fa-clock"></i> Duración: <strong>\${Math.floor(variant.duration / 60000)} min</strong>
+              \${variant.bitrate ? \`<div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.9rem; color: #ccc;">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>\${formatBitrate(variant.bitrate)}</span>
               </div>\` : ''}
             </div>
           </div>
@@ -11775,16 +11781,16 @@ app.get('/library', async (req, res) => {
       }).join('');
       
       const serverModalHTML = \`
-        <div class="server-selection-modal" onclick="event.stopPropagation()">
-          <div class="server-selection-header">
-            <img src="\${item.posterPath}" alt="\${item.title}" class="server-modal-poster">
-            <div class="server-modal-info">
-              <h2>\${item.title}</h2>
-              <p>Selecciona un servidor para descargar</p>
-            </div>
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px;">
+          <div class="modal-backdrop-header" style="background-image: url('\${item.backdropPath || item.posterPath}'); min-height: 180px;">
             <button class="close-button" onclick="closeServerModal()">&times;</button>
+            <div class="modal-backdrop-overlay"></div>
+            <div class="modal-header-content">
+              <h1 class="modal-title">\${item.title}</h1>
+              <p style="color: rgba(255,255,255,0.8); margin-top: 0.5rem; font-size: 1rem;">Selecciona un servidor para descargar</p>
+            </div>
           </div>
-          <div class="server-options-container">
+          <div style="padding: 2rem 3rem;">
             \${serversHTML}
           </div>
         </div>
