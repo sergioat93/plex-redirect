@@ -12254,6 +12254,9 @@ Generado por Infinity Scrap`;
           }
         }
         
+        let generationRetries = 0;
+        const MAX_RETRIES = 3;
+        
         async function startGeneration(testMode = false) {
           document.getElementById('dashboardContainer').style.display = 'none';
           const progressContainer = document.getElementById('progressContainer');
@@ -12296,6 +12299,7 @@ Generado por Infinity Scrap`;
               
               if (data.type === 'complete') {
                 eventSource.close();
+                generationRetries = 0; // Reset retries on success
                 setTimeout(() => {
                   document.getElementById('progressContainer').style.display = 'none';
                   document.getElementById('dashboardContainer').style.display = 'block';
@@ -12310,7 +12314,47 @@ Generado por Infinity Scrap`;
             
             eventSource.onerror = () => {
               eventSource.close();
-              alert('Error en la generación. Por favor, intenta de nuevo.');
+              
+              // Reintentar automáticamente
+              if (generationRetries < MAX_RETRIES) {
+                generationRetries++;
+                const logContainer = document.getElementById('logContainer');
+                const currentMessage = document.getElementById('currentMessage');
+                
+                if (logContainer) {
+                  const retryLog = document.createElement('div');
+                  retryLog.className = 'log-entry warning';
+                  retryLog.textContent = \`⚠️ Conexión interrumpida. Reintentando (\${generationRetries}/\${MAX_RETRIES})...\`;
+                  logContainer.appendChild(retryLog);
+                  logContainer.scrollTop = logContainer.scrollHeight;
+                }
+                
+                if (currentMessage) {
+                  currentMessage.textContent = \`Reintentando conexión... (\${generationRetries}/\${MAX_RETRIES})\`;
+                }
+                
+                // Reintentar después de 3 segundos
+                setTimeout(() => {
+                  startGeneration(testMode);
+                }, 3000);
+              } else {
+                // Después de MAX_RETRIES intentos, mostrar error final
+                const logContainer = document.getElementById('logContainer');
+                const currentMessage = document.getElementById('currentMessage');
+                
+                if (logContainer) {
+                  const errorLog = document.createElement('div');
+                  errorLog.className = 'log-entry error';
+                  errorLog.textContent = '❌ No se pudo completar la generación después de varios intentos. El progreso se ha guardado.';
+                  logContainer.appendChild(errorLog);
+                }
+                
+                if (currentMessage) {
+                  currentMessage.textContent = 'Error: Se agotaron los reintentos. Puedes intentar de nuevo más tarde.';
+                }
+                
+                generationRetries = 0;
+              }
             };
             
           } catch (error) {
