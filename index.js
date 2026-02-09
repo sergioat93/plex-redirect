@@ -9643,15 +9643,18 @@ app.get('/library', async (req, res) => {
       z-index: 2;
       width: 100%;
       display: flex;
-      gap: 2rem;
       align-items: flex-end;
+      gap: 2rem;
     }
-    .modal-poster {
+    .modal-header-content .modal-poster {
       width: 150px;
       height: auto;
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.5);
       flex-shrink: 0;
+    }
+    .modal-header-content .modal-title {
+      flex: 1;
     }
     
     .close-button {
@@ -11346,12 +11349,10 @@ app.get('/library', async (req, res) => {
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
               <img src="\${season.thumb || series.posterPath || 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'}" alt="\${season.title}" class="modal-poster" loading="lazy" onerror="if(this.src !== '\${series.posterPath}') { this.src='\${series.posterPath}'; } else { this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'; this.onerror=null; }">
-              <div style="flex: 1;">
-                <h1 class="modal-title">\${series.title} - \${season.title}</h1>
-                <div class="modal-badges">
-                  <span class="runtime-badge">\${episodesArray.length} episodios</span>
-                  <span class="runtime-badge">📦 \${seasonSizeText}</span>
-                </div>
+              <h1 class="modal-title">\${series.title} - \${season.title}</h1>
+              <div class="modal-badges">
+                <span class="runtime-badge">\${episodesArray.length} episodios</span>
+                <span class="runtime-badge">📦 \${seasonSizeText}</span>
               </div>
             </div>
           </div>
@@ -15465,14 +15466,10 @@ app.get('/api/web-local/status', async (req, res) => {
 
 // Endpoint: Generar web local (primera vez o completa)
 app.get('/api/web-local/generate', async (req, res) => {
-  // Modo de prueba (contenido repetido en servidores para probar selección)
+  // Modo de prueba (5 películas + 5 series por servidor)
   const testMode = req.query.test === 'true';
-  const testLimitMovies = testMode ? 3 : Infinity;
-  const testLimitSeries = testMode ? 3 : Infinity;
-  
-  // En modo prueba: rastrear contenido visto por tmdbId para priorizar duplicados
-  const testSeenMovies = testMode ? new Map() : null; // tmdbId -> count
-  const testSeenSeries = testMode ? new Map() : null; // tmdbId -> count
+  const testLimitMovies = testMode ? 50 : Infinity;
+  const testLimitSeries = testMode ? 50 : Infinity;
   
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
@@ -15485,7 +15482,7 @@ app.get('/api/web-local/generate', async (req, res) => {
   };
   
   if (testMode) {
-    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Se procesarán las primeras 3 películas y 3 series de CADA servidor (permitiendo duplicados)' });
+    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán 5 películas y 5 series de cada servidor' });
   }
   
   // Keepalive cada 15 segundos para mantener conexión viva
@@ -15691,8 +15688,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                 break;
               }
               
-              // SALTAR si ya fue procesado en ejecución anterior (NO aplicar en modo prueba para permitir duplicados)
-              if (!testMode && processedItems[server.machineIdentifier].movies.includes(parseInt(movie.ratingKey))) {
+              // SALTAR si ya fue procesado en ejecución anterior
+              if (processedItems[server.machineIdentifier].movies.includes(parseInt(movie.ratingKey))) {
                 if (processedCount % 10 === 0 || processedCount === totalItems) {
                   sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
                 }
@@ -15753,17 +15750,6 @@ app.get('/api/web-local/generate', async (req, res) => {
               const tmdbResult = await searchTMDBWithCache(movie.title, movie.year, 'movie', bestGuid);
               
               if (tmdbResult) {
-                // MODO PRUEBA: Rastrear y priorizar duplicados
-                if (testMode) {
-                  const currentCount = testSeenMovies.get(tmdbResult.tmdbId) || 0;
-                  testSeenMovies.set(tmdbResult.tmdbId, currentCount + 1);
-                  
-                  // Si ya tenemos suficientes películas únicas Y esta no es duplicada, saltarla
-                  if (movieCount >= testLimitMovies && currentCount === 0) {
-                    continue;
-                  }
-                }
-                
                 // Agregar a lista procesada
                 processedItems[server.machineIdentifier].movies.push(parseInt(movie.ratingKey));
               } else {
@@ -15882,8 +15868,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                 break;
               }
               
-              // SALTAR si ya fue procesado en ejecución anterior (NO aplicar en modo prueba para permitir duplicados)
-              if (!testMode && processedItems[server.machineIdentifier].series.includes(parseInt(series.ratingKey))) {
+              // SALTAR si ya fue procesado en ejecución anterior
+              if (processedItems[server.machineIdentifier].series.includes(parseInt(series.ratingKey))) {
                 if (processedCount % 10 === 0 || processedCount === totalItems) {
                   sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
                 }
@@ -15940,17 +15926,6 @@ app.get('/api/web-local/generate', async (req, res) => {
               const tmdbResult = await searchTMDBWithCache(series.title, series.year, 'tv', bestGuid);
               
               if (tmdbResult) {
-                // MODO PRUEBA: Rastrear y priorizar duplicados
-                if (testMode) {
-                  const currentCount = testSeenSeries.get(tmdbResult.tmdbId) || 0;
-                  testSeenSeries.set(tmdbResult.tmdbId, currentCount + 1);
-                  
-                  // Si ya tenemos suficientes series únicas Y esta no es duplicada, saltarla
-                  if (seriesCount >= testLimitSeries && currentCount === 0) {
-                    continue;
-                  }
-                }
-                
                 // Agregar a lista procesada
                 processedItems[server.machineIdentifier].series.push(parseInt(series.ratingKey));
                 
