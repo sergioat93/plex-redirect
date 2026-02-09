@@ -9855,8 +9855,24 @@ app.get('/library', async (req, res) => {
     }
     .season-header {
       display: flex;
-      justify-content: space-between;
+      gap: 1rem;
       align-items: center;
+    }
+    .season-poster {
+      width: 100px;
+      height: 150px;
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: rgba(0,0,0,0.5);
+    }
+    .season-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .season-info {
+      flex: 1;
     }
     .season-title {
       font-size: 1.3rem;
@@ -9866,6 +9882,7 @@ app.get('/library', async (req, res) => {
     .season-episodes-count {
       color: #9ca3af;
       font-size: 0.9rem;
+      margin-top: 0.25rem;
     }
     .episodes-list {
       display: none;
@@ -10987,15 +11004,20 @@ app.get('/library', async (req, res) => {
           \${series.seasons.map((season, idx) => \`
             <div class="season-item" onclick="toggleSeason(\${idx})">
               <div class="season-header">
-                <div class="season-title">\${season.name}</div>
-                <div class="season-episodes-count">\${season.episodeCount || 0} episodios</div>
+                <div class="season-poster">
+                  <img src="\${season.thumb || series.posterPath || 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'}" alt="\${season.title}" loading="lazy" onerror="if(this.src !== '\${series.posterPath}') { this.src='\${series.posterPath}'; } else { this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'; this.onerror=null; }">
+                </div>
+                <div class="season-info">
+                  <div class="season-title">\${season.title || 'Temporada ' + (season.seasonNumber || idx + 1)}</div>
+                  <div class="season-episodes-count">\${season.episodeCount || 0} episodios</div>
+                </div>
               </div>
               <div class="episodes-list" id="season-\${idx}">
                 \${season.episodes ? season.episodes.map(ep => \`
                   <div class="episode-item">
                     <div class="episode-number">E\${ep.episodeNumber || '?'}</div>
                     <div class="episode-info">
-                      <div class="episode-title">\${ep.name || 'Sin título'}</div>
+                      <div class="episode-title">\${ep.title || 'Sin título'}</div>
                       \${ep.overview ? \`<div class="episode-overview">\${ep.overview}</div>\` : ''}
                     </div>
                     \${ep.downloadUrl ? \`<a href="\${ep.downloadUrl}" class="episode-download-btn" download title="Descargar episodio">
@@ -11072,7 +11094,7 @@ app.get('/library', async (req, res) => {
         if (synopsis && synopsis.scrollHeight > synopsis.clientHeight) {
           const container = document.getElementById('synopsis-container');
           if (container) {
-            const button = document.createElement('button');
+            const button = document.createElement('span');
             button.className = 'synopsis-toggle';
             button.textContent = 'Ver más';
             button.onclick = toggleSynopsis;
@@ -15300,12 +15322,11 @@ app.get('/api/web-local/generate', async (req, res) => {
                     // Remover el nombre del archivo del final de partKey
                     const fileNameInPath = '/' + originalFileName;
                     if (partKey.endsWith(fileNameInPath)) {
-                      partKey = partKey.substring(0, partKey.length - fileNameInPath.length);
+                      partKey = partKey.substring(0, partKey.length - fileNameInPath.length) + '/';
                     }
                   }
                   
                   // Construir URL de descarga completa (funcional) con nombre personalizado
-                  // partKey ya incluye la barra final, así que no agregamos otra
                   const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                   
                   movieCount++; // Incrementar contador de películas procesadas
@@ -15491,12 +15512,11 @@ app.get('/api/web-local/generate', async (req, res) => {
                           if (partKey && originalFileName) {
                             const fileNameInPath = '/' + originalFileName;
                             if (partKey.endsWith(fileNameInPath)) {
-                              partKey = partKey.substring(0, partKey.length - fileNameInPath.length);
+                              partKey = partKey.substring(0, partKey.length - fileNameInPath.length) + '/';
                             }
                           }
                           
                           // Construir URL de descarga completa con nombre personalizado
-                          // partKey ya incluye la barra final, así que no agregamos otra
                           const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                           
                           episodes.push({
