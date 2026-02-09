@@ -16215,6 +16215,10 @@ app.get('/api/web-local/generate', async (req, res) => {
       })),
       processedItems,
       notFoundItems,
+      allMovies,
+      allSeries,
+      collections,
+      activeServers,
       isActive: true
     });
     
