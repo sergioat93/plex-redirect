@@ -15611,7 +15611,8 @@ app.get('/api/web-local/generate', async (req, res) => {
     const tempMoviesCollectionName = `temp_movies_${sessionId}`;
     const tempSeriesCollectionName = `temp_series_${sessionId}`;
     
-    // Crear colecciones temporales en MongoDB
+    // Crear colecciones temporales en MongoDB (usando mongoClient)
+    const db = mongoClient.db(MONGODB_DB);
     const tempMoviesCollection = db.collection(tempMoviesCollectionName);
     const tempSeriesCollection = db.collection(tempSeriesCollectionName);
     
