@@ -15563,29 +15563,6 @@ app.get('/api/web-local/generate', async (req, res) => {
       projectName: 'infinity-plex-web' 
     });
     
-    // Crear ID de sesión único para colecciones temporales
-    const sessionId = progressSnapshot._id.toString();
-    const tempMoviesCollectionName = `temp_movies_${sessionId}`;
-    const tempSeriesCollectionName = `temp_series_${sessionId}`;
-    
-    // Crear colecciones temporales en MongoDB
-    const tempMoviesCollection = db.collection(tempMoviesCollectionName);
-    const tempSeriesCollection = db.collection(tempSeriesCollectionName);
-    
-    // Función para flush datos a MongoDB y liberar memoria
-    const flushToMongo = async (movies, series) => {
-      try {
-        if (movies.length > 0) {
-          await tempMoviesCollection.insertMany(movies, { ordered: false }).catch(() => {});
-        }
-        if (series.length > 0) {
-          await tempSeriesCollection.insertMany(series, { ordered: false }).catch(() => {});
-        }
-      } catch (err) {
-        // Ignorar errores de duplicados
-      }
-    };
-    
     let allMovies = [];
     let allSeries = [];
     let collectionsMap = new Map();
@@ -15628,6 +15605,29 @@ app.get('/api/web-local/generate', async (req, res) => {
       progressSnapshot._id = progressSnapshot.insertedId;
       sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
     }
+    
+    // AHORA crear colecciones temporales después de tener progressSnapshot
+    const sessionId = progressSnapshot._id.toString();
+    const tempMoviesCollectionName = `temp_movies_${sessionId}`;
+    const tempSeriesCollectionName = `temp_series_${sessionId}`;
+    
+    // Crear colecciones temporales en MongoDB
+    const tempMoviesCollection = db.collection(tempMoviesCollectionName);
+    const tempSeriesCollection = db.collection(tempSeriesCollectionName);
+    
+    // Función para flush datos a MongoDB y liberar memoria
+    const flushToMongo = async (movies, series) => {
+      try {
+        if (movies.length > 0) {
+          await tempMoviesCollection.insertMany(movies, { ordered: false }).catch(() => {});
+        }
+        if (series.length > 0) {
+          await tempSeriesCollection.insertMany(series, { ordered: false }).catch(() => {});
+        }
+      } catch (err) {
+        // Ignorar errores de duplicados
+      }
+    };
     
     // Función para guardar lote de datos en MongoDB y liberar memoria
     const saveBatchToMongo = async (batchMovies, batchSeries) => {
