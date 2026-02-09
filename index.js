@@ -11335,6 +11335,7 @@ app.get('/library', async (req, res) => {
             <button class="close-button" onclick="closeModal()">&times;</button>
             <div class="modal-backdrop-overlay"></div>
             <div class="modal-header-content">
+              <img src="\${season.thumb || series.posterPath || 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'}" alt="\${season.title}" class="modal-poster" loading="lazy" onerror="if(this.src !== '\${series.posterPath}') { this.src='\${series.posterPath}'; } else { this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'; this.onerror=null; }">
               <h1 class="modal-title">\${series.title} - \${season.title}</h1>
               <div class="modal-badges">
                 <span class="runtime-badge">\${episodesArray.length} episodios</span>
@@ -15952,11 +15953,14 @@ app.get('/api/web-local/generate', async (req, res) => {
                           // Construir URL de descarga completa con nombre personalizado
                           const downloadUrl = keyBase ? `${server.baseURI}${keyBase}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                           
+                          // Convertir thumb del episodio a URL completa de Plex
+                          const episodeThumbUrl = episode.thumb ? `${server.baseURI}${episode.thumb}?X-Plex-Token=${server.accessToken}` : '';
+                          
                           episodes.push({
                             ratingKey: episode.ratingKey,
                             title: episode.title,
                             episodeNumber: episode.index,
-                            thumb: episode.thumb || '',
+                            thumb: episodeThumbUrl,
                             overview: episode.summary || '',
                             duration: episode.duration || 0,
                             // Calidad y resolución
@@ -15989,11 +15993,14 @@ app.get('/api/web-local/generate', async (req, res) => {
                           ? season.title.replace(/^Season\s+/i, 'Temporada ') 
                           : `Temporada ${season.index}`;
                         
+                        // Convertir thumb a URL completa de Plex
+                        const seasonThumbUrl = season.thumb ? `${server.baseURI}${season.thumb}?X-Plex-Token=${server.accessToken}` : '';
+                        
                         seasons.push({
                           ratingKey: season.ratingKey,
                           seasonNumber: season.index,
                           title: seasonTitle,
-                          thumb: season.thumb || '',
+                          thumb: seasonThumbUrl,
                           episodeCount: episodes.length,
                           episodes
                         });
