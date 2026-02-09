@@ -15607,14 +15607,16 @@ app.get('/api/web-local/generate', async (req, res) => {
     // Función para guardar progreso
     const saveProgress = async (serverIndex, movies, series, collections, notFound, processed) => {
       try {
+        // Solo guardar metadata de progreso (contadores), NO los arrays completos
+        // para evitar exceder el límite de 16MB de MongoDB
         await webSnapshotsCollection.updateOne(
           { _id: progressSnapshot._id },
           { 
             $set: { 
-              'progressState.allMovies': movies,
-              'progressState.allSeries': series,
-              'progressState.collectionsMap': Array.from(collections.entries()),
-              'progressState.notFoundItems': notFound,
+              'progressState.moviesCount': movies.length,
+              'progressState.seriesCount': series.length,
+              'progressState.collectionsCount': collections.size,
+              'progressState.notFoundCount': notFound.length,
               'progressState.processedItems': processed,
               'progressState.currentServerIndex': serverIndex,
               'progressState.lastSavedAt': new Date()
