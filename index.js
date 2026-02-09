@@ -8839,11 +8839,17 @@ app.get('/library', async (req, res) => {
       
       archive.pipe(res);
       
-      // Agregar archivos JSON
+      // Agregar archivos JSON (para referencia)
       archive.append(snapshot.generatedFiles.metadata, { name: 'data/metadata.json' });
-      archive.append(snapshot.generatedFiles.movies, { name: 'data/movies.json' });
-      archive.append(snapshot.generatedFiles.series, { name: 'data/series.json' });
-      archive.append(snapshot.generatedFiles.collections, { name: 'data/collections.json' });
+      
+      // Agregar archivos JS para carga en HTML offline
+      const moviesJS = `window.moviesData = ${snapshot.generatedFiles.movies};`;
+      const seriesJS = `window.seriesData = ${snapshot.generatedFiles.series};`;
+      const collectionsJS = `window.collectionsData = ${snapshot.generatedFiles.collections};`;
+      
+      archive.append(moviesJS, { name: 'data/movies.js' });
+      archive.append(seriesJS, { name: 'data/series.js' });
+      archive.append(collectionsJS, { name: 'data/collections.js' });
       
       // Agregar InfinityScrap.html (COPIA EXACTA de la web principal con adaptaciones para offline)
       const htmlContent = `<!DOCTYPE html>
@@ -10504,11 +10510,16 @@ app.get('/library', async (req, res) => {
   <!-- Modal Container -->
   <div class="modal-container" id="modalContainer" onclick="closeModal()"></div>
 
+  <!-- Cargar datos desde archivos JS externos -->
+  <script src="data/movies.js"></script>
+  <script src="data/series.js"></script>
+  <script src="data/collections.js"></script>
+
   <script>
-    // Embeber datos JSON directamente para evitar CORS
-    const allMovies = ${snapshot.generatedFiles.movies};
-    const allSeries = ${snapshot.generatedFiles.series};
-    const allCollections = ${snapshot.generatedFiles.collections};
+    // Obtener datos de variables globales cargadas por los scripts externos
+    const allMovies = window.moviesData || [];
+    const allSeries = window.seriesData || [];
+    const allCollections = window.collectionsData || [];
     
     let currentTab = 'movies';
     let currentContentForServerModal = null;
