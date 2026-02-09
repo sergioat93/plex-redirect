@@ -8842,14 +8842,21 @@ app.get('/library', async (req, res) => {
       // Agregar archivos JSON (para referencia)
       archive.append(snapshot.generatedFiles.metadata, { name: 'data/metadata.json' });
       
-      // Agregar archivos JS para carga en HTML offline
-      const moviesJS = `window.moviesData = ${snapshot.generatedFiles.movies};`;
-      const seriesJS = `window.seriesData = ${snapshot.generatedFiles.series};`;
-      const collectionsJS = `window.collectionsData = ${snapshot.generatedFiles.collections};`;
+      // Agregar archivos JS para carga en HTML offline usando Buffers para evitar límites de concatenación
+      const moviesPrefix = Buffer.from('window.moviesData = ');
+      const moviesSuffix = Buffer.from(';');
+      const moviesData = Buffer.from(snapshot.generatedFiles.movies);
+      archive.append(Buffer.concat([moviesPrefix, moviesData, moviesSuffix]), { name: 'data/movies.js' });
       
-      archive.append(moviesJS, { name: 'data/movies.js' });
-      archive.append(seriesJS, { name: 'data/series.js' });
-      archive.append(collectionsJS, { name: 'data/collections.js' });
+      const seriesPrefix = Buffer.from('window.seriesData = ');
+      const seriesSuffix = Buffer.from(';');
+      const seriesData = Buffer.from(snapshot.generatedFiles.series);
+      archive.append(Buffer.concat([seriesPrefix, seriesData, seriesSuffix]), { name: 'data/series.js' });
+      
+      const collectionsPrefix = Buffer.from('window.collectionsData = ');
+      const collectionsSuffix = Buffer.from(';');
+      const collectionsData = Buffer.from(snapshot.generatedFiles.collections);
+      archive.append(Buffer.concat([collectionsPrefix, collectionsData, collectionsSuffix]), { name: 'data/collections.js' });
       
       // Agregar InfinityScrap.html (COPIA EXACTA de la web principal con adaptaciones para offline)
       const htmlContent = `<!DOCTYPE html>
