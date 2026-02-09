@@ -9210,7 +9210,7 @@ app.get('/library', async (req, res) => {
       justify-content: center;
     }
     .filter-select {
-      background: rgba(17, 24, 39, 0.8);
+      background: #000;
       border: 2px solid rgba(229, 160, 13, 0.2);
       border-radius: 8px;
       padding: 10px 15px;
@@ -9277,7 +9277,7 @@ app.get('/library', async (req, res) => {
       gap: 0.5rem;
     }
     .view-btn {
-      background: rgba(17, 24, 39, 0.8);
+      background: #000;
       border: 2px solid rgba(229, 160, 13, 0.2);
       padding: 10px 15px;
       border-radius: 8px;
@@ -9763,7 +9763,7 @@ app.get('/library', async (req, res) => {
       position: relative;
     }
     .modal-synopsis.truncated {
-      max-height: 4.5em;
+      max-height: 4.9em;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 3;
@@ -10104,7 +10104,6 @@ app.get('/library', async (req, res) => {
       background: linear-gradient(135deg, #e5a00d 0%, #f5b81d 100%);
       color: #000;
       border: none;
-      padding: 0.65rem 1.25rem;
       border-radius: 8px;
       font-weight: 700;
       font-size: 0.875rem;
@@ -10940,7 +10939,6 @@ app.get('/library', async (req, res) => {
               </div>
               <div id="synopsis-container">
                 <div class="modal-synopsis truncated" id="modal-synopsis">\${movie.overview || 'Sin sinopsis disponible'}</div>
-                \${movie.overview && movie.overview.length > 200 ? \`<span class="synopsis-toggle" onclick="toggleSynopsis()">Ver más</span>\` : ''}
               </div>
             </div>
           </div>
@@ -10951,6 +10949,21 @@ app.get('/library', async (req, res) => {
       document.getElementById('modalOverlay').classList.add('active');
       document.getElementById('modalContainer').classList.add('active');
       document.body.style.overflow = 'hidden';
+      
+      // Verificar si la sinopsis necesita el botón "Ver más"
+      setTimeout(() => {
+        const synopsis = document.getElementById('modal-synopsis');
+        if (synopsis && synopsis.scrollHeight > synopsis.clientHeight) {
+          const container = document.getElementById('synopsis-container');
+          if (container) {
+            const button = document.createElement('span');
+            button.className = 'synopsis-toggle';
+            button.textContent = 'Ver más';
+            button.onclick = toggleSynopsis;
+            container.appendChild(button);
+          }
+        }
+      }, 0);
     }
 
     function openSeriesModal(tmdbId) {
@@ -11039,8 +11052,9 @@ app.get('/library', async (req, res) => {
                 \${series.countries ? \`<div class="detail-item"><strong>Países:</strong><span>\${series.countries}</span></div>\` : ''}
                 \${series.languages ? \`<div class="detail-item"><strong>Idiomas:</strong><span>\${series.languages}</span></div>\` : ''}
               </div>
-              <div class="modal-synopsis truncated" id="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
-              \${series.overview && series.overview.length > 250 ? \`<button class="synopsis-toggle" onclick="toggleSynopsis()">Ver más</button>\` : ''}
+              <div id="synopsis-container">
+                <div class="modal-synopsis truncated" id="modal-synopsis">\${series.overview || 'Sin sinopsis disponible'}</div>
+              </div>
             </div>
           </div>
           \${seasonsHTML}
@@ -11051,6 +11065,21 @@ app.get('/library', async (req, res) => {
       document.getElementById('modalOverlay').classList.add('active');
       document.getElementById('modalContainer').classList.add('active');
       document.body.style.overflow = 'hidden';
+      
+      // Verificar si la sinopsis necesita el botón "Ver más"
+      setTimeout(() => {
+        const synopsis = document.getElementById('modal-synopsis');
+        if (synopsis && synopsis.scrollHeight > synopsis.clientHeight) {
+          const container = document.getElementById('synopsis-container');
+          if (container) {
+            const button = document.createElement('button');
+            button.className = 'synopsis-toggle';
+            button.textContent = 'Ver más';
+            button.onclick = toggleSynopsis;
+            container.appendChild(button);
+          }
+        }
+      }, 0);
     }
 
     function openCollectionModal(tmdbId) {
@@ -15276,7 +15305,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                   }
                   
                   // Construir URL de descarga completa (funcional) con nombre personalizado
-                  const downloadUrl = partKey ? `${server.baseURI}${partKey}/${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
+                  // partKey ya incluye la barra final, así que no agregamos otra
+                  const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                   
                   movieCount++; // Incrementar contador de películas procesadas
                   
@@ -15466,7 +15496,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                           }
                           
                           // Construir URL de descarga completa con nombre personalizado
-                          const downloadUrl = partKey ? `${server.baseURI}${partKey}/${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
+                          // partKey ya incluye la barra final, así que no agregamos otra
+                          const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                           
                           episodes.push({
                             ratingKey: episode.ratingKey,
@@ -15533,12 +15564,17 @@ app.get('/api/web-local/generate', async (req, res) => {
                     // Agregar servidor a serie existente
                     existingSeries.servers.push(seriesDataObj);
                     existingSeries.serverCount++;
+                    // Si esta serie tiene más temporadas/episodios, actualizar
+                    if (seasons.length > (existingSeries.seasons?.length || 0)) {
+                      existingSeries.seasons = seasons;
+                    }
                   } else {
                     // Nueva serie
                     allSeries.push({
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId,
                       ...tmdbDetails,
+                      seasons: seasons,
                       servers: [seriesDataObj],
                       serverCount: 1
                     });
