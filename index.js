@@ -9364,6 +9364,25 @@ app.get('/library', async (req, res) => {
     .content-card:hover .card-poster img {
       transform: scale(1.1);
     }
+    .server-count-badge {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: rgba(229, 160, 13, 0.95);
+      color: #1e1e27;
+      padding: 0.35rem 0.65rem;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    .server-count-badge:hover {
+      background: #e0b316;
+      transform: scale(1.1);
+    }
     .no-poster {
       width: 100%;
       height: 100%;
@@ -9840,6 +9859,50 @@ app.get('/library', async (req, res) => {
       padding: 0 3.5rem 2rem;
       background: #282828;
     }
+    .seasons-container {
+      padding: 2rem;
+      background: rgba(0,0,0,0.3);
+    }
+    .seasons-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1.5rem;
+    }
+    .season-card {
+      cursor: pointer;
+      transition: transform 0.3s, box-shadow 0.3s;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.4);
+    }
+    .season-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(229, 160, 13, 0.3);
+    }
+    .season-card-poster {
+      width: 100%;
+      aspect-ratio: 2/3;
+      overflow: hidden;
+      background: rgba(0,0,0,0.5);
+    }
+    .season-card-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .season-card-info {
+      padding: 0.75rem;
+    }
+    .season-card-title {
+      color: #e5a00d;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+    .season-card-episodes {
+      color: #9ca3af;
+      font-size: 0.85rem;
+    }
     .season-item {
       background: rgba(255,255,255,0.05);
       border: 2px solid rgba(229, 160, 13, 0.2);
@@ -9941,6 +10004,118 @@ app.get('/library', async (req, res) => {
     }
     .episode-download-btn i {
       font-size: 0.9rem;
+    }
+    
+    /* Episodios Grid (modal de temporada) */
+    .episodes-container {
+      padding: 0 2rem 2rem;
+    }
+    .episodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+    .episode-card {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(229, 160, 13, 0.2);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+    .episode-card:hover {
+      border-color: #e5a00d;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(229, 160, 13, 0.3);
+    }
+    .episode-card-poster {
+      width: 100%;
+      aspect-ratio: 16/9;
+      position: relative;
+      overflow: hidden;
+      background: rgba(0,0,0,0.5);
+    }
+    .episode-card-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .episode-server-badge {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: rgba(229, 160, 13, 0.95);
+      color: #1e1e27;
+      padding: 0.35rem 0.65rem;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    .episode-server-badge:hover {
+      background: #e0b316;
+      transform: scale(1.1);
+    }
+    .episode-card-info {
+      padding: 1rem;
+    }
+    .episode-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .episode-number-badge {
+      background: rgba(229, 160, 13, 0.2);
+      color: #e5a00d;
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .episode-size-badge {
+      background: rgba(156, 163, 175, 0.2);
+      color: #9ca3af;
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .episode-card-title {
+      color: white;
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .episode-card-overview {
+      color: #9ca3af;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .episode-download-button {
+      background: #e5a00d;
+      color: #1e1e27;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .episode-download-button:hover {
+      background: #e0b316;
+      transform: translateY(-1px);
     }
     
     /* Colecciones: Películas */
@@ -10565,6 +10740,7 @@ app.get('/library', async (req, res) => {
         <div class="content-card" onclick="window.openMovieModal(\${m.tmdbId})">
           <div class="card-poster">
             \${m.posterPath ? \`<img src="\${m.posterPath}" alt="\${m.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">🎬</div>'}
+            \${m.serverCount > 1 ? \`<div class="server-count-badge" onclick="event.stopPropagation(); window.openServerModal(\${m.tmdbId}, 'movie')">+\${m.serverCount}</div>\` : ''}
           </div>
           <div class="card-content">
             <div class="card-title">\${m.title}</div>
@@ -10648,6 +10824,7 @@ app.get('/library', async (req, res) => {
         <div class="content-card" onclick="window.openSeriesModal(\${s.tmdbId})">
           <div class="card-poster">
             \${s.posterPath ? \`<img src="\${s.posterPath}" alt="\${s.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">\` : '<div class="no-poster">📺</div>'}
+            \${s.serverCount > 1 ? \`<div class="server-count-badge" onclick="event.stopPropagation(); window.openServerModal(\${s.tmdbId}, 'series')">+\${s.serverCount}</div>\` : ''}
           </div>
           <div class="card-content">
             <div class="card-title">\${s.title}</div>
@@ -11000,34 +11177,20 @@ app.get('/library', async (req, res) => {
 
       const seasonsHTML = series.seasons && series.seasons.length > 0 ? \`
         <div class="seasons-container">
-          <h2 style="color: white; margin-bottom: 1rem; font-size: 1.5rem;">Temporadas y Episodios</h2>
-          \${series.seasons.map((season, idx) => \`
-            <div class="season-item" onclick="toggleSeason(\${idx})">
-              <div class="season-header">
-                <div class="season-poster">
+          <h2 style="color: white; margin-bottom: 1.5rem; font-size: 1.5rem;">Temporadas</h2>
+          <div class="seasons-grid">
+            \${series.seasons.map((season, idx) => \`
+              <div class="season-card" onclick="openSeasonModal(\${series.tmdbId}, \${idx})">
+                <div class="season-card-poster">
                   <img src="\${season.thumb || series.posterPath || 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'}" alt="\${season.title}" loading="lazy" onerror="if(this.src !== '\${series.posterPath}') { this.src='\${series.posterPath}'; } else { this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'; this.onerror=null; }">
                 </div>
-                <div class="season-info">
-                  <div class="season-title">\${season.title || 'Temporada ' + (season.seasonNumber || idx + 1)}</div>
-                  <div class="season-episodes-count">\${season.episodeCount || 0} episodios</div>
+                <div class="season-card-info">
+                  <div class="season-card-title">\${season.title || 'Temporada ' + (season.seasonNumber || idx + 1)}</div>
+                  <div class="season-card-episodes">\${season.episodeCount || 0} episodios</div>
                 </div>
               </div>
-              <div class="episodes-list" id="season-\${idx}">
-                \${season.episodes ? season.episodes.map(ep => \`
-                  <div class="episode-item">
-                    <div class="episode-number">E\${ep.episodeNumber || '?'}</div>
-                    <div class="episode-info">
-                      <div class="episode-title">\${ep.title || 'Sin título'}</div>
-                      \${ep.overview ? \`<div class="episode-overview">\${ep.overview}</div>\` : ''}
-                    </div>
-                    \${ep.downloadUrl ? \`<a href="\${ep.downloadUrl}" class="episode-download-btn" download title="Descargar episodio">
-                      <i class="fas fa-download"></i>
-                    </a>\` : ''}
-                  </div>
-                \`).join('') : '<p style="color: #999; padding: 1rem;">No hay episodios disponibles</p>'}
-              </div>
-            </div>
-          \`).join('')}
+            \`).join('')}
+          </div>
         </div>
       \` : '';
 
@@ -11102,6 +11265,285 @@ app.get('/library', async (req, res) => {
           }
         }
       }, 0);
+    }
+
+    function openSeasonModal(seriesTmdbId, seasonIdx) {
+      const series = allSeries.find(s => s.tmdbId === seriesTmdbId);
+      if (!series || !series.seasons || !series.seasons[seasonIdx]) return;
+      
+      const season = series.seasons[seasonIdx];
+      const seasonNumber = season.seasonNumber;
+      
+      // Agrupar episodios de todos los servidores por número de episodio
+      const episodesMap = new Map();
+      
+      // Buscar todas las variantes de esta serie en todos los servidores
+      const allSeriesVariants = allSeries.filter(s => s.tmdbId === seriesTmdbId);
+      
+      allSeriesVariants.forEach(variant => {
+        variant.servers.forEach(server => {
+          // Buscar la temporada correspondiente en este servidor
+          const serverSeason = server.seasons && server.seasons.find(s => s.seasonNumber === seasonNumber);
+          if (serverSeason && serverSeason.episodes) {
+            serverSeason.episodes.forEach(episode => {
+              const episodeKey = episode.episodeNumber;
+              
+              if (!episodesMap.has(episodeKey)) {
+                episodesMap.set(episodeKey, {
+                  episodeNumber: episode.episodeNumber,
+                  title: episode.title,
+                  overview: episode.overview,
+                  thumb: episode.thumb,
+                  servers: []
+                });
+              }
+              
+              // Agregar información del servidor para este episodio
+              episodesMap.get(episodeKey).servers.push({
+                serverName: server.serverName,
+                serverId: server.serverId,
+                downloadUrl: episode.downloadUrl,
+                fileSizeGB: episode.fileSizeGB,
+                fileSize: episode.fileSize,
+                videoResolution: episode.videoResolution,
+                videoCodec: episode.videoCodec,
+                audioCodec: episode.audioCodec,
+                audioChannels: episode.audioChannels,
+                bitrate: episode.bitrate,
+                duration: episode.duration
+              });
+            });
+          }
+        });
+      });
+      
+      // Convertir Map a Array y ordenar por número de episodio
+      const episodesArray = Array.from(episodesMap.values()).sort((a, b) => a.episodeNumber - b.episodeNumber);
+      
+      // Calcular tamaño total de la temporada (usar el primer servidor de cada episodio)
+      let totalSizeGB = 0;
+      episodesArray.forEach(ep => {
+        if (ep.servers[0] && ep.servers[0].fileSizeGB) {
+          totalSizeGB += ep.servers[0].fileSizeGB;
+        }
+      });
+      const seasonSizeText = totalSizeGB > 0 ? `${totalSizeGB.toFixed(2)} GB` : 'Tamaño desconocido';
+      
+      const modalHTML = \`
+        <div class="modal-content" onclick="event.stopPropagation()">
+          <div class="modal-backdrop-header" style="background-image: url('\${season.thumb || series.posterPath}');">
+            <button class="close-button" onclick="closeModal()">&times;</button>
+            <div class="modal-backdrop-overlay"></div>
+            <div class="modal-header-content">
+              <h1 class="modal-title">\${series.title} - \${season.title}</h1>
+              <div class="modal-badges">
+                <span class="runtime-badge">\${episodesArray.length} episodios</span>
+                <span class="runtime-badge">📦 \${seasonSizeText}</span>
+              </div>
+            </div>
+          </div>
+          <div class="episodes-container">
+            <h2 style="color: white; margin: 2rem; font-size: 1.5rem;">Episodios</h2>
+            <div class="episodes-grid">
+              \${episodesArray.map(ep => {
+                const firstServer = ep.servers[0];
+                const hasMultipleServers = ep.servers.length > 1;
+                
+                return \`
+                  <div class="episode-card">
+                    <div class="episode-card-poster">
+                      <img src="\${ep.thumb || season.thumb || series.posterPath || 'https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg'}" alt="\${ep.title}" loading="lazy" onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/sergioat93/plex-redirect/main/no-poster-disponible.jpg';">
+                      \${hasMultipleServers ? \`<div class="episode-server-badge" onclick="event.stopPropagation(); window.openEpisodeServerModal(\${seriesTmdbId}, \${seasonNumber}, \${ep.episodeNumber})">+\${ep.servers.length}</div>\` : ''}
+                    </div>
+                    <div class="episode-card-info">
+                      <div class="episode-header">
+                        <span class="episode-number-badge">E\${ep.episodeNumber || '?'}</span>
+                        \${firstServer.fileSizeGB ? \`<span class="episode-size-badge">\${firstServer.fileSizeGB.toFixed(2)} GB</span>\` : ''}
+                      </div>
+                      <div class="episode-card-title">\${ep.title || 'Sin título'}</div>
+                      \${ep.overview ? \`<div class="episode-card-overview">\${ep.overview}</div>\` : ''}
+                      \${hasMultipleServers 
+                        ? \`<button class="episode-download-button" onclick="event.stopPropagation(); window.openEpisodeServerModal(\${seriesTmdbId}, \${seasonNumber}, \${ep.episodeNumber})">
+                            <i class="fas fa-download"></i> Elegir Servidor
+                          </button>\`
+                        : firstServer.downloadUrl 
+                          ? \`<a href="\${firstServer.downloadUrl}" class="episode-download-button" download title="Descargar episodio">
+                              <i class="fas fa-download"></i> Descargar
+                            </a>\`
+                          : ''
+                      }
+                    </div>
+                  </div>
+                \`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      \`;
+      
+      document.getElementById('modalContainer').innerHTML = modalHTML;
+      document.getElementById('modalOverlay').classList.add('active');
+      document.getElementById('modalContainer').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function openEpisodeServerModal(seriesTmdbId, seasonNumber, episodeNumber) {
+      // Buscar todas las variantes de la serie
+      const allSeriesVariants = allSeries.filter(s => s.tmdbId === seriesTmdbId);
+      if (allSeriesVariants.length === 0) return;
+      
+      const series = allSeriesVariants[0];
+      const episodeVariants = [];
+      
+      // Recopilar todas las variantes del episodio de todos los servidores
+      allSeriesVariants.forEach(variant => {
+        variant.servers.forEach(server => {
+          const serverSeason = server.seasons && server.seasons.find(s => s.seasonNumber === seasonNumber);
+          if (serverSeason && serverSeason.episodes) {
+            const episode = serverSeason.episodes.find(e => e.episodeNumber === episodeNumber);
+            if (episode && episode.downloadUrl) {
+              episodeVariants.push({
+                serverName: server.serverName,
+                serverId: server.serverId,
+                downloadUrl: episode.downloadUrl,
+                episodeTitle: episode.title,
+                fileSizeGB: episode.fileSizeGB,
+                fileSize: episode.fileSize,
+                videoResolution: episode.videoResolution,
+                videoCodec: episode.videoCodec,
+                audioCodec: episode.audioCodec,
+                audioChannels: episode.audioChannels,
+                bitrate: episode.bitrate,
+                duration: episode.duration
+              });
+            }
+          }
+        });
+      });
+      
+      if (episodeVariants.length === 0) return;
+      
+      // Función helper para determinar calidad
+      const getQualityClass = (resolution) => {
+        if (!resolution) return 'quality-sd';
+        const res = resolution.toLowerCase();
+        if (res.includes('2160') || res.includes('4k')) return 'quality-4k';
+        if (res.includes('1080')) return 'quality-1080';
+        if (res.includes('720')) return 'quality-720';
+        return 'quality-sd';
+      };
+      
+      const getQualityLabel = (resolution) => {
+        if (!resolution) return 'SD';
+        const res = resolution.toLowerCase();
+        if (res.includes('2160') || res.includes('4k')) return '4K';
+        if (res.includes('1080')) return '1080p';
+        if (res.includes('720')) return '720p';
+        return 'SD';
+      };
+      
+      const formatFileSize = (bytes) => {
+        if (!bytes) return 'N/A';
+        const gb = (bytes / (1024 ** 3)).toFixed(2);
+        return \`\${gb} GB\`;
+      };
+      
+      const formatBitrate = (bitrate) => {
+        if (!bitrate) return 'N/A';
+        const mbps = (bitrate / 1000).toFixed(1);
+        return \`\${mbps} Mbps\`;
+      };
+      
+      const serversHTML = episodeVariants.map((variant, idx) => {
+        const qualityClass = getQualityClass(variant.videoResolution);
+        const qualityLabel = getQualityLabel(variant.videoResolution);
+        
+        return \`
+          <div class="server-option" onclick="downloadEpisode('\${variant.downloadUrl}')">
+            <div class="server-option-header">
+              <div class="server-name">
+                <i class="fas fa-server"></i> \${variant.serverName}
+              </div>
+              <span class="quality-badge \${qualityClass}">\${qualityLabel}</span>
+            </div>
+            <div class="server-details">
+              \${variant.videoResolution ? \`<div class="server-detail-item">
+                <i class="fas fa-film"></i> Resolución: <strong>\${variant.videoResolution}</strong>
+              </div>\` : ''}
+              \${variant.videoCodec ? \`<div class="server-detail-item">
+                <i class="fas fa-video"></i> Códec Video: <strong>\${variant.videoCodec}</strong>
+              </div>\` : ''}
+              \${variant.audioCodec ? \`<div class="server-detail-item">
+                <i class="fas fa-volume-up"></i> Códec Audio: <strong>\${variant.audioCodec} \${variant.audioChannels ? variant.audioChannels : ''}</strong>
+              </div>\` : ''}
+              \${variant.fileSizeGB ? \`<div class="server-detail-item">
+                <i class="fas fa-hdd"></i> Tamaño: <strong>\${variant.fileSizeGB.toFixed(2)} GB</strong>
+              </div>\` : variant.fileSize ? \`<div class="server-detail-item">
+                <i class="fas fa-hdd"></i> Tamaño: <strong>\${formatFileSize(variant.fileSize)}</strong>
+              </div>\` : ''}
+              \${variant.bitrate ? \`<div class="server-detail-item">
+                <i class="fas fa-tachometer-alt"></i> Bitrate: <strong>\${formatBitrate(variant.bitrate)}</strong>
+              </div>\` : ''}
+              \${variant.duration ? \`<div class="server-detail-item">
+                <i class="fas fa-clock"></i> Duración: <strong>\${Math.floor(variant.duration / 60000)} min</strong>
+              </div>\` : ''}
+            </div>
+          </div>
+        \`;
+      }).join('');
+      
+      const episodeTitle = episodeVariants[0].episodeTitle || \`Episodio \${episodeNumber}\`;
+      
+      const serverModalHTML = \`
+        <div class="server-selection-modal" onclick="event.stopPropagation()">
+          <div class="server-selection-header">
+            <img src="\${series.posterPath}" alt="\${series.title}" class="server-modal-poster">
+            <div class="server-modal-info">
+              <h2>\${series.title}</h2>
+              <p>Temporada \${seasonNumber} - \${episodeTitle}</p>
+              <p style="font-size: 0.9rem; color: #9ca3af;">Selecciona un servidor para descargar</p>
+            </div>
+            <button class="close-button" onclick="closeEpisodeServerModal()">&times;</button>
+          </div>
+          <div class="server-options-container">
+            \${serversHTML}
+          </div>
+        </div>
+      \`;
+      
+      // Crear overlay adicional para el modal de servidor
+      const serverOverlay = document.createElement('div');
+      serverOverlay.id = 'episodeServerModalOverlay';
+      serverOverlay.className = 'modal-overlay active';
+      serverOverlay.style.zIndex = '10001';
+      serverOverlay.onclick = closeEpisodeServerModal;
+      
+      const serverContainer = document.createElement('div');
+      serverContainer.id = 'episodeServerModalContainer';
+      serverContainer.className = 'modal-container active';
+      serverContainer.style.zIndex = '10002';
+      serverContainer.innerHTML = serverModalHTML;
+      
+      document.body.appendChild(serverOverlay);
+      document.body.appendChild(serverContainer);
+    }
+    
+    function closeEpisodeServerModal() {
+      const overlay = document.getElementById('episodeServerModalOverlay');
+      const container = document.getElementById('episodeServerModalContainer');
+      
+      if (overlay) overlay.remove();
+      if (container) container.remove();
+    }
+    
+    function downloadEpisode(downloadUrl) {
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = '';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      closeEpisodeServerModal();
     }
 
     function openCollectionModal(tmdbId) {
@@ -11191,6 +11633,10 @@ app.get('/library', async (req, res) => {
     window.filterByYear = filterByYear;
     window.openMovieModal = openMovieModal;
     window.openSeriesModal = openSeriesModal;
+    window.openSeasonModal = openSeasonModal;
+    window.openEpisodeServerModal = openEpisodeServerModal;
+    window.closeEpisodeServerModal = closeEpisodeServerModal;
+    window.downloadEpisode = downloadEpisode;
     window.openCollectionModal = openCollectionModal;
     window.closeModal = closeModal;
     window.toggleSeason = toggleSeason;
@@ -11202,11 +11648,11 @@ app.get('/library', async (req, res) => {
     // MODAL DE SELECCIÓN DE SERVIDOR
     function openServerModal(tmdbId, type) {
       const items = type === 'movie' ? allMovies : allSeries;
-      const allVariants = items.filter(item => item.tmdbId === tmdbId);
+      const item = items.find(i => i.tmdbId === tmdbId);
       
-      if (allVariants.length === 0) return;
+      if (!item || !item.servers || item.servers.length === 0) return;
       
-      const firstItem = allVariants[0];
+      const allVariants = item.servers;
       currentContentForServerModal = { tmdbId, type, variants: allVariants };
       
       // Función helper para determinar calidad
@@ -11279,9 +11725,9 @@ app.get('/library', async (req, res) => {
       const serverModalHTML = \`
         <div class="server-selection-modal" onclick="event.stopPropagation()">
           <div class="server-selection-header">
-            <img src="\${firstItem.posterPath}" alt="\${firstItem.title}" class="server-modal-poster">
+            <img src="\${item.posterPath}" alt="\${item.title}" class="server-modal-poster">
             <div class="server-modal-info">
-              <h2>\${firstItem.title}</h2>
+              <h2>\${item.title}</h2>
               <p>Selecciona un servidor para descargar</p>
             </div>
             <button class="close-button" onclick="closeServerModal()">&times;</button>
@@ -15316,18 +15762,11 @@ app.get('/api/web-local/generate', async (req, res) => {
                   const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
                   const customFileName = `${safeTitle} (${movieYear})${fileExtension}`;
                   
-                  // Extraer partKey sin el nombre del archivo
-                  let partKey = part.key || '';
-                  if (partKey && originalFileName) {
-                    // Remover el nombre del archivo del final de partKey
-                    const fileNameInPath = '/' + originalFileName;
-                    if (partKey.endsWith(fileNameInPath)) {
-                      partKey = partKey.substring(0, partKey.length - fileNameInPath.length) + '/';
-                    }
-                  }
+                  // Extraer keyBase sin el nombre del archivo (mismo método que tampermonkey)
+                  const keyBase = part.key ? part.key.replace(/\/[^\/]+$/, '/') : '';
                   
                   // Construir URL de descarga completa (funcional) con nombre personalizado
-                  const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
+                  const downloadUrl = keyBase ? `${server.baseURI}${keyBase}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                   
                   movieCount++; // Incrementar contador de películas procesadas
                   
@@ -15507,17 +15946,11 @@ app.get('/api/web-local/generate', async (req, res) => {
                           const fileExtension = originalFileName.substring(originalFileName.lastIndexOf('.'));
                           const customFileName = `${safeSeriesName} - S${seasonNum}E${episodeNum} - ${safeEpisodeTitle}${fileExtension}`;
                           
-                          // Extraer partKey sin el nombre del archivo
-                          let partKey = part.key || '';
-                          if (partKey && originalFileName) {
-                            const fileNameInPath = '/' + originalFileName;
-                            if (partKey.endsWith(fileNameInPath)) {
-                              partKey = partKey.substring(0, partKey.length - fileNameInPath.length) + '/';
-                            }
-                          }
+                          // Extraer keyBase sin el nombre del archivo (mismo método que tampermonkey)
+                          const keyBase = part.key ? part.key.replace(/\/[^\/]+$/, '/') : '';
                           
                           // Construir URL de descarga completa con nombre personalizado
-                          const downloadUrl = partKey ? `${server.baseURI}${partKey}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
+                          const downloadUrl = keyBase ? `${server.baseURI}${keyBase}${encodeURIComponent(customFileName)}?download=0&X-Plex-Token=${server.accessToken}` : '';
                           
                           episodes.push({
                             ratingKey: episode.ratingKey,
@@ -15550,14 +15983,21 @@ app.get('/api/web-local/generate', async (req, res) => {
                         }
                       }
                       
-                      seasons.push({
-                        ratingKey: season.ratingKey,
-                        seasonNumber: season.index,
-                        title: season.title,
-                        thumb: season.thumb || '',
-                        episodeCount: episodes.length,
-                        episodes
-                      });
+                      // Filtrar "All Seasons" y agregar solo temporadas válidas
+                      if (season.index > 0) {
+                        const seasonTitle = season.title && season.title !== 'All Seasons' 
+                          ? season.title.replace(/^Season\s+/i, 'Temporada ') 
+                          : `Temporada ${season.index}`;
+                        
+                        seasons.push({
+                          ratingKey: season.ratingKey,
+                          seasonNumber: season.index,
+                          title: seasonTitle,
+                          thumb: season.thumb || '',
+                          episodeCount: episodes.length,
+                          episodes
+                        });
+                      }
                     }
                   }
                   
