@@ -8821,9 +8821,29 @@ app.get('/library', async (req, res) => {
         ? await webSnapshotsCollection.findOne({ _id: new ObjectId(snapshotId) })
         : await webSnapshotsCollection.findOne({ isActive: true });
       
-      if (!snapshot || !snapshot.generatedFiles) {
+      if (!snapshot || !snapshot.allMovies || !snapshot.allSeries) {
         return res.status(404).send('No hay web generada disponible');
       }
+      
+      // Regenerar JSON desde los datos del snapshot
+      const metadataJson = JSON.stringify({
+        generatedAt: snapshot.generatedAt,
+        version: 1,
+        snapshotId: snapshot._id.toString(),
+        stats: {
+          movies: snapshot.allMovies.length,
+          series: snapshot.allSeries.length,
+          collections: snapshot.collections.length,
+          episodes: snapshot.allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
+          notFound: snapshot.notFoundItems.length,
+          servers: snapshot.activeServers.length
+        },
+        servers: snapshot.activeServers || []
+      }, null, 2);
+      
+      const moviesJson = JSON.stringify(snapshot.allMovies, null, 2);
+      const seriesJson = JSON.stringify(snapshot.allSeries, null, 2);
+      const collectionsJson = JSON.stringify(snapshot.collections, null, 2);
       
       // Configurar headers para descarga
       res.setHeader('Content-Type', 'application/zip');
@@ -8840,22 +8860,22 @@ app.get('/library', async (req, res) => {
       archive.pipe(res);
       
       // Agregar archivos JSON (para referencia)
-      archive.append(snapshot.generatedFiles.metadata, { name: 'data/metadata.json' });
+      archive.append(metadataJson, { name: 'data/metadata.json' });
       
       // Agregar archivos JS para carga en HTML offline usando Buffers para evitar límites de concatenación
       const moviesPrefix = Buffer.from('window.moviesData = ');
       const moviesSuffix = Buffer.from(';');
-      const moviesData = Buffer.from(snapshot.generatedFiles.movies);
+      const moviesData = Buffer.from(moviesJson);
       archive.append(Buffer.concat([moviesPrefix, moviesData, moviesSuffix]), { name: 'data/movies.js' });
       
       const seriesPrefix = Buffer.from('window.seriesData = ');
       const seriesSuffix = Buffer.from(';');
-      const seriesData = Buffer.from(snapshot.generatedFiles.series);
+      const seriesData = Buffer.from(seriesJson);
       archive.append(Buffer.concat([seriesPrefix, seriesData, seriesSuffix]), { name: 'data/series.js' });
       
       const collectionsPrefix = Buffer.from('window.collectionsData = ');
       const collectionsSuffix = Buffer.from(';');
-      const collectionsData = Buffer.from(snapshot.generatedFiles.collections);
+      const collectionsData = Buffer.from(collectionsJson);
       archive.append(Buffer.concat([collectionsPrefix, collectionsData, collectionsSuffix]), { name: 'data/collections.js' });
       
       // Agregar InfinityScrap.html (COPIA EXACTA de la web principal con adaptaciones para offline)
@@ -16228,18 +16248,8 @@ app.get('/api/web-local/generate', async (req, res) => {
     // 9. Generar collections.json
     const collectionsJson = JSON.stringify(collections, null, 2);
     
-    // 10. Guardar archivos en MongoDB temporalmente (para descargar después)
-    const generatedFiles = {
-      metadata: metadataJson,
-      movies: moviesJson,
-      series: seriesJson,
-      collections: collectionsJson
-    };
-    
-    await webSnapshotsCollection.updateOne(
-      { _id: snapshot.insertedId },
-      { $set: { generatedFiles } }
-    );
+    // NO guardamos los JSON en MongoDB porque exceden el límite de 16MB
+    // Los regeneraremos al momento de descargar usando los datos del snapshot
     
     const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
     
