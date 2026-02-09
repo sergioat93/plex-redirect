@@ -15563,9 +15563,34 @@ app.get('/api/web-local/generate', async (req, res) => {
       projectName: 'infinity-plex-web' 
     });
     
+    // Crear ID de sesión único para colecciones temporales
+    const sessionId = progressSnapshot._id.toString();
+    const tempMoviesCollectionName = `temp_movies_${sessionId}`;
+    const tempSeriesCollectionName = `temp_series_${sessionId}`;
+    
+    // Crear colecciones temporales en MongoDB
+    const tempMoviesCollection = db.collection(tempMoviesCollectionName);
+    const tempSeriesCollection = db.collection(tempSeriesCollectionName);
+    
+    // Función para flush datos a MongoDB y liberar memoria
+    const flushToMongo = async (movies, series) => {
+      try {
+        if (movies.length > 0) {
+          await tempMoviesCollection.insertMany(movies, { ordered: false }).catch(() => {});
+        }
+        if (series.length > 0) {
+          await tempSeriesCollection.insertMany(series, { ordered: false }).catch(() => {});
+        }
+      } catch (err) {
+        // Ignorar errores de duplicados
+      }
+    };
+    
     let allMovies = [];
     let allSeries = [];
     let collectionsMap = new Map();
+    let batchCounter = 0;
+    const BATCH_SIZE = 100; // Flush cada 100 items
     let notFoundItems = [];
     let processedItems = {};
     let resuming = false;
@@ -15603,6 +15628,28 @@ app.get('/api/web-local/generate', async (req, res) => {
       progressSnapshot._id = progressSnapshot.insertedId;
       sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
     }
+    
+    // Función para guardar lote de datos en MongoDB y liberar memoria
+    const saveBatchToMongo = async (batchMovies, batchSeries) => {
+      try {
+        if (batchMovies.length > 0) {
+          // Guardar películas en colección temporal
+          await webSnapshotsCollection.updateOne(
+            { _id: progressSnapshot._id },
+            { $push: { 'tempMovies': { $each: batchMovies } } }
+          );
+        }
+        if (batchSeries.length > 0) {
+          // Guardar series en colección temporal
+          await webSnapshotsCollection.updateOne(
+            { _id: progressSnapshot._id },
+            { $push: { 'tempSeries': { $each: batchSeries } } }
+          );
+        }
+      } catch (err) {
+        console.error('Error guardando lote:', err);
+      }
+    };
     
     // Función para guardar progreso
     const saveProgress = async (serverIndex, movies, series, collections, notFound, processed) => {
@@ -15891,6 +15938,16 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
+              // Flush a MongoDB cada BATCH_SIZE items para liberar memoria
+              batchCounter++;
+              if (batchCounter >= BATCH_SIZE) {
+                await flushToMongo(allMovies, allSeries);
+                allMovies = [];
+                allSeries = [];
+                batchCounter = 0;
+                if (global.gc) global.gc(); // Forzar GC
+              }
+              
               // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 25)); // 40 req/s max
             }
@@ -15931,6 +15988,11 @@ app.get('/api/web-local/generate', async (req, res) => {
               if (processedCount % 50 === 0) {
                 await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
                 sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
+                
+                // Forzar garbage collection para liberar memoria
+                if (global.gc) {
+                  global.gc();
+                }
               }
               
               // Extraer GUIDs correctos del XML - necesitamos el endpoint individual
@@ -16118,6 +16180,16 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
+              // Flush a MongoDB cada BATCH_SIZE items para liberar memoria
+              batchCounter++;
+              if (batchCounter >= BATCH_SIZE) {
+                await flushToMongo(allMovies, allSeries);
+                allMovies = [];
+                allSeries = [];
+                batchCounter = 0;
+                if (global.gc) global.gc(); // Forzar GC
+              }
+              
               // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 25));
             }
@@ -16129,6 +16201,14 @@ app.get('/api/web-local/generate', async (req, res) => {
         sendProgress({ type: 'warning', message: `Error escaneando ${server.name}: ${error.message}` });
       }
     }
+    
+    // Flush final de datos pendientes en memoria
+    await flushToMongo(allMovies, allSeries);
+    
+    // Consolidar todos los datos desde MongoDB
+    sendProgress({ type: 'progress', message: 'Consolidando datos desde MongoDB...', percent: 80 });
+    allMovies = await tempMoviesCollection.find({}).toArray();
+    allSeries = await tempSeriesCollection.find({}).toArray();
     
     sendProgress({ type: 'progress', message: 'Generando colecciones...', percent: 85 });
     
@@ -16280,12 +16360,29 @@ app.get('/api/web-local/generate', async (req, res) => {
       }
     });
     
+    // Limpiar colecciones temporales de MongoDB
+    try {
+      await tempMoviesCollection.drop();
+      await tempSeriesCollection.drop();
+    } catch (err) {
+      // Ignorar si no existen
+    }
+    
     cleanup();
     res.end();
     
   } catch (error) {
     console.error('Error generando web:', error);
     sendProgress({ type: 'error', message: `❌ Error: ${error.message}. El progreso se ha guardado, puedes continuar más tarde.` });
+    
+    // Limpiar colecciones temporales en caso de error también
+    try {
+      if (tempMoviesCollection) await tempMoviesCollection.drop();
+      if (tempSeriesCollection) await tempSeriesCollection.drop();
+    } catch (err) {
+      // Ignorar
+    }
+    
     // NO eliminamos el progreso en caso de error, para poder continuar después
     cleanup();
     res.end();
