@@ -11327,7 +11327,7 @@ app.get('/library', async (req, res) => {
           totalSizeGB += ep.servers[0].fileSizeGB;
         }
       });
-      const seasonSizeText = totalSizeGB > 0 ? `${totalSizeGB.toFixed(2)} GB` : 'Tamaño desconocido';
+      const seasonSizeText = totalSizeGB > 0 ? totalSizeGB.toFixed(2) + ' GB' : 'Tamaño desconocido';
       
       const modalHTML = \`
         <div class="modal-content" onclick="event.stopPropagation()">
