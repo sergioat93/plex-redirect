@@ -12405,26 +12405,25 @@ Generado por Infinity Scrap`;
       
       // Eliminar de not_found_items en el snapshot de MySQL
       const [snapshots] = await mysqlPool.execute(
-          `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
-          [snapshotId]
+        `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
+        [snapshotId]
+      );
+      
+      if (snapshots.length > 0) {
+        let notFoundItems = snapshots[0].not_found_items || '[]';
+        if (typeof notFoundItems === 'string') {
+          try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
+        }
+        if (!Array.isArray(notFoundItems)) notFoundItems = [];
+        
+        notFoundItems = notFoundItems.filter(item => 
+          !(item.ratingKey == ratingKey && item.serverId === serverId)
         );
         
-        if (snapshots.length > 0) {
-          let notFoundItems = snapshots[0].not_found_items || '[]';
-          if (typeof notFoundItems === 'string') {
-            try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
-          }
-          if (!Array.isArray(notFoundItems)) notFoundItems = [];
-          
-          notFoundItems = notFoundItems.filter(item => 
-            !(item.ratingKey == ratingKey && item.serverId === serverId)
-          );
-          
-          await mysqlPool.execute(
-            `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
-            [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
-          );
-        }
+        await mysqlPool.execute(
+          `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
+          [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
+        );
       }
       
       return res.json({ success: true, message: 'Item ignorado correctamente. El item desaparecerá de la lista.' });
