@@ -9214,10 +9214,25 @@ app.get('/library', async (req, res) => {
               try { servers = JSON.parse(servers); } catch (e) { servers = []; }
             }
             const movieObj = {
-              ...movie,
-              genres: Array.isArray(genres) ? genres : [],
-              servers: Array.isArray(servers) ? servers : []
-            };
+            id: movie.id,
+            tmdbId: movie.tmdb_id,
+            imdbId: movie.imdb_id,
+            title: movie.title,
+            posterPath: movie.poster_path,
+            backdropPath: movie.backdrop_path,
+            overview: movie.overview,
+            releaseYear: movie.release_year,
+            rating: movie.rating,
+            genres: Array.isArray(genres) ? genres : [],
+            collectionId: movie.collection_id,
+            collectionName: movie.collection_name,
+            collectionPoster: movie.collection_poster,
+            collectionBackdrop: movie.collection_backdrop,
+            servers: Array.isArray(servers) ? servers : [],
+            serverCount: movie.server_count,
+            createdAt: movie.created_at,
+            updatedAt: movie.updated_at
+          };
             
             moviesStream.write(JSON.stringify(movieObj));
             firstMovie = false;
@@ -9259,10 +9274,23 @@ app.get('/library', async (req, res) => {
               try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
             }
             const seriesObj = {
-              ...s,
+              id: s.id,
+              tmdbId: s.tmdb_id,
+              imdbId: s.imdb_id,
+              title: s.title,
+              posterPath: s.poster_path,
+              backdropPath: s.backdrop_path,
+              overview: s.overview,
+              firstAirYear: s.first_air_year,
+              rating: s.rating,
               genres: Array.isArray(genres) ? genres : [],
+              numberOfSeasons: s.number_of_seasons,
+              numberOfEpisodes: s.number_of_episodes,
+              seasons: Array.isArray(seasons) ? seasons : [],
               servers: Array.isArray(servers) ? servers : [],
-              seasons: Array.isArray(seasons) ? seasons : []
+              serverCount: s.server_count,
+              createdAt: s.created_at,
+              updatedAt: s.updated_at
             };
             
             seriesStream.write(JSON.stringify(seriesObj));
@@ -16049,10 +16077,10 @@ app.get('/api/web-local/status', async (req, res) => {
 
 // Endpoint: Generar web local (primera vez o completa)
 app.get('/api/web-local/generate', async (req, res) => {
-  // Modo de prueba (10 películas + 10 series por servidor)
+  // Modo de prueba (5 películas + 5 series por servidor)
   const testMode = req.query.test === 'true';
-  const testLimitMovies = testMode ? 10 : Infinity;
-  const testLimitSeries = testMode ? 10 : Infinity;
+  const testLimitMovies = testMode ? 5 : Infinity;
+  const testLimitSeries = testMode ? 5 : Infinity;
   
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
@@ -16295,7 +16323,10 @@ app.get('/api/web-local/generate', async (req, res) => {
         
         // Procesar películas
         let movieCount = 0;
+        let movieLimitReached = false;
         for (const lib of movieLibraries) {
+          if (movieLimitReached) break; // Salir si ya se alcanzó el límite
+          
           const moviesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
           const moviesXml = await httpsGetXML(moviesUrl);
           const moviesData = parseXML(moviesXml);
@@ -16307,6 +16338,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               // MODO PRUEBA: Limitar a testLimitMovies películas
               if (testMode && movieCount >= testLimitMovies) {
                 sendProgress({ type: 'warning', message: `🧪 Límite de películas de prueba alcanzado en ${server.serverName}` });
+                movieLimitReached = true;
                 break;
               }
               
@@ -16501,7 +16533,10 @@ app.get('/api/web-local/generate', async (req, res) => {
         
         // Procesar series
         let seriesCount = 0;
+        let seriesLimitReached = false;
         for (const lib of showLibraries) {
+          if (seriesLimitReached) break; // Salir si ya se alcanzó el límite
+          
           const seriesUrl = `${server.baseURI}/library/sections/${lib.key}/all?X-Plex-Token=${server.accessToken}`;
           const seriesXml = await httpsGetXML(seriesUrl);
           const seriesData = parseXML(seriesXml);
@@ -16513,6 +16548,7 @@ app.get('/api/web-local/generate', async (req, res) => {
               // MODO PRUEBA: Limitar a testLimitSeries series
               if (testMode && seriesCount >= testLimitSeries) {
                 sendProgress({ type: 'warning', message: `🧪 Límite de series de prueba alcanzado en ${server.serverName}` });
+                seriesLimitReached = true;
                 break;
               }
               
@@ -17113,7 +17149,57 @@ app.listen(port, host, async () => {
   // Conectar a MongoDB (servers, tokens, mappings)
   await connectMongoDB();
   
-  // Conectar a MySQL (web offline - opcional)
+  // Endpoint de diagnóstico para verificar datos en BD
+app.get('/api/debug/database', async (req, res) => {
+  try {
+    // Verificar conexión MySQL
+    if (!mysqlPool) {
+      return res.json({ error: 'MySQL no conectado' });
+    }
+
+    // Contar registros
+    const [movieCount] = await mysqlPool.execute('SELECT COUNT(*) as count FROM movies');
+    const [seriesCount] = await mysqlPool.execute('SELECT COUNT(*) as count FROM series');
+    const [cacheCount] = await mysqlPool.execute('SELECT COUNT(*) as count FROM tmdb_cache');
+
+    // Verificar estructura de tablas
+    const [movieStructure] = await mysqlPool.execute('DESCRIBE movies');
+    const [cacheStructure] = await mysqlPool.execute('DESCRIBE tmdb_cache');
+
+    // Ver un ejemplo de cada tabla
+    let movieSample = null;
+    let cacheSample = null;
+    
+    if (movieCount[0].count > 0) {
+      const [movies] = await mysqlPool.execute('SELECT id, tmdb_id, title, LEFT(genres, 200) as genres, LEFT(servers, 200) as servers FROM movies LIMIT 1');
+      movieSample = movies[0];
+    }
+    
+    if (cacheCount[0].count > 0) {
+      const [caches] = await mysqlPool.execute('SELECT search_key, result_type, tmdb_id, title, media_type, LEFT(tmdb_data, 200) as tmdb_data FROM tmdb_cache LIMIT 1');
+      cacheSample = caches[0];
+    }
+
+    res.json({
+      counts: {
+        movies: movieCount[0].count,
+        series: seriesCount[0].count,
+        tmdb_cache: cacheCount[0].count
+      },
+      structures: {
+        movies: movieStructure.map(col => ({ field: col.Field, type: col.Type })),
+        tmdb_cache: cacheStructure.map(col => ({ field: col.Field, type: col.Type }))
+      },
+      samples: {
+        movie: movieSample,
+        tmdb_cache: cacheSample
+      }
+    });
+
+  } catch (error) {
+    res.json({ error: error.message, stack: error.stack });
+  }
+});
   await connectMySQL();
 });
 
