@@ -12681,6 +12681,9 @@ Generado por Infinity Scrap`;
                     <button class="btn-secondary" onclick="clearProgress()">
                       🗑️ Borrar Progreso
                     </button>
+                    <button class="btn-secondary" style="background: rgba(220, 38, 38, 0.2); border-color: #dc2626; color: #ef4444;" onclick="clearPermanentTables()">
+                      🗑️ Vaciar Tablas Permanentes
+                    </button>
                   </div>
                 </div>
               \`;
@@ -12951,6 +12954,32 @@ Generado por Infinity Scrap`;
           } catch (error) {
             console.error('Error:', error);
             alert('Error borrando progreso');
+          }
+        }
+        
+        async function clearPermanentTables() {
+          if (!confirm('⚠️ ADVERTENCIA: Esto eliminará TODAS las películas y series de las tablas permanentes.\\n\\nLa próxima generación tomará mucho más tiempo ya que tendrá que volver a scrapear todo desde cero.\\n\\n¿Estás seguro?')) {
+            return;
+          }
+          
+          const urlParams = new URLSearchParams(window.location.search);
+          const password = urlParams.get('password') || urlParams.get('adminPassword');
+          
+          try {
+            const response = await fetch(\`/api/web-local/progress?adminPassword=\${encodeURIComponent(password)}&clearTables=true\`, {
+              method: 'DELETE'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+              alert(\`✓ Tablas vaciadas correctamente\\n\\n\${data.deletedMovies} películas eliminadas\\n\${data.deletedSeries} series eliminadas\`);
+              loadDashboard();
+            } else {
+              alert('Error: ' + (data.error || 'Unknown'));
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Error vaciando tablas');
           }
         }
         
@@ -16006,9 +16035,24 @@ app.get('/api/web-local/status', async (req, res) => {
     // Filtrar solo servidores ONLINE
     const onlineServers = serverStatuses.filter(s => s.online);
     
+    // Transformar snapshot a formato esperado por el frontend
+    const formattedSnapshot = {
+      id: snapshot.id,
+      generatedAt: snapshot.generated_at,
+      stats: {
+        totalMovies: snapshot.stats_total_movies || 0,
+        totalSeries: snapshot.stats_total_series || 0,
+        totalCollections: snapshot.stats_total_collections || 0,
+        totalEpisodes: snapshot.stats_total_episodes || 0,
+        notFoundCount: snapshot.stats_not_found_count || 0,
+        serversCount: snapshot.stats_servers_count || 0,
+        generationTimeMs: snapshot.stats_generation_time_ms || 0
+      }
+    };
+    
     res.json({
       exists: true,
-      snapshot: snapshot,
+      snapshot: formattedSnapshot,
       servers: onlineServers
     });
     
@@ -16955,6 +16999,8 @@ app.get('/api/web-local/generate', async (req, res) => {
 // Endpoint: Cancelar generación y limpiar progreso
 app.delete('/api/web-local/progress', async (req, res) => {
   try {
+    const clearTables = req.query.clearTables === 'true';
+    
     // Obtener snapshots de progreso antes de eliminarlos para poder borrar sus tablas
     const [progressSnapshots] = await mysqlPool.execute(
       `SELECT * FROM web_snapshots WHERE in_progress = TRUE AND project_name = 'infinity-plex-web'`
@@ -16967,9 +17013,24 @@ app.delete('/api/web-local/progress', async (req, res) => {
       `DELETE FROM web_snapshots WHERE in_progress = TRUE AND project_name = 'infinity-plex-web'`
     );
     
+    let message = `Progreso eliminado. ${result.affectedRows} snapshot(s) de progreso eliminados.`;
+    let deletedMovies = 0;
+    let deletedSeries = 0;
+    
+    // Si se solicita, vaciar tablas permanentes
+    if (clearTables) {
+      const [moviesResult] = await mysqlPool.execute(`DELETE FROM movies`);
+      const [seriesResult] = await mysqlPool.execute(`DELETE FROM series`);
+      deletedMovies = moviesResult.affectedRows;
+      deletedSeries = seriesResult.affectedRows;
+      message += ` ${deletedMovies} películas y ${deletedSeries} series eliminadas de tablas permanentes.`;
+    }
+    
     res.json({ 
       success: true, 
-      message: `Progreso eliminado. ${result.affectedRows} snapshot(s) de progreso eliminados.` 
+      message: message,
+      deletedMovies: deletedMovies,
+      deletedSeries: deletedSeries
     });
   } catch (error) {
     console.error('Error eliminando progreso:', error);
