@@ -9202,6 +9202,26 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [movies] = await mysqlPool.execute(`SELECT * FROM movies`);
           for (const movie of movies) {
+                        // Extraer campos formateados y combinados
+                        let genresString = Array.isArray(genres) ? genres.join(', ') : '';
+                        let countries = movie.countries || [];
+                        let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
+                        let rating = movie.rating !== undefined ? parseFloat(movie.rating).toFixed(1) : 'N/A';
+                        let voteCount = movie.vote_count ? movie.vote_count.toLocaleString('es-ES') : 'N/A';
+                        let year = movie.release_year || null;
+                        let trailerKey = movie.trailer_key || null;
+                        let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : 'N/A';
+                        let runtime = movie.runtime || null;
+                        let runtimeMinutes = movie.runtime_minutes || null;
+                        let budget = movie.budget || null;
+                        let revenue = movie.revenue || null;
+                        let director = movie.director || null;
+                        let cast = movie.cast || null;
+                        let tagline = movie.tagline || null;
+                        let releaseDate = movie.release_date || null;
+                        let posterPath = movie.poster_path || null;
+                        let backdropPath = movie.backdrop_path || null;
+                        let originalTitle = movie.original_title || null;
             if (!firstMovie) moviesStream.write(',');
             
             // Convertir campos JSON string a objetos
@@ -9218,26 +9238,26 @@ app.get('/library', async (req, res) => {
             tmdbId: movie.tmdb_id,
             imdbId: movie.imdb_id,
             title: movie.title,
-            originalTitle: movie.original_title || null,
-            tagline: movie.tagline || null,
+            originalTitle,
+            tagline,
             overview: movie.overview,
-            posterPath: movie.poster_path,
-            backdropPath: movie.backdrop_path,
-            releaseDate: movie.release_date || null,
-            year: movie.release_year,
-            runtime: movie.runtime || null,
-            runtimeMinutes: movie.runtime_minutes || null,
+            posterPath,
+            backdropPath,
+            releaseDate,
+            year,
+            runtime,
+            runtimeMinutes,
             genres: Array.isArray(genres) ? genres : [],
-            genresString: movie.genres_string || (Array.isArray(genres) ? genres.join(', ') : null),
-            rating: movie.rating,
-            voteCount: movie.vote_count_formatted || movie.vote_count || null,
-            budget: movie.budget_formatted || movie.budget || null,
-            revenue: movie.revenue_formatted || movie.revenue || null,
-            director: movie.director || null,
-            cast: movie.cast || null,
-            originalLanguage: movie.original_language || null,
-            countries: movie.countries_string || movie.countries || null,
-            trailerKey: movie.trailer_key || null,
+            genresString,
+            rating,
+            voteCount,
+            budget,
+            revenue,
+            director,
+            cast,
+            originalLanguage,
+            countries: countriesString,
+            trailerKey,
             collectionId: movie.collection_id,
             collectionName: movie.collection_name,
             collectionPoster: movie.collection_poster,
@@ -9272,6 +9292,24 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [series] = await mysqlPool.execute(`SELECT * FROM series`);
           for (const s of series) {
+                        // Extraer campos formateados y combinados para series
+                        let genresString = Array.isArray(genres) ? genres.join(', ') : '';
+                        let countries = s.countries || [];
+                        let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
+                        let rating = s.rating !== undefined ? parseFloat(s.rating).toFixed(1) : 'N/A';
+                        let voteCount = s.vote_count ? s.vote_count.toLocaleString('es-ES') : 'N/A';
+                        let year = s.first_air_year || null;
+                        let trailerKey = s.trailer_key || null;
+                        let originalLanguage = s.original_language ? s.original_language.toUpperCase() : 'N/A';
+                        let episodeRuntime = s.episode_runtime || null;
+                        let creators = s.creators || null;
+                        let cast = s.cast || null;
+                        let tagline = s.tagline || null;
+                        let firstAirDate = s.first_air_date || null;
+                        let lastAirDate = s.last_air_date || null;
+                        let posterPath = s.poster_path || null;
+                        let backdropPath = s.backdrop_path || null;
+                        let originalTitle = s.original_title || null;
             if (!firstSeries) seriesStream.write(',');
             
             // Convertir campos JSON string a objetos
@@ -9292,28 +9330,28 @@ app.get('/library', async (req, res) => {
               tmdbId: s.tmdb_id,
               imdbId: s.imdb_id,
               title: s.title,
-              originalTitle: s.original_title || null,
-              tagline: s.tagline || null,
+              originalTitle,
+              tagline,
               overview: s.overview,
-              posterPath: s.poster_path,
-              backdropPath: s.backdrop_path,
-              firstAirDate: s.first_air_date || null,
-              lastAirDate: s.last_air_date || null,
-              year: s.first_air_year,
+              posterPath,
+              backdropPath,
+              firstAirDate,
+              lastAirDate,
+              year,
               status: s.status || null,
               numberOfSeasons: s.number_of_seasons,
               numberOfEpisodes: s.number_of_episodes,
-              episodeRuntime: s.episode_runtime || null,
+              episodeRuntime,
               genres: Array.isArray(genres) ? genres : [],
-              genresString: s.genres_string || (Array.isArray(genres) ? genres.join(', ') : null),
-              rating: s.rating,
-              voteCount: s.vote_count_formatted || s.vote_count || null,
-              creators: s.creators || null,
-              cast: s.cast || null,
-              originalLanguage: s.original_language || null,
-              countries: s.countries_string || s.countries || null,
+              genresString,
+              rating,
+              voteCount,
+              creators,
+              cast,
+              originalLanguage,
+              countries: countriesString,
               networks: s.networks || null,
-              trailerKey: s.trailer_key || null,
+              trailerKey,
               inProduction: s.in_production || null,
               seasons: Array.isArray(seasons) ? seasons : [],
               servers: Array.isArray(servers) ? servers : [],
