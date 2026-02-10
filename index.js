@@ -15924,12 +15924,13 @@ app.get('/api/web-local/generate', async (req, res) => {
       
       await mysqlPool.execute(
         `INSERT INTO web_snapshots (
-          id, project_name, in_progress, started_at, generated_at, progress_state
-        ) VALUES (?, ?, TRUE, ?, NULL, ?)`,
+          id, project_name, in_progress, started_at, generated_at, version, is_active, progress_state
+        ) VALUES (?, ?, TRUE, ?, ?, 1, FALSE, ?)`,
         [
           sessionId,
           'infinity-plex-web',
           now,
+          now, // Fecha temporal, se actualizará al finalizar
           JSON.stringify({
             collectionsMap: [],
             notFoundItems: [],
@@ -16658,17 +16659,18 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     await mysqlPool.execute(
       `INSERT INTO web_snapshots (
-        id, project_name, generated_at, version, is_active,
+        id, project_name, in_progress, started_at, generated_at, version, is_active,
         temp_movies_table, temp_series_table,
         stats_total_movies, stats_total_series, stats_total_collections,
         stats_total_episodes, stats_not_found_count, stats_servers_count,
         stats_generation_time_ms, included_servers, processed_items,
         not_found_items, collections, active_servers
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, FALSE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         finalSessionId,
         'infinity-plex-web',
-        generatedAt,
+        new Date(startTime), // started_at - cuando comenzó la generación
+        generatedAt, // generated_at - cuando terminó
         1,
         true,
         tempMoviesTable,
