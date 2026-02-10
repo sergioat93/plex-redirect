@@ -12355,21 +12355,20 @@ Generado por Infinity Scrap`;
       );
       
       if (snapshots.length > 0) {
-          let notFoundItems = snapshots[0].not_found_items || '[]';
-          if (typeof notFoundItems === 'string') {
-            try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
-          }
-          if (!Array.isArray(notFoundItems)) notFoundItems = [];
-          
-          notFoundItems = notFoundItems.filter(item => 
-            !(item.ratingKey == ratingKey && item.serverId === serverId)
-          );
-          
-          await mysqlPool.execute(
-            `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
-            [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
-          );
+        let notFoundItems = snapshots[0].not_found_items || '[]';
+        if (typeof notFoundItems === 'string') {
+          try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
         }
+        if (!Array.isArray(notFoundItems)) notFoundItems = [];
+        
+        notFoundItems = notFoundItems.filter(item => 
+          !(item.ratingKey == ratingKey && item.serverId === serverId)
+        );
+        
+        await mysqlPool.execute(
+          `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
+          [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
+        );
       }
       
       return res.json({ success: true, message: 'TMDB ID asignado correctamente. El item desaparecerá de la lista.' });
