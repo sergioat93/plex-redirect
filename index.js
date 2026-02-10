@@ -15986,22 +15986,32 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: movie.updatedAt ? new Date(parseInt(movie.updatedAt) * 1000).toISOString() : ''
                   };
                   
-                  // Buscar si ya existe esta película (por tmdbId)
-                  const existingMovie = allMovies.find(m => m.tmdbId === tmdbResult.tmdbId);
+                  // Buscar si ya existe esta película en MongoDB (por tmdbId)
+                  const existingMovie = await tempMoviesCollection.findOne({ tmdbId: tmdbResult.tmdbId });
                   
                   if (existingMovie) {
                     // Agregar servidor a película existente
-                    existingMovie.servers.push(movieData);
-                    existingMovie.serverCount++;
+                    await tempMoviesCollection.updateOne(
+                      { _id: existingMovie._id },
+                      { 
+                        $push: { servers: movieData },
+                        $inc: { serverCount: 1 }
+                      }
+                    );
                   } else {
-                    // Nueva película
-                    allMovies.push({
+                    // Nueva película - insertar directamente
+                    await tempMoviesCollection.insertOne({
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId,
                       ...tmdbDetails,
                       servers: [movieData],
                       serverCount: 1
                     });
+                  }
+                  
+                  // Forzar GC cada 50 operaciones
+                  if (processedCount % 50 === 0 && global.gc) {
+                    global.gc();
                   }
                 }
               } else {
@@ -16212,20 +16222,26 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: series.updatedAt ? new Date(parseInt(series.updatedAt) * 1000).toISOString() : ''
                   };
                   
-                  // Buscar si ya existe esta serie (por tmdbId)
-                  const existingSeries = allSeries.find(s => s.tmdbId === tmdbResult.tmdbId);
+                  // Buscar si ya existe esta serie en MongoDB (por tmdbId)
+                  const existingSeries = await tempSeriesCollection.findOne({ tmdbId: tmdbResult.tmdbId });
                   
                   if (existingSeries) {
                     // Agregar servidor a serie existente
-                    existingSeries.servers.push(seriesDataObj);
-                    existingSeries.serverCount++;
+                    const updateFields = { 
+                      $push: { servers: seriesDataObj },
+                      $inc: { serverCount: 1 }
+                    };
                     // Si esta serie tiene más temporadas/episodios, actualizar
                     if (seasons.length > (existingSeries.seasons?.length || 0)) {
-                      existingSeries.seasons = seasons;
+                      updateFields.$set = { seasons: seasons };
                     }
+                    await tempSeriesCollection.updateOne(
+                      { _id: existingSeries._id },
+                      updateFields
+                    );
                   } else {
-                    // Nueva serie
-                    allSeries.push({
+                    // Nueva serie - insertar directamente
+                    await tempSeriesCollection.insertOne({
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId,
                       ...tmdbDetails,
@@ -16234,6 +16250,11 @@ app.get('/api/web-local/generate', async (req, res) => {
                       serverCount: 1
                     });
                     seriesCount++; // Incrementar contador de series procesadas
+                  }
+                  
+                  // Forzar GC cada 50 operaciones
+                  if (processedCount % 50 === 0 && global.gc) {
+                    global.gc();
                   }
                 }
               } else {
