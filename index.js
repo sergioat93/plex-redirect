@@ -15706,20 +15706,6 @@ app.get('/api/web-local/generate', async (req, res) => {
       });
     }
     
-    // Función para flush datos a MongoDB y liberar memoria
-    const flushToMongo = async (movies, series) => {
-      try {
-        if (movies.length > 0) {
-          await tempMoviesCollection.insertMany(movies, { ordered: false }).catch(() => {});
-        }
-        if (series.length > 0) {
-          await tempSeriesCollection.insertMany(series, { ordered: false }).catch(() => {});
-        }
-      } catch (err) {
-        // Ignorar errores de duplicados
-      }
-    };
-    
     // Función para guardar lote de datos en MongoDB y liberar memoria
     const saveBatchToMongo = async (batchMovies, batchSeries) => {
       try {
@@ -16029,16 +16015,6 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Flush a MongoDB cada BATCH_SIZE items para liberar memoria
-              batchCounter++;
-              if (batchCounter >= BATCH_SIZE) {
-                await flushToMongo(allMovies, allSeries);
-                allMovies = [];
-                allSeries = [];
-                batchCounter = 0;
-                if (global.gc) global.gc(); // Forzar GC
-              }
-              
               // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 25)); // 40 req/s max
             }
@@ -16271,16 +16247,6 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Flush a MongoDB cada BATCH_SIZE items para liberar memoria
-              batchCounter++;
-              if (batchCounter >= BATCH_SIZE) {
-                await flushToMongo(allMovies, allSeries);
-                allMovies = [];
-                allSeries = [];
-                batchCounter = 0;
-                if (global.gc) global.gc(); // Forzar GC
-              }
-              
               // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 25));
             }
@@ -16292,9 +16258,6 @@ app.get('/api/web-local/generate', async (req, res) => {
         sendProgress({ type: 'warning', message: `Error escaneando ${server.name}: ${error.message}` });
       }
     }
-    
-    // Flush final de datos pendientes en memoria
-    await flushToMongo(allMovies, allSeries);
     
     // NO cargar todo en memoria - consolidar directamente en MongoDB
     sendProgress({ type: 'progress', message: 'Consolidando datos en MongoDB...', percent: 80 });
