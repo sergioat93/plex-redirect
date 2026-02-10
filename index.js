@@ -109,6 +109,10 @@ async function connectMySQL() {
     connection.release();
     
     console.log('✅ Conectado a MySQL en Synology NAS');
+    
+    // Crear tablas permanentes si no existen
+    await createPermanentTables();
+    
     return mysqlPool;
   } catch (error) {
     console.error('❌ Error conectando a MySQL:', error.message);
@@ -116,15 +120,11 @@ async function connectMySQL() {
   }
 }
 
-// ========================================
-// FUNCIONES HELPER MYSQL (Web Offline)
-// ========================================
-
-// Crear tabla temporal de películas
-async function createTempMoviesTable(sessionId) {
-  const tableName = `temp_movies_${sessionId}`;
-  const sql = `
-    CREATE TABLE IF NOT EXISTS ${tableName} (
+// Crear tablas permanentes (reemplazan a las temporales)
+async function createPermanentTables() {
+  // Tabla movies permanente
+  await mysqlPool.execute(`
+    CREATE TABLE IF NOT EXISTS movies (
       id INT AUTO_INCREMENT PRIMARY KEY,
       tmdb_id INT UNIQUE,
       imdb_id VARCHAR(20),
@@ -142,19 +142,15 @@ async function createTempMoviesTable(sessionId) {
       servers JSON,
       server_count INT DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_tmdb (tmdb_id),
       INDEX idx_collection (collection_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-  `;
-  await mysqlPool.execute(sql);
-  return tableName;
-}
-
-// Crear tabla temporal de series
-async function createTempSeriesTable(sessionId) {
-  const tableName = `temp_series_${sessionId}`;
-  const sql = `
-    CREATE TABLE IF NOT EXISTS ${tableName} (
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  
+  // Tabla series permanente
+  await mysqlPool.execute(`
+    CREATE TABLE IF NOT EXISTS series (
       id INT AUTO_INCREMENT PRIMARY KEY,
       tmdb_id INT UNIQUE,
       imdb_id VARCHAR(20),
@@ -165,21 +161,28 @@ async function createTempSeriesTable(sessionId) {
       first_air_year INT,
       rating FLOAT,
       genres JSON,
+      number_of_seasons INT,
+      number_of_episodes INT,
       seasons JSON,
       servers JSON,
       server_count INT DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_tmdb (tmdb_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-  `;
-  await mysqlPool.execute(sql);
-  return tableName;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  
+  console.log('✅ Tablas permanentes verificadas');
 }
 
-// Insertar película en MySQL
-async function insertMovieMySQL(tableName, movieData) {
+// ========================================
+// FUNCIONES HELPER MYSQL (Web Offline)
+// ========================================
+
+// Insertar película en MySQL (tabla permanente)
+async function insertMovieMySQL(movieData) {
   const sql = `
-    INSERT INTO ${tableName} (
+    INSERT INTO movies (
       tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
       release_year, rating, genres, collection_id, collection_name,
       collection_poster, collection_backdrop, servers, server_count
@@ -206,18 +209,26 @@ async function insertMovieMySQL(tableName, movieData) {
 }
 
 // Actualizar película en MySQL (agregar servidor)
-async function updateMovieMySQL(tableName, tmdbId, newServer) {
+async function updateMovieMySQL(tmdbId, newServer) {
   const [rows] = await mysqlPool.execute(
-    `SELECT servers, server_count FROM ${tableName} WHERE tmdb_id = ?`,
+    `SELECT servers, server_count FROM movies WHERE tmdb_id = ?`,
     [tmdbId]
   );
   
   if (rows.length > 0) {
-    const servers = JSON.parse(rows[0].servers);
+    let servers = rows[0].servers;
+    if (typeof servers === 'string') {
+      try {
+        servers = JSON.parse(servers);
+      } catch (e) {
+        servers = [];
+      }
+    }
+    if (!Array.isArray(servers)) servers = [];
     servers.push(newServer);
     
     await mysqlPool.execute(
-      `UPDATE ${tableName} SET servers = ?, server_count = server_count + 1 WHERE tmdb_id = ?`,
+      `UPDATE movies SET servers = ?, server_count = server_count + 1 WHERE tmdb_id = ?`,
       [JSON.stringify(servers), tmdbId]
     );
     return true;
@@ -226,9 +237,9 @@ async function updateMovieMySQL(tableName, tmdbId, newServer) {
 }
 
 // Insertar serie en MySQL
-async function insertSeriesMySQL(tableName, seriesData) {
+async function insertSeriesMySQL(seriesData) {
   const sql = `
-    INSERT INTO ${tableName} (
+    INSERT INTO series (
       tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
       first_air_year, rating, genres, seasons, servers, server_count
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -251,22 +262,38 @@ async function insertSeriesMySQL(tableName, seriesData) {
 }
 
 // Actualizar serie en MySQL (agregar servidor)
-async function updateSeriesMySQL(tableName, tmdbId, newServer, newSeasons) {
+async function updateSeriesMySQL(tmdbId, newServer, newSeasons) {
   const [rows] = await mysqlPool.execute(
-    `SELECT servers, server_count, seasons FROM ${tableName} WHERE tmdb_id = ?`,
+    `SELECT servers, server_count, seasons FROM series WHERE tmdb_id = ?`,
     [tmdbId]
   );
   
   if (rows.length > 0) {
-    const servers = JSON.parse(rows[0].servers);
+    let servers = rows[0].servers;
+    if (typeof servers === 'string') {
+      try {
+        servers = JSON.parse(servers);
+      } catch (e) {
+        servers = [];
+      }
+    }
+    if (!Array.isArray(servers)) servers = [];
     servers.push(newServer);
     
-    let updateSql = `UPDATE ${tableName} SET servers = ?, server_count = server_count + 1`;
+    let updateSql = `UPDATE series SET servers = ?, server_count = server_count + 1`;
     let values = [JSON.stringify(servers)];
     
     // Si hay nuevas temporadas, actualizarlas
     if (newSeasons && newSeasons.length > 0) {
-      const currentSeasons = JSON.parse(rows[0].seasons || '[]');
+      let currentSeasons = rows[0].seasons || '[]';
+      if (typeof currentSeasons === 'string') {
+        try {
+          currentSeasons = JSON.parse(currentSeasons);
+        } catch (e) {
+          currentSeasons = [];
+        }
+      }
+      if (!Array.isArray(currentSeasons)) currentSeasons = [];
       if (newSeasons.length > currentSeasons.length) {
         updateSql += `, seasons = ?`;
         values.push(JSON.stringify(newSeasons));
@@ -9038,23 +9065,33 @@ app.get('/library', async (req, res) => {
       
       const snapshot = snapshots[0];
       
-      if (!snapshot || !snapshot.temp_movies_table || !snapshot.temp_series_table) {
+      if (!snapshot) {
         return res.status(404).send('No hay web generada disponible');
       }
       
-      // Contar documentos para stats
-      const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${snapshot.temp_movies_table}`);
-      const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${snapshot.temp_series_table}`);
+      // Contar documentos para stats (tablas permanentes)
+      const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+      const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
       const movieCount = movieCountRows[0].count;
       const seriesCount = seriesCountRows[0].count;
       
       // Calcular total de episodios
       let episodeCount = 0;
-      const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM ${snapshot.temp_series_table}`);
+      const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM series`);
       for (const s of seriesRows) {
-        const servers = JSON.parse(s.servers || '[]');
+        let servers = s.servers || '[]';
+        if (typeof servers === 'string') {
+          try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+        }
+        if (!Array.isArray(servers)) servers = [];
+        
         servers.forEach(srv => {
-          const seasons = JSON.parse(srv.seasons || '[]');
+          let seasons = srv.seasons || '[]';
+          if (typeof seasons === 'string') {
+            try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
+          }
+          if (!Array.isArray(seasons)) seasons = [];
+          
           seasons.forEach(season => {
             episodeCount += season.episodeCount || 0;
           });
@@ -9062,9 +9099,23 @@ app.get('/library', async (req, res) => {
       }
       
       // Parsear JSON fields del snapshot
-      const collections = JSON.parse(snapshot.collections || '[]');
-      const notFoundItems = JSON.parse(snapshot.not_found_items || '[]');
-      const activeServers = JSON.parse(snapshot.active_servers || '[]');
+      let collections = snapshot.collections || '[]';
+      if (typeof collections === 'string') {
+        try { collections = JSON.parse(collections); } catch (e) { collections = []; }
+      }
+      if (!Array.isArray(collections)) collections = [];
+      
+      let notFoundItems = snapshot.not_found_items || '[]';
+      if (typeof notFoundItems === 'string') {
+        try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
+      }
+      if (!Array.isArray(notFoundItems)) notFoundItems = [];
+      
+      let activeServers = snapshot.active_servers || '[]';
+      if (typeof activeServers === 'string') {
+        try { activeServers = JSON.parse(activeServers); } catch (e) { activeServers = []; }
+      }
+      if (!Array.isArray(activeServers)) activeServers = [];
       
       // Regenerar JSON desde los datos del snapshot
       const metadataJson = JSON.stringify({
@@ -9111,16 +9162,24 @@ app.get('/library', async (req, res) => {
           moviesStream.write('window.moviesData = [');
           let firstMovie = true;
           
-          // Streaming desde MySQL
-          const [movies] = await mysqlPool.execute(`SELECT * FROM ${snapshot.temp_movies_table}`);
+          // Streaming desde MySQL (tabla permanente)
+          const [movies] = await mysqlPool.execute(`SELECT * FROM movies`);
           for (const movie of movies) {
             if (!firstMovie) moviesStream.write(',');
             
             // Convertir campos JSON string a objetos
+            let genres = movie.genres || '[]';
+            if (typeof genres === 'string') {
+              try { genres = JSON.parse(genres); } catch (e) { genres = []; }
+            }
+            let servers = movie.servers || '[]';
+            if (typeof servers === 'string') {
+              try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+            }
             const movieObj = {
               ...movie,
-              genres: JSON.parse(movie.genres || '[]'),
-              servers: JSON.parse(movie.servers || '[]')
+              genres: Array.isArray(genres) ? genres : [],
+              servers: Array.isArray(servers) ? servers : []
             };
             
             moviesStream.write(JSON.stringify(movieObj));
@@ -9144,17 +9203,29 @@ app.get('/library', async (req, res) => {
           seriesStream.write('window.seriesData = [');
           let firstSeries = true;
           
-          // Streaming desde MySQL
-          const [series] = await mysqlPool.execute(`SELECT * FROM ${snapshot.temp_series_table}`);
+          // Streaming desde MySQL (tabla permanente)
+          const [series] = await mysqlPool.execute(`SELECT * FROM series`);
           for (const s of series) {
             if (!firstSeries) seriesStream.write(',');
             
             // Convertir campos JSON string a objetos
+            let genres = s.genres || '[]';
+            if (typeof genres === 'string') {
+              try { genres = JSON.parse(genres); } catch (e) { genres = []; }
+            }
+            let servers = s.servers || '[]';
+            if (typeof servers === 'string') {
+              try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+            }
+            let seasons = s.seasons || '[]';
+            if (typeof seasons === 'string') {
+              try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
+            }
             const seriesObj = {
               ...s,
-              genres: JSON.parse(s.genres || '[]'),
-              servers: JSON.parse(s.servers || '[]'),
-              seasons: JSON.parse(s.seasons || '[]')
+              genres: Array.isArray(genres) ? genres : [],
+              servers: Array.isArray(servers) ? servers : [],
+              seasons: Array.isArray(seasons) ? seasons : []
             };
             
             seriesStream.write(JSON.stringify(seriesObj));
@@ -12230,7 +12301,7 @@ Generado por Infinity Scrap`;
     }
     
     try {
-      // Guardar en manual_mappings
+      // Guardar en manual_mappings (MongoDB)
       const compositeId = `${ratingKey}_${serverId}`;
       
       await manualMappingsCollection.updateOne(
@@ -12248,7 +12319,27 @@ Generado por Infinity Scrap`;
         { upsert: true }
       );
       
-      return res.json({ success: true, message: 'TMDB ID asignado correctamente' });
+      // Eliminar de not_found_items en el snapshot de MySQL
+      if (mysqlPool) {
+        const [snapshots] = await mysqlPool.execute(
+          `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
+          [snapshotId]
+        );
+        
+        if (snapshots.length > 0) {
+          let notFoundItems = JSON.parse(snapshots[0].not_found_items || '[]');
+          notFoundItems = notFoundItems.filter(item => 
+            !(item.ratingKey == ratingKey && item.serverId === serverId)
+          );
+          
+          await mysqlPool.execute(
+            `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
+            [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
+          );
+        }
+      }
+      
+      return res.json({ success: true, message: 'TMDB ID asignado correctamente. El item desaparecerá de la lista.' });
       
     } catch (error) {
       console.error('Error asignando TMDB ID:', error);
@@ -12287,7 +12378,27 @@ Generado por Infinity Scrap`;
         { upsert: true }
       );
       
-      return res.json({ success: true, message: 'Item ignorado correctamente' });
+      // Eliminar de not_found_items en el snapshot de MySQL
+      if (mysqlPool) {
+        const [snapshots] = await mysqlPool.execute(
+          `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
+          [snapshotId]
+        );
+        
+        if (snapshots.length > 0) {
+          let notFoundItems = JSON.parse(snapshots[0].not_found_items || '[]');
+          notFoundItems = notFoundItems.filter(item => 
+            !(item.ratingKey == ratingKey && item.serverId === serverId)
+          );
+          
+          await mysqlPool.execute(
+            `UPDATE web_snapshots SET not_found_items = ?, stats_not_found_count = ? WHERE id = ?`,
+            [JSON.stringify(notFoundItems), notFoundItems.length, snapshotId]
+          );
+        }
+      }
+      
+      return res.json({ success: true, message: 'Item ignorado correctamente. El item desaparecerá de la lista.' });
       
     } catch (error) {
       console.error('Error ignorando item:', error);
@@ -12682,7 +12793,7 @@ Generado por Infinity Scrap`;
             container.style.display = 'block';
             
             const itemsHtml = data.items.map((item, index) => \`
-              <div style="background: rgba(17, 24, 39, 0.5); padding: 1rem; border-radius: 8px; border: 1px solid rgba(229, 160, 13, 0.2);">
+              <div id="notFoundItem\${index}" style="background: rgba(17, 24, 39, 0.5); padding: 1rem; border-radius: 8px; border: 1px solid rgba(229, 160, 13, 0.2);">
                 <div style="font-weight: 600; margin-bottom: 0.5rem;">
                   \${item.type === 'movie' ? '🎬' : '📺'} \${item.title} (\${item.year || 'N/A'})
                 </div>
@@ -12696,7 +12807,7 @@ Generado por Infinity Scrap`;
                     style="padding: 0.5rem 1rem; background: #34d399; border: none; border-radius: 4px; color: #000; font-weight: 600; cursor: pointer;">
                     ✓ Asignar
                   </button>
-                  <button onclick="ignoreItem('\${data.snapshotId}', '\${item.ratingKey}', '\${item.serverId}', '\${item.title}')" 
+                  <button onclick="ignoreItem('\${data.snapshotId}', '\${item.ratingKey}', '\${item.serverId}', '\${item.title}', \${index})" 
                     style="padding: 0.5rem 1rem; background: #f87171; border: none; border-radius: 4px; color: #000; font-weight: 600; cursor: pointer;">
                     ✕ Omitir
                   </button>
@@ -12738,8 +12849,20 @@ Generado por Infinity Scrap`;
             const data = await response.json();
             
             if (data.success) {
-              alert('✓ TMDB ID asignado correctamente. Regenera la web para aplicar los cambios.');
-              showNotFoundItems(); // Recargar lista
+              // Eliminar item de la lista visualmente
+              const itemRow = document.getElementById('notFoundItem' + index);
+              if (itemRow) {
+                itemRow.style.transition = 'opacity 0.3s';
+                itemRow.style.opacity = '0';
+                setTimeout(() => itemRow.remove(), 300);
+              }
+              
+              // Mostrar notificación
+              const notification = document.createElement('div');
+              notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#22c55e;color:white;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:10000;';
+              notification.textContent = '✓ TMDB ID asignado. El item ha sido eliminado de la lista.';
+              document.body.appendChild(notification);
+              setTimeout(() => notification.remove(), 3000);
             } else {
               alert('Error: ' + (data.error || 'Unknown'));
             }
@@ -12749,7 +12872,7 @@ Generado por Infinity Scrap`;
           }
         }
         
-        async function ignoreItem(snapshotId, ratingKey, serverId, title) {
+        async function ignoreItem(snapshotId, ratingKey, serverId, title, index) {
           if (!confirm(\`¿Seguro que deseas ignorar "\${title}"?\`)) return;
           
           const urlParams = new URLSearchParams(window.location.search);
@@ -12759,8 +12882,20 @@ Generado por Infinity Scrap`;
             const data = await response.json();
             
             if (data.success) {
-              alert('✓ Item ignorado correctamente');
-              showNotFoundItems(); // Recargar lista
+              // Eliminar item de la lista visualmente
+              const itemRow = document.getElementById('notFoundItem' + index);
+              if (itemRow) {
+                itemRow.style.transition = 'opacity 0.3s';
+                itemRow.style.opacity = '0';
+                setTimeout(() => itemRow.remove(), 300);
+              }
+              
+              // Mostrar notificación
+              const notification = document.createElement('div');
+              notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#22c55e;color:white;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:10000;';
+              notification.textContent = '✓ Item ignorado. Ha sido eliminado de la lista.';
+              document.body.appendChild(notification);
+              setTimeout(() => notification.remove(), 3000);
             } else {
               alert('Error: ' + (data.error || 'Unknown'));
             }
@@ -15972,14 +16107,12 @@ app.get('/api/web-local/generate', async (req, res) => {
       startServerIndex = progressState.currentServerIndex || 0;
     }
     
-    // Tablas temporales MySQL (única fuente de verdad - NO arrays en RAM)
+    // Usar tablas permanentes (NO temporales)
     const sessionId = progressSnapshot.id;
-    const tempMoviesTable = await createTempMoviesTable(sessionId);
-    const tempSeriesTable = await createTempSeriesTable(sessionId);
     
     if (resuming) {
-      const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
-      const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+      const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+      const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
       const movieCount = movieRows[0].count;
       const seriesCount = seriesRows[0].count;
       sendProgress({ 
@@ -15993,8 +16126,8 @@ app.get('/api/web-local/generate', async (req, res) => {
     const saveProgress = async (serverIndex) => {
       try {
         // Obtener contadores desde MySQL
-        const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
-        const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+        const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+        const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
         
         const progressState = {
           moviesCount: movieRows[0].count,
@@ -16134,13 +16267,13 @@ app.get('/api/web-local/generate', async (req, res) => {
                 sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
               }
               
-              // Guardar progreso cada 50 items
-              if (processedCount % 50 === 0) {
+              // Guardar progreso cada 100 items (optimizado)
+              if (processedCount % 100 === 0) {
                 await saveProgress(actualServerIndex);
                 
                 // Obtener contadores actuales desde MySQL
-                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
-                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
                 const totalUnique = movieRows[0].count + seriesRows[0].count;
                 const duplicates = processedCount - (totalUnique + notFoundItems.length);
                 
@@ -16257,16 +16390,16 @@ app.get('/api/web-local/generate', async (req, res) => {
                   
                   // Buscar si ya existe esta película en MySQL (por tmdbId)
                   const [existingRows] = await mysqlPool.execute(
-                    `SELECT id FROM ${tempMoviesTable} WHERE tmdb_id = ?`,
+                    `SELECT id FROM movies WHERE tmdb_id = ?`,
                     [tmdbResult.tmdbId]
                   );
                   
                   if (existingRows.length > 0) {
                     // Agregar servidor a película existente
-                    await updateMovieMySQL(tempMoviesTable, tmdbResult.tmdbId, movieData);
+                    await updateMovieMySQL(tmdbResult.tmdbId, movieData);
                   } else {
                     // Nueva película - insertar directamente
-                    await insertMovieMySQL(tempMoviesTable, {
+                    await insertMovieMySQL({
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
                       title: tmdbDetails.title,
@@ -16285,8 +16418,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                     });
                   }
                   
-                  // Forzar GC cada 50 operaciones
-                  if (processedCount % 50 === 0 && global.gc) {
+                  // Forzar GC cada 200 operaciones (optimizado)
+                  if (processedCount % 200 === 0 && global.gc) {
                     global.gc();
                   }
                 }
@@ -16301,8 +16434,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Rate limiting TMDB
-              await new Promise(resolve => setTimeout(resolve, 25)); // 40 req/s max
+              // Rate limiting TMDB (optimizado para Railway)
+              await new Promise(resolve => setTimeout(resolve, 15)); // ~66 req/s (dentro del límite de 50/s de TMDB)
             }
           }
         }
@@ -16337,13 +16470,13 @@ app.get('/api/web-local/generate', async (req, res) => {
                 sendProgress({ type: 'info', message: `Escaneando ${server.serverName}: ${processedCount}/${totalItems}` });
               }
               
-              // Guardar progreso cada 50 items
-              if (processedCount % 50 === 0) {
+              // Guardar progreso cada 100 items (optimizado)
+              if (processedCount % 100 === 0) {
                 await saveProgress(actualServerIndex);
                 
                 // Obtener contadores actuales desde MySQL
-                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
-                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
                 const totalUnique = movieRows[0].count + seriesRows[0].count;
                 
                 sendProgress({ type: 'info', message: `💾 Progreso guardado (${totalUnique} items)` });
@@ -16506,16 +16639,16 @@ app.get('/api/web-local/generate', async (req, res) => {
                   
                   // Buscar si ya existe esta serie en MySQL (por tmdbId)
                   const [existingSeriesRows] = await mysqlPool.execute(
-                    `SELECT id FROM ${tempSeriesTable} WHERE tmdb_id = ?`,
+                    `SELECT id FROM series WHERE tmdb_id = ?`,
                     [tmdbResult.tmdbId]
                   );
                   
                   if (existingSeriesRows.length > 0) {
                     // Agregar servidor a serie existente
-                    await updateSeriesMySQL(tempSeriesTable, tmdbResult.tmdbId, seriesDataObj, seasons);
+                    await updateSeriesMySQL(tmdbResult.tmdbId, seriesDataObj, seasons);
                   } else {
                     // Nueva serie - insertar directamente
-                    await insertSeriesMySQL(tempSeriesTable, {
+                    await insertSeriesMySQL({
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
                       title: tmdbDetails.title,
@@ -16534,8 +16667,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                     seriesCount++; // Incrementar contador de series procesadas
                   }
                   
-                  // Forzar GC cada 50 operaciones
-                  if (processedCount % 50 === 0 && global.gc) {
+                  // Forzar GC cada 200 operaciones (optimizado)
+                  if (processedCount % 200 === 0 && global.gc) {
                     global.gc();
                   }
                 }
@@ -16550,8 +16683,8 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Rate limiting TMDB
-              await new Promise(resolve => setTimeout(resolve, 25));
+              // Rate limiting TMDB (optimizado para Railway)
+              await new Promise(resolve => setTimeout(resolve, 15)); // ~66 req/s
             }
           }
         }
@@ -16564,8 +16697,8 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     // NO cargar todo en memoria - consolidar directamente en MySQL
     sendProgress({ type: 'progress', message: 'Consolidando datos en MySQL...', percent: 80 });
-    const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
-    const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+    const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
+    const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
     const finalMovieCount = movieCountRows[0].count;
     const finalSeriesCount = seriesCountRows[0].count;
     
@@ -16573,7 +16706,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     // 3. Generar colecciones leyendo de MySQL
     const [moviesWithCollection] = await mysqlPool.execute(
-      `SELECT * FROM ${tempMoviesTable} WHERE collection_id IS NOT NULL`
+      `SELECT * FROM movies WHERE collection_id IS NOT NULL`
     );
     
     for (const movie of moviesWithCollection) {
@@ -16601,12 +16734,35 @@ app.get('/api/web-local/generate', async (req, res) => {
         collection.serverCount += movie.server_count;
         collection.releaseYears.push(movie.release_year);
         
-        // Parse JSON fields
-        const genres = JSON.parse(movie.genres || '[]');
-        const servers = JSON.parse(movie.servers || '[]');
+        // Parse JSON fields (protegido contra objetos ya parseados)
+        let genres = movie.genres || [];
+        if (typeof genres === 'string') {
+          try {
+            genres = JSON.parse(genres);
+          } catch (e) {
+            genres = [];
+          }
+        }
         
-        genres.forEach(g => collection.genres.add(g));
-        servers.forEach(s => collection.availableQualities.add(s.videoResolution || 'Unknown'));
+        let servers = movie.servers || [];
+        if (typeof servers === 'string') {
+          try {
+            servers = JSON.parse(servers);
+          } catch (e) {
+            servers = [];
+          }
+        }
+        
+        if (Array.isArray(genres)) {
+          genres.forEach(g => collection.genres.add(g));
+        }
+        if (Array.isArray(servers)) {
+          servers.forEach(s => {
+            if (s && typeof s === 'object' && s.videoResolution) {
+              collection.availableQualities.add(s.videoResolution);
+            }
+          });
+        }
       }
     }
     
@@ -16636,20 +16792,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     if (existingSnapshots.length >= 1) {
       const toDelete = existingSnapshots; // Eliminar todos los anteriores
       if (toDelete.length > 0) {
-        // Eliminar tablas temporales de snapshots antiguos
-        for (const oldSnapshot of toDelete) {
-          if (oldSnapshot.temp_movies_table) {
-            try {
-              await mysqlPool.execute(`DROP TABLE IF EXISTS ${oldSnapshot.temp_movies_table}`);
-            } catch (err) {}
-          }
-          if (oldSnapshot.temp_series_table) {
-            try {
-              await mysqlPool.execute(`DROP TABLE IF EXISTS ${oldSnapshot.temp_series_table}`);
-            } catch (err) {}
-          }
-        }
-        
+        // Ya no hay tablas temporales, solo eliminar registros
         await mysqlPool.execute(
           `DELETE FROM web_snapshots WHERE id IN (${toDelete.map(() => '?').join(',')})`,
           toDelete.map(s => s.id)
@@ -16665,7 +16808,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     
     // Calcular total de episodios
     let totalEpisodes = 0;
-    const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM ${tempSeriesTable}`);
+    const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM series`);
     for (const s of seriesRows) {
       const servers = JSON.parse(s.servers || '[]');
       servers.forEach(srv => {
@@ -16683,12 +16826,11 @@ app.get('/api/web-local/generate', async (req, res) => {
     await mysqlPool.execute(
       `INSERT INTO web_snapshots (
         id, project_name, in_progress, started_at, generated_at, version, is_active,
-        temp_movies_table, temp_series_table,
         stats_total_movies, stats_total_series, stats_total_collections,
         stats_total_episodes, stats_not_found_count, stats_servers_count,
         stats_generation_time_ms, included_servers, processed_items,
         not_found_items, collections, active_servers
-      ) VALUES (?, ?, FALSE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, FALSE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         finalSessionId,
         'infinity-plex-web',
@@ -16696,8 +16838,6 @@ app.get('/api/web-local/generate', async (req, res) => {
         generatedAt, // generated_at - cuando terminó
         1,
         true,
-        tempMoviesTable,
-        tempSeriesTable,
         finalMovieCount,
         finalSeriesCount,
         collections.length,
@@ -16787,19 +16927,7 @@ app.delete('/api/web-local/progress', async (req, res) => {
       `SELECT * FROM web_snapshots WHERE in_progress = TRUE AND project_name = 'infinity-plex-web'`
     );
     
-    // Eliminar tablas temporales de cada snapshot en progreso
-    for (const snapshot of progressSnapshots) {
-      if (snapshot.temp_movies_table) {
-        try {
-          await mysqlPool.execute(`DROP TABLE IF EXISTS ${snapshot.temp_movies_table}`);
-        } catch (err) {}
-      }
-      if (snapshot.temp_series_table) {
-        try {
-          await mysqlPool.execute(`DROP TABLE IF EXISTS ${snapshot.temp_series_table}`);
-        } catch (err) {}
-      }
-    }
+    // Ya no hay tablas temporales que eliminar
     
     // Eliminar snapshots de progreso
     const [result] = await mysqlPool.execute(
@@ -16828,3 +16956,4 @@ app.listen(port, host, async () => {
   // Conectar a MySQL (web offline - opcional)
   await connectMySQL();
 });
+
