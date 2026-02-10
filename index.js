@@ -8877,11 +8877,11 @@ app.get('/library', async (req, res) => {
       // Generar archivos .js con streaming desde MongoDB (sin cargar todo en RAM)
       const collectionsJson = JSON.stringify(snapshot.collections, null, 2);
       
-      // movies.js - usar PassThrough correctamente
+      // movies.js - generar con await para asegurar que termine
       const moviesStream = new stream.PassThrough();
       archive.append(moviesStream, { name: 'data/movies.js' });
       
-      (async () => {
+      const moviesPromise = (async () => {
         try {
           moviesStream.write('window.moviesData = [');
           let firstMovie = true;
@@ -8896,15 +8896,16 @@ app.get('/library', async (req, res) => {
           moviesStream.end();
         } catch (err) {
           console.error('Error streaming movies:', err);
+          moviesStream.write('window.moviesData = [];');
           moviesStream.end();
         }
       })();
       
-      // series.js - usar PassThrough correctamente  
+      // series.js - generar con await para asegurar que termine
       const seriesStream = new stream.PassThrough();
       archive.append(seriesStream, { name: 'data/series.js' });
       
-      (async () => {
+      const seriesPromise = (async () => {
         try {
           seriesStream.write('window.seriesData = [');
           let firstSeries = true;
@@ -8919,9 +8920,13 @@ app.get('/library', async (req, res) => {
           seriesStream.end();
         } catch (err) {
           console.error('Error streaming series:', err);
+          seriesStream.write('window.seriesData = [];');
           seriesStream.end();
         }
       })();
+      
+      // Esperar a que ambos streams terminen antes de continuar
+      await Promise.all([moviesPromise, seriesPromise]);
       
       const collectionsPrefix = Buffer.from('window.collectionsData = ');
       const collectionsSuffix = Buffer.from(';');
