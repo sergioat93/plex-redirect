@@ -241,8 +241,9 @@ async function insertSeriesMySQL(seriesData) {
   const sql = `
     INSERT INTO series (
       tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
-      first_air_year, rating, genres, seasons, servers, server_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      first_air_year, rating, genres, number_of_seasons, number_of_episodes, 
+      seasons, servers, server_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
     seriesData.tmdbId,
@@ -254,6 +255,8 @@ async function insertSeriesMySQL(seriesData) {
     seriesData.firstAirYear || null,
     seriesData.rating || null,
     JSON.stringify(seriesData.genres || []),
+    seriesData.numberOfSeasons || null,
+    seriesData.numberOfEpisodes || null,
     JSON.stringify(seriesData.seasons || []),
     JSON.stringify(seriesData.servers),
     seriesData.serverCount
@@ -295,8 +298,14 @@ async function updateSeriesMySQL(tmdbId, newServer, newSeasons) {
       }
       if (!Array.isArray(currentSeasons)) currentSeasons = [];
       if (newSeasons.length > currentSeasons.length) {
-        updateSql += `, seasons = ?`;
-        values.push(JSON.stringify(newSeasons));
+        // Calcular número total de episodios
+        let totalEpisodes = 0;
+        newSeasons.forEach(season => {
+          totalEpisodes += season.episodeCount || 0;
+        });
+        
+        updateSql += `, seasons = ?, number_of_seasons = ?, number_of_episodes = ?`;
+        values.push(JSON.stringify(newSeasons), newSeasons.length, totalEpisodes);
       }
     }
     
@@ -12274,7 +12283,11 @@ Generado por Infinity Scrap`;
         return res.json({ items: [] });
       }
       
-      const notFoundItems = JSON.parse(snapshot.not_found_items || '[]');
+      let notFoundItems = snapshot.not_found_items || '[]';
+      if (typeof notFoundItems === 'string') {
+        try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
+      }
+      if (!Array.isArray(notFoundItems)) notFoundItems = [];
       
       return res.json({ 
         items: notFoundItems,
@@ -12327,7 +12340,12 @@ Generado por Infinity Scrap`;
         );
         
         if (snapshots.length > 0) {
-          let notFoundItems = JSON.parse(snapshots[0].not_found_items || '[]');
+          let notFoundItems = snapshots[0].not_found_items || '[]';
+          if (typeof notFoundItems === 'string') {
+            try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
+          }
+          if (!Array.isArray(notFoundItems)) notFoundItems = [];
+          
           notFoundItems = notFoundItems.filter(item => 
             !(item.ratingKey == ratingKey && item.serverId === serverId)
           );
@@ -12386,7 +12404,12 @@ Generado por Infinity Scrap`;
         );
         
         if (snapshots.length > 0) {
-          let notFoundItems = JSON.parse(snapshots[0].not_found_items || '[]');
+          let notFoundItems = snapshots[0].not_found_items || '[]';
+          if (typeof notFoundItems === 'string') {
+            try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
+          }
+          if (!Array.isArray(notFoundItems)) notFoundItems = [];
+          
           notFoundItems = notFoundItems.filter(item => 
             !(item.ratingKey == ratingKey && item.serverId === serverId)
           );
@@ -16810,9 +16833,19 @@ app.get('/api/web-local/generate', async (req, res) => {
     let totalEpisodes = 0;
     const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM series`);
     for (const s of seriesRows) {
-      const servers = JSON.parse(s.servers || '[]');
+      let servers = s.servers || '[]';
+      if (typeof servers === 'string') {
+        try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+      }
+      if (!Array.isArray(servers)) servers = [];
+      
       servers.forEach(srv => {
-        const seasons = JSON.parse(srv.seasons || '[]');
+        let seasons = srv.seasons || '[]';
+        if (typeof seasons === 'string') {
+          try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
+        }
+        if (!Array.isArray(seasons)) seasons = [];
+        
         seasons.forEach(season => {
           totalEpisodes += season.episodeCount || 0;
         });
