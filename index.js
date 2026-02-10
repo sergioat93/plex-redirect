@@ -177,12 +177,16 @@ async function createPermanentTables() {
     CREATE TABLE IF NOT EXISTS tmdb_cache (
       id INT AUTO_INCREMENT PRIMARY KEY,
       search_key VARCHAR(500) UNIQUE,
+      result_type ENUM('movie','series','not_found') NOT NULL,
       tmdb_id INT,
       imdb_id VARCHAR(20),
       title VARCHAR(500),
       media_type VARCHAR(20),
-      cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_search (search_key(255))
+      tmdb_data LONGTEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_search (search_key(255)),
+      INDEX idx_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   
@@ -15846,10 +15850,10 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
       const searchKey = `${normalizedTitle}_${year || 0}_${type}`;
       
       await mysqlPool.execute(
-        `INSERT INTO tmdb_cache (search_key, tmdb_id, imdb_id, title, media_type) 
-         VALUES (?, ?, ?, ?, ?) 
-         ON DUPLICATE KEY UPDATE tmdb_id = VALUES(tmdb_id), cached_at = CURRENT_TIMESTAMP`,
-        [searchKey, tmdbId, imdbId, result.title || result.name, type]
+        `INSERT INTO tmdb_cache (search_key, result_type, tmdb_id, imdb_id, title, media_type, tmdb_data) 
+         VALUES (?, ?, ?, ?, ?, ?, ?) 
+         ON DUPLICATE KEY UPDATE tmdb_id = VALUES(tmdb_id), updated_at = CURRENT_TIMESTAMP`,
+        [searchKey, type === 'movie' ? 'movie' : 'series', tmdbId, imdbId, result.title || result.name, type, JSON.stringify(result)]
       );
       
       return { tmdbId, imdbId, fromCache: false, source: 'search' };
@@ -16045,10 +16049,10 @@ app.get('/api/web-local/status', async (req, res) => {
 
 // Endpoint: Generar web local (primera vez o completa)
 app.get('/api/web-local/generate', async (req, res) => {
-  // Modo de prueba (5 películas + 5 series por servidor)
+  // Modo de prueba (10 películas + 10 series por servidor)
   const testMode = req.query.test === 'true';
-  const testLimitMovies = testMode ? 50 : Infinity;
-  const testLimitSeries = testMode ? 50 : Infinity;
+  const testLimitMovies = testMode ? 10 : Infinity;
+  const testLimitSeries = testMode ? 10 : Infinity;
   
   // Configurar SSE para progreso en tiempo real
   res.setHeader('Content-Type', 'text/event-stream');
@@ -16061,7 +16065,7 @@ app.get('/api/web-local/generate', async (req, res) => {
   };
   
   if (testMode) {
-    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán 5 películas y 5 series de cada servidor' });
+    sendProgress({ type: 'info', message: '🧪 MODO PRUEBA: Solo se procesarán 10 películas y 10 series de cada servidor' });
   }
   
   // Keepalive cada 15 segundos para mantener conexión viva
