@@ -15924,8 +15924,8 @@ app.get('/api/web-local/generate', async (req, res) => {
       
       await mysqlPool.execute(
         `INSERT INTO web_snapshots (
-          id, project_name, in_progress, started_at, progress_state
-        ) VALUES (?, ?, TRUE, ?, ?)`,
+          id, project_name, in_progress, started_at, generated_at, progress_state
+        ) VALUES (?, ?, TRUE, ?, NULL, ?)`,
         [
           sessionId,
           'infinity-plex-web',
