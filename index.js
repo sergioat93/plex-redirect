@@ -9231,7 +9231,17 @@ app.get('/library', async (req, res) => {
             servers: Array.isArray(servers) ? servers : [],
             serverCount: movie.server_count,
             createdAt: movie.created_at,
-            updatedAt: movie.updated_at
+            updatedAt: movie.updated_at,
+            // Nuevos metadatos
+            countries: movie.countries || [],
+            year: movie.release_year,
+            trailerKey: movie.trailer_key || null,
+            originalLanguage: movie.original_language || null,
+            director: movie.director || null,
+            cast: movie.cast || [],
+            voteCount: movie.vote_count || null,
+            budget: movie.budget || null,
+            revenue: movie.revenue || null
           };
             
             moviesStream.write(JSON.stringify(movieObj));
@@ -9290,7 +9300,17 @@ app.get('/library', async (req, res) => {
               servers: Array.isArray(servers) ? servers : [],
               serverCount: s.server_count,
               createdAt: s.created_at,
-              updatedAt: s.updated_at
+              updatedAt: s.updated_at,
+              // Nuevos metadatos
+              countries: s.countries || [],
+              year: s.first_air_year,
+              trailerKey: s.trailer_key || null,
+              originalLanguage: s.original_language || null,
+              creators: s.creators || null,
+              cast: s.cast || [],
+              voteCount: s.vote_count || null,
+              status: s.status || null,
+              networks: s.networks || null
             };
             
             seriesStream.write(JSON.stringify(seriesObj));
