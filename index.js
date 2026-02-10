@@ -8821,8 +8821,24 @@ app.get('/library', async (req, res) => {
         ? await webSnapshotsCollection.findOne({ _id: new ObjectId(snapshotId) })
         : await webSnapshotsCollection.findOne({ isActive: true });
       
-      if (!snapshot || !snapshot.allMovies || !snapshot.allSeries) {
+      if (!snapshot || !snapshot.tempMoviesCollection || !snapshot.tempSeriesCollection) {
         return res.status(404).send('No hay web generada disponible');
+      }
+      
+      // Obtener referencias a colecciones temporales
+      const db = mongoClient.db(MONGODB_DB);
+      const tempMoviesCol = db.collection(snapshot.tempMoviesCollection);
+      const tempSeriesCol = db.collection(snapshot.tempSeriesCollection);
+      
+      // Contar documentos para stats
+      const movieCount = await tempMoviesCol.countDocuments();
+      const seriesCount = await tempSeriesCol.countDocuments();
+      
+      // Calcular total de episodios
+      let episodeCount = 0;
+      const seriesCursor = tempSeriesCol.find({});
+      for await (const s of seriesCursor) {
+        episodeCount += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
       }
       
       // Regenerar JSON desde los datos del snapshot
@@ -8831,19 +8847,15 @@ app.get('/library', async (req, res) => {
         version: 1,
         snapshotId: snapshot._id.toString(),
         stats: {
-          movies: snapshot.allMovies.length,
-          series: snapshot.allSeries.length,
+          movies: movieCount,
+          series: seriesCount,
           collections: snapshot.collections.length,
-          episodes: snapshot.allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
+          episodes: episodeCount,
           notFound: snapshot.notFoundItems.length,
           servers: snapshot.activeServers.length
         },
         servers: snapshot.activeServers || []
       }, null, 2);
-      
-      const moviesJson = JSON.stringify(snapshot.allMovies, null, 2);
-      const seriesJson = JSON.stringify(snapshot.allSeries, null, 2);
-      const collectionsJson = JSON.stringify(snapshot.collections, null, 2);
       
       // Configurar headers para descarga
       res.setHeader('Content-Type', 'application/zip');
@@ -8862,16 +8874,54 @@ app.get('/library', async (req, res) => {
       // Agregar archivos JSON (para referencia)
       archive.append(metadataJson, { name: 'data/metadata.json' });
       
-      // Agregar archivos JS para carga en HTML offline usando Buffers para evitar límites de concatenación
-      const moviesPrefix = Buffer.from('window.moviesData = ');
-      const moviesSuffix = Buffer.from(';');
-      const moviesData = Buffer.from(moviesJson);
-      archive.append(Buffer.concat([moviesPrefix, moviesData, moviesSuffix]), { name: 'data/movies.js' });
+      // Generar archivos .js con streaming desde MongoDB (sin cargar todo en RAM)
+      const collectionsJson = JSON.stringify(snapshot.collections, null, 2);
       
-      const seriesPrefix = Buffer.from('window.seriesData = ');
-      const seriesSuffix = Buffer.from(';');
-      const seriesData = Buffer.from(seriesJson);
-      archive.append(Buffer.concat([seriesPrefix, seriesData, seriesSuffix]), { name: 'data/series.js' });
+      // movies.js - usar PassThrough correctamente
+      const moviesStream = new stream.PassThrough();
+      archive.append(moviesStream, { name: 'data/movies.js' });
+      
+      (async () => {
+        try {
+          moviesStream.write('window.moviesData = [');
+          let firstMovie = true;
+          
+          const moviesCursor = tempMoviesCol.find({});
+          for await (const movie of moviesCursor) {
+            if (!firstMovie) moviesStream.write(',');
+            moviesStream.write(JSON.stringify(movie));
+            firstMovie = false;
+          }
+          moviesStream.write('];');
+          moviesStream.end();
+        } catch (err) {
+          console.error('Error streaming movies:', err);
+          moviesStream.end();
+        }
+      })();
+      
+      // series.js - usar PassThrough correctamente  
+      const seriesStream = new stream.PassThrough();
+      archive.append(seriesStream, { name: 'data/series.js' });
+      
+      (async () => {
+        try {
+          seriesStream.write('window.seriesData = [');
+          let firstSeries = true;
+          
+          const seriesCursor = tempSeriesCol.find({});
+          for await (const series of seriesCursor) {
+            if (!firstSeries) seriesStream.write(',');
+            seriesStream.write(JSON.stringify(series));
+            firstSeries = false;
+          }
+          seriesStream.write('];');
+          seriesStream.end();
+        } catch (err) {
+          console.error('Error streaming series:', err);
+          seriesStream.end();
+        }
+      })();
       
       const collectionsPrefix = Buffer.from('window.collectionsData = ');
       const collectionsSuffix = Buffer.from(';');
@@ -15607,39 +15657,19 @@ app.get('/api/web-local/generate', async (req, res) => {
       projectName: 'infinity-plex-web' 
     });
     
-    let allMovies = [];
-    let allSeries = [];
     let collectionsMap = new Map();
-    let batchCounter = 0;
-    const BATCH_SIZE = 100; // Flush cada 100 items
     let notFoundItems = [];
     let processedItems = {};
     let resuming = false;
     let startServerIndex = 0;
     
-    if (progressSnapshot && progressSnapshot.progressState) {
-      // Hay progreso guardado, continuar desde ahí
-      resuming = true;
-      allMovies = progressSnapshot.progressState.allMovies || [];
-      allSeries = progressSnapshot.progressState.allSeries || [];
-      collectionsMap = new Map(progressSnapshot.progressState.collectionsMap || []);
-      notFoundItems = progressSnapshot.progressState.notFoundItems || [];
-      processedItems = progressSnapshot.progressState.processedItems || {};
-      startServerIndex = progressSnapshot.progressState.currentServerIndex || 0;
-      
-      sendProgress({ 
-        type: 'info', 
-        message: `♻️ Continuando generación anterior (${allMovies.length + allSeries.length} items ya procesados)...` 
-      });
-    } else {
-      // Nueva generación, crear snapshot de progreso
+    // Crear/obtener ID de sesión para colecciones temporales
+    if (!progressSnapshot) {
       progressSnapshot = await webSnapshotsCollection.insertOne({
         projectName: 'infinity-plex-web',
         inProgress: true,
         startedAt: new Date(),
         progressState: {
-          allMovies: [],
-          allSeries: [],
           collectionsMap: [],
           notFoundItems: [],
           processedItems: {},
@@ -15648,17 +15678,33 @@ app.get('/api/web-local/generate', async (req, res) => {
       });
       progressSnapshot._id = progressSnapshot.insertedId;
       sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
+    } else {
+      // Hay progreso guardado, continuar desde ahí
+      resuming = true;
+      collectionsMap = new Map(progressSnapshot.progressState.collectionsMap || []);
+      notFoundItems = progressSnapshot.progressState.notFoundItems || [];
+      processedItems = progressSnapshot.progressState.processedItems || {};
+      startServerIndex = progressSnapshot.progressState.currentServerIndex || 0;
     }
     
-    // AHORA crear colecciones temporales después de tener progressSnapshot
+    // Colecciones temporales MongoDB (única fuente de verdad - NO arrays en RAM)
     const sessionId = progressSnapshot._id.toString();
-    const tempMoviesCollectionName = `temp_movies_${sessionId}`;
-    const tempSeriesCollectionName = `temp_series_${sessionId}`;
-    
-    // Crear colecciones temporales en MongoDB (usando mongoClient)
     const db = mongoClient.db(MONGODB_DB);
-    const tempMoviesCollection = db.collection(tempMoviesCollectionName);
-    const tempSeriesCollection = db.collection(tempSeriesCollectionName);
+    const tempMoviesCollection = db.collection(`temp_movies_${sessionId}`);
+    const tempSeriesCollection = db.collection(`temp_series_${sessionId}`);
+    
+    // Crear índices para búsquedas rápidas
+    await tempMoviesCollection.createIndex({ tmdbId: 1 });
+    await tempSeriesCollection.createIndex({ tmdbId: 1 });
+    
+    if (resuming) {
+      const movieCount = await tempMoviesCollection.countDocuments();
+      const seriesCount = await tempSeriesCollection.countDocuments();
+      sendProgress({ 
+        type: 'info', 
+        message: `♻️ Continuando generación anterior (${movieCount + seriesCount} items ya procesados)...` 
+      });
+    }
     
     // Función para flush datos a MongoDB y liberar memoria
     const flushToMongo = async (movies, series) => {
@@ -16250,15 +16296,17 @@ app.get('/api/web-local/generate', async (req, res) => {
     // Flush final de datos pendientes en memoria
     await flushToMongo(allMovies, allSeries);
     
-    // Consolidar todos los datos desde MongoDB
-    sendProgress({ type: 'progress', message: 'Consolidando datos desde MongoDB...', percent: 80 });
-    allMovies = await tempMoviesCollection.find({}).toArray();
-    allSeries = await tempSeriesCollection.find({}).toArray();
+    // NO cargar todo en memoria - consolidar directamente en MongoDB
+    sendProgress({ type: 'progress', message: 'Consolidando datos en MongoDB...', percent: 80 });
+    const finalMovieCount = await tempMoviesCollection.countDocuments();
+    const finalSeriesCount = await tempSeriesCollection.countDocuments();
     
     sendProgress({ type: 'progress', message: 'Generando colecciones...', percent: 85 });
     
-    // 3. Generar colecciones (collectionsMap ya existe desde el inicio)
-    for (const movie of allMovies) {
+    // 3. Generar colecciones usando cursor (sin cargar array completo)
+    const moviesCursor = tempMoviesCollection.find({ collectionId: { $exists: true, $ne: null } });
+    
+    for await (const movie of moviesCursor) {
       if (movie.collectionId) {
         if (!collectionsMap.has(movie.collectionId)) {
           collectionsMap.set(movie.collectionId, {
@@ -16333,10 +16381,17 @@ app.get('/api/web-local/generate', async (req, res) => {
       generatedAt: new Date(),
       version: 1,
       stats: {
-        totalMovies: allMovies.length,
-        totalSeries: allSeries.length,
+        totalMovies: finalMovieCount,
+        totalSeries: finalSeriesCount,
         totalCollections: collections.length,
-        totalEpisodes: allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
+        totalEpisodes: await (async () => {
+          let total = 0;
+          const seriesCursor = tempSeriesCollection.find({});
+          for await (const s of seriesCursor) {
+            total += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
+          }
+          return total;
+        })(),
         notFoundCount: notFoundItems.length,
         serversCount: activeServers.length,
         generationTimeMs: Date.now() - startTime
@@ -16348,8 +16403,8 @@ app.get('/api/web-local/generate', async (req, res) => {
       })),
       processedItems,
       notFoundItems,
-      allMovies,
-      allSeries,
+      tempMoviesCollection: `temp_movies_${sessionId}`,
+      tempSeriesCollection: `temp_series_${sessionId}`,
       collections,
       activeServers,
       isActive: true
@@ -16363,10 +16418,17 @@ app.get('/api/web-local/generate', async (req, res) => {
       version: 1,
       snapshotId: snapshot.insertedId.toString(),
       stats: {
-        movies: allMovies.length,
-        series: allSeries.length,
+        movies: finalMovieCount,
+        series: finalSeriesCount,
         collections: collections.length,
-        episodes: allSeries.reduce((acc, s) => acc + s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0), 0),
+        episodes: await (async () => {
+          let total = 0;
+          const cursor = tempSeriesCollection.find({});
+          for await (const s of cursor) {
+            total += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
+          }
+          return total;
+        })(),
         notFound: notFoundItems.length,
         servers: activeServers.length
       },
@@ -16376,13 +16438,9 @@ app.get('/api/web-local/generate', async (req, res) => {
       }))
     }, null, 2);
     
-    // 7. Generar movies.json
-    const moviesJson = JSON.stringify(allMovies, null, 2);
+    // 7. Ya NO generar movies.json y series.json completos (muy pesado)
     
-    // 8. Generar series.json
-    const seriesJson = JSON.stringify(allSeries, null, 2);
-    
-    // 9. Generar collections.json
+    // 8. Generar collections.json solamente
     const collectionsJson = JSON.stringify(collections, null, 2);
     
     // NO guardamos los JSON en MongoDB porque exceden el límite de 16MB
@@ -16396,8 +16454,8 @@ app.get('/api/web-local/generate', async (req, res) => {
       percent: 100, 
       snapshotId: snapshot.insertedId.toString(),
       stats: {
-        movies: allMovies.length,
-        series: allSeries.length,
+        movies: finalMovieCount,
+        series: finalSeriesCount,
         collections: collections.length,
         notFound: notFoundItems.length,
         servers: activeServers.length,
