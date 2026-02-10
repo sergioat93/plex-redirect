@@ -1,6 +1,7 @@
 const express = require('express');
 const https = require('https');
 const { MongoClient, ObjectId } = require('mongodb');
+const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 const archiver = require('archiver');
 const stream = require('stream');
@@ -18,6 +19,13 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB = process.env.MONGO_DB; // Railway usa MONGO_DB
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// Variables MySQL (solo para generación web offline)
+const MYSQL_HOST = process.env.MYSQL_HOST;
+const MYSQL_PORT = process.env.MYSQL_PORT || '3306';
+const MYSQL_USER = process.env.MYSQL_USER;
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD;
+const MYSQL_DB = process.env.MYSQL_DB;
 
 // Validar variables críticas
 const missingVars = [];
@@ -37,11 +45,14 @@ console.log('✅ Variables de entorno cargadas correctamente');
 
 let mongoClient = null;
 let serversCollection = null;
-let webSnapshotsCollection = null;
-let tmdbCacheCollection = null;
+let webSnapshotsCollection = null; // DEPRECADO - ahora en MySQL
+let tmdbCacheCollection = null; // DEPRECADO - ahora en MySQL  
 let manualMappingsCollection = null;
 
-// Conectar a MongoDB
+// Pool de conexiones MySQL (solo para web offline)
+let mysqlPool = null;
+
+// Conectar a MongoDB (solo servers, tokens, mappings)
 async function connectMongoDB() {
   if (mongoClient) return mongoClient;
   
@@ -58,8 +69,8 @@ async function connectMongoDB() {
     
     console.log('✅ Conectado a MongoDB Atlas');
     
-    // Inicializar colecciones de Web Local
-    await initializeWebLocalCollections();
+    // Inicializar colecciones de Web Local (DEPRECADO - ahora en MySQL)
+    // await initializeWebLocalCollections();
     
     return mongoClient;
   } catch (error) {
@@ -68,14 +79,217 @@ async function connectMongoDB() {
   }
 }
 
-// Inicializar colecciones de Web Local (no toca la colección 'servers')
+// Conectar a MySQL (solo para generación web offline)
+async function connectMySQL() {
+  if (mysqlPool) return mysqlPool;
+  
+  // Si no hay variables MySQL configuradas, omitir (opcional)
+  if (!MYSQL_HOST || !MYSQL_USER || !MYSQL_PASSWORD || !MYSQL_DB) {
+    console.log('⚠️ MySQL no configurado - generación web offline deshabilitada');
+    return null;
+  }
+  
+  try {
+    mysqlPool = mysql.createPool({
+      host: MYSQL_HOST,
+      port: parseInt(MYSQL_PORT),
+      user: MYSQL_USER,
+      password: MYSQL_PASSWORD,
+      database: MYSQL_DB,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0
+    });
+    
+    // Verificar conexión
+    const connection = await mysqlPool.getConnection();
+    await connection.ping();
+    connection.release();
+    
+    console.log('✅ Conectado a MySQL en Synology NAS');
+    return mysqlPool;
+  } catch (error) {
+    console.error('❌ Error conectando a MySQL:', error.message);
+    return null;
+  }
+}
+
+// ========================================
+// FUNCIONES HELPER MYSQL (Web Offline)
+// ========================================
+
+// Crear tabla temporal de películas
+async function createTempMoviesTable(sessionId) {
+  const tableName = `temp_movies_${sessionId}`;
+  const sql = `
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      tmdb_id INT UNIQUE,
+      imdb_id VARCHAR(20),
+      title VARCHAR(500),
+      poster_path TEXT,
+      backdrop_path TEXT,
+      overview TEXT,
+      release_year INT,
+      rating FLOAT,
+      genres JSON,
+      collection_id INT,
+      collection_name VARCHAR(500),
+      collection_poster TEXT,
+      collection_backdrop TEXT,
+      servers JSON,
+      server_count INT DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_tmdb (tmdb_id),
+      INDEX idx_collection (collection_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `;
+  await mysqlPool.execute(sql);
+  return tableName;
+}
+
+// Crear tabla temporal de series
+async function createTempSeriesTable(sessionId) {
+  const tableName = `temp_series_${sessionId}`;
+  const sql = `
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      tmdb_id INT UNIQUE,
+      imdb_id VARCHAR(20),
+      title VARCHAR(500),
+      poster_path TEXT,
+      backdrop_path TEXT,
+      overview TEXT,
+      first_air_year INT,
+      rating FLOAT,
+      genres JSON,
+      seasons JSON,
+      servers JSON,
+      server_count INT DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_tmdb (tmdb_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `;
+  await mysqlPool.execute(sql);
+  return tableName;
+}
+
+// Insertar película en MySQL
+async function insertMovieMySQL(tableName, movieData) {
+  const sql = `
+    INSERT INTO ${tableName} (
+      tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
+      release_year, rating, genres, collection_id, collection_name,
+      collection_poster, collection_backdrop, servers, server_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  const values = [
+    movieData.tmdbId,
+    movieData.imdbId || null,
+    movieData.title,
+    movieData.posterPath || null,
+    movieData.backdropPath || null,
+    movieData.overview || null,
+    movieData.releaseYear || null,
+    movieData.rating || null,
+    JSON.stringify(movieData.genres || []),
+    movieData.collectionId || null,
+    movieData.collectionName || null,
+    movieData.collectionPoster || null,
+    movieData.collectionBackdrop || null,
+    JSON.stringify(movieData.servers),
+    movieData.serverCount
+  ];
+  await mysqlPool.execute(sql, values);
+}
+
+// Actualizar película en MySQL (agregar servidor)
+async function updateMovieMySQL(tableName, tmdbId, newServer) {
+  const [rows] = await mysqlPool.execute(
+    `SELECT servers, server_count FROM ${tableName} WHERE tmdb_id = ?`,
+    [tmdbId]
+  );
+  
+  if (rows.length > 0) {
+    const servers = JSON.parse(rows[0].servers);
+    servers.push(newServer);
+    
+    await mysqlPool.execute(
+      `UPDATE ${tableName} SET servers = ?, server_count = server_count + 1 WHERE tmdb_id = ?`,
+      [JSON.stringify(servers), tmdbId]
+    );
+    return true;
+  }
+  return false;
+}
+
+// Insertar serie en MySQL
+async function insertSeriesMySQL(tableName, seriesData) {
+  const sql = `
+    INSERT INTO ${tableName} (
+      tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
+      first_air_year, rating, genres, seasons, servers, server_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  const values = [
+    seriesData.tmdbId,
+    seriesData.imdbId || null,
+    seriesData.title,
+    seriesData.posterPath || null,
+    seriesData.backdropPath || null,
+    seriesData.overview || null,
+    seriesData.firstAirYear || null,
+    seriesData.rating || null,
+    JSON.stringify(seriesData.genres || []),
+    JSON.stringify(seriesData.seasons || []),
+    JSON.stringify(seriesData.servers),
+    seriesData.serverCount
+  ];
+  await mysqlPool.execute(sql, values);
+}
+
+// Actualizar serie en MySQL (agregar servidor)
+async function updateSeriesMySQL(tableName, tmdbId, newServer, newSeasons) {
+  const [rows] = await mysqlPool.execute(
+    `SELECT servers, server_count, seasons FROM ${tableName} WHERE tmdb_id = ?`,
+    [tmdbId]
+  );
+  
+  if (rows.length > 0) {
+    const servers = JSON.parse(rows[0].servers);
+    servers.push(newServer);
+    
+    let updateSql = `UPDATE ${tableName} SET servers = ?, server_count = server_count + 1`;
+    let values = [JSON.stringify(servers)];
+    
+    // Si hay nuevas temporadas, actualizarlas
+    if (newSeasons && newSeasons.length > 0) {
+      const currentSeasons = JSON.parse(rows[0].seasons || '[]');
+      if (newSeasons.length > currentSeasons.length) {
+        updateSql += `, seasons = ?`;
+        values.push(JSON.stringify(newSeasons));
+      }
+    }
+    
+    updateSql += ` WHERE tmdb_id = ?`;
+    values.push(tmdbId);
+    
+    await mysqlPool.execute(updateSql, values);
+    return true;
+  }
+  return false;
+}
+
+// Inicializar colecciones de Web Local (DEPRECADO - ahora está en MySQL)
 async function initializeWebLocalCollections() {
   try {
     const db = mongoClient.db(MONGODB_DB);
     const collections = await db.listCollections().toArray();
     const collectionNames = collections.map(c => c.name);
     
-    // Crear colección web_snapshots
+    // Crear colección web_snapshots (DEPRECADO)
     if (!collectionNames.includes('web_snapshots')) {
       await db.createCollection('web_snapshots');
       webSnapshotsCollection = db.collection('web_snapshots');
@@ -8808,53 +9022,64 @@ app.get('/library', async (req, res) => {
     const { snapshotId } = req.query;
     
     try {
-      // Asegurar conexión a MongoDB
-      if (!webSnapshotsCollection) {
-        await connectMongoDB();
+      // Asegurar conexión a MySQL
+      if (!mysqlPool) {
+        await connectMySQL();
       }
       
-      if (!webSnapshotsCollection) {
+      if (!mysqlPool) {
         return res.status(500).json({ error: 'Error de conexión a la base de datos' });
       }
       
-      const snapshot = snapshotId 
-        ? await webSnapshotsCollection.findOne({ _id: new ObjectId(snapshotId) })
-        : await webSnapshotsCollection.findOne({ isActive: true });
+      // Obtener snapshot desde MySQL
+      const [snapshots] = snapshotId
+        ? await mysqlPool.execute(`SELECT * FROM web_snapshots WHERE id = ?`, [snapshotId])
+        : await mysqlPool.execute(`SELECT * FROM web_snapshots WHERE is_active = TRUE LIMIT 1`);
       
-      if (!snapshot || !snapshot.tempMoviesCollection || !snapshot.tempSeriesCollection) {
+      const snapshot = snapshots[0];
+      
+      if (!snapshot || !snapshot.temp_movies_table || !snapshot.temp_series_table) {
         return res.status(404).send('No hay web generada disponible');
       }
       
-      // Obtener referencias a colecciones temporales
-      const db = mongoClient.db(MONGODB_DB);
-      const tempMoviesCol = db.collection(snapshot.tempMoviesCollection);
-      const tempSeriesCol = db.collection(snapshot.tempSeriesCollection);
-      
       // Contar documentos para stats
-      const movieCount = await tempMoviesCol.countDocuments();
-      const seriesCount = await tempSeriesCol.countDocuments();
+      const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${snapshot.temp_movies_table}`);
+      const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${snapshot.temp_series_table}`);
+      const movieCount = movieCountRows[0].count;
+      const seriesCount = seriesCountRows[0].count;
       
       // Calcular total de episodios
       let episodeCount = 0;
-      const seriesCursor = tempSeriesCol.find({});
-      for await (const s of seriesCursor) {
-        episodeCount += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
+      const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM ${snapshot.temp_series_table}`);
+      for (const s of seriesRows) {
+        const servers = JSON.parse(s.servers || '[]');
+        servers.forEach(srv => {
+          const seasons = JSON.parse(srv.seasons || '[]');
+          seasons.forEach(season => {
+            episodeCount += season.episodeCount || 0;
+          });
+        });
       }
+      
+      // Parsear JSON fields del snapshot
+      const collections = JSON.parse(snapshot.collections || '[]');
+      const notFoundItems = JSON.parse(snapshot.not_found_items || '[]');
+      const activeServers = JSON.parse(snapshot.active_servers || '[]');
       
       // Regenerar JSON desde los datos del snapshot
       const metadataJson = JSON.stringify({
-        generatedAt: snapshot.generatedAt,
-        version: 1,
-        snapshotId: snapshot._id.toString(),
+        generatedAt: snapshot.generated_at,
+        version: snapshot.version || 1,
+        snapshotId: snapshot.id,
         stats: {
           movies: movieCount,
           series: seriesCount,
-          collections: snapshot.collections.length,
+          collections: collections.length,
           episodes: episodeCount,
-          notFound: snapshot.notFoundItems.length,
-          servers: snapshot.activeServers.length
+          notFound: notFoundItems.length,
+          servers: activeServers.length
         },
-        servers: snapshot.activeServers || []
+        servers: activeServers || []
       }, null, 2);
       
       // Configurar headers para descarga
@@ -8874,8 +9099,8 @@ app.get('/library', async (req, res) => {
       // Agregar archivos JSON (para referencia)
       archive.append(metadataJson, { name: 'data/metadata.json' });
       
-      // Generar archivos .js con streaming desde MongoDB (sin cargar todo en RAM)
-      const collectionsJson = JSON.stringify(snapshot.collections, null, 2);
+      // Generar archivos .js con streaming desde MySQL (sin cargar todo en RAM)
+      const collectionsJson = JSON.stringify(collections, null, 2);
       
       // movies.js - generar con await para asegurar que termine
       const moviesStream = new stream.PassThrough();
@@ -8886,10 +9111,19 @@ app.get('/library', async (req, res) => {
           moviesStream.write('window.moviesData = [');
           let firstMovie = true;
           
-          const moviesCursor = tempMoviesCol.find({});
-          for await (const movie of moviesCursor) {
+          // Streaming desde MySQL
+          const [movies] = await mysqlPool.execute(`SELECT * FROM ${snapshot.temp_movies_table}`);
+          for (const movie of movies) {
             if (!firstMovie) moviesStream.write(',');
-            moviesStream.write(JSON.stringify(movie));
+            
+            // Convertir campos JSON string a objetos
+            const movieObj = {
+              ...movie,
+              genres: JSON.parse(movie.genres || '[]'),
+              servers: JSON.parse(movie.servers || '[]')
+            };
+            
+            moviesStream.write(JSON.stringify(movieObj));
             firstMovie = false;
           }
           moviesStream.write('];');
@@ -8910,10 +9144,20 @@ app.get('/library', async (req, res) => {
           seriesStream.write('window.seriesData = [');
           let firstSeries = true;
           
-          const seriesCursor = tempSeriesCol.find({});
-          for await (const series of seriesCursor) {
+          // Streaming desde MySQL
+          const [series] = await mysqlPool.execute(`SELECT * FROM ${snapshot.temp_series_table}`);
+          for (const s of series) {
             if (!firstSeries) seriesStream.write(',');
-            seriesStream.write(JSON.stringify(series));
+            
+            // Convertir campos JSON string a objetos
+            const seriesObj = {
+              ...s,
+              genres: JSON.parse(s.genres || '[]'),
+              servers: JSON.parse(s.servers || '[]'),
+              seasons: JSON.parse(s.seasons || '[]')
+            };
+            
+            seriesStream.write(JSON.stringify(seriesObj));
             firstSeries = false;
           }
           seriesStream.write('];');
@@ -11952,15 +12196,18 @@ Generado por Infinity Scrap`;
     }
     
     try {
-      const snapshot = await webSnapshotsCollection.findOne({ isActive: true });
+      const [snapshots] = await mysqlPool.execute(`SELECT * FROM web_snapshots WHERE is_active = TRUE LIMIT 1`);
+      const snapshot = snapshots[0];
       
       if (!snapshot) {
         return res.json({ items: [] });
       }
       
+      const notFoundItems = JSON.parse(snapshot.not_found_items || '[]');
+      
       return res.json({ 
-        items: snapshot.notFoundItems || [],
-        snapshotId: snapshot._id.toString()
+        items: notFoundItems,
+        snapshotId: snapshot.id
       });
       
     } catch (error) {
@@ -15539,26 +15786,27 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
 // Endpoint: Obtener estado actual de la web local
 app.get('/api/web-local/status', async (req, res) => {
   try {
-    // Asegurar conexión a MongoDB
-    if (!webSnapshotsCollection || !serversCollection) {
+    // Asegurar conexión a MySQL y MongoDB
+    if (!mysqlPool) {
+      await connectMySQL();
+    }
+    if (!serversCollection) {
       await connectMongoDB();
     }
     
-    if (!webSnapshotsCollection || !serversCollection) {
+    if (!mysqlPool || !serversCollection) {
       return res.status(500).json({ error: 'Error de conexión a la base de datos' });
     }
     
-    const lastSnapshot = await webSnapshotsCollection
-      .find({ isActive: true })
-      .sort({ generatedAt: -1 })
-      .limit(1)
-      .toArray();
+    const [snapshots] = await mysqlPool.execute(
+      `SELECT * FROM web_snapshots WHERE is_active = TRUE ORDER BY generated_at DESC LIMIT 1`
+    );
     
-    if (!lastSnapshot || lastSnapshot.length === 0) {
+    if (!snapshots || snapshots.length === 0) {
       return res.json({ exists: false });
     }
     
-    const snapshot = lastSnapshot[0];
+    const snapshot = snapshots[0];
     
     // Obtener servidores activos actuales
     const allServers = await serversCollection.find().toArray();
@@ -15644,23 +15892,24 @@ app.get('/api/web-local/generate', async (req, res) => {
   try {
     const startTime = Date.now();
     
-    // Asegurar conexión a MongoDB
-    if (!webSnapshotsCollection) {
-      await connectMongoDB();
+    // Asegurar conexión a MySQL (web offline)
+    if (!mysqlPool) {
+      await connectMySQL();
     }
     
-    if (!webSnapshotsCollection) {
-      sendProgress({ type: 'error', message: '❌ Error de conexión a la base de datos' });
-      res.write('data: {"type":"error","message":"Error de conexión a la base de datos"}\n\n');
+    if (!mysqlPool) {
+      sendProgress({ type: 'error', message: '❌ MySQL no configurado - configura variables MYSQL_* en Railway' });
       cleanup();
       return res.end();
     }
     
-    // Verificar si hay progreso guardado
-    let progressSnapshot = await webSnapshotsCollection.findOne({ 
-      inProgress: true,
-      projectName: 'infinity-plex-web' 
-    });
+    // Verificar si hay progreso guardado en MySQL
+    const [progressRows] = await mysqlPool.execute(
+      `SELECT * FROM web_snapshots WHERE in_progress = TRUE AND project_name = ? LIMIT 1`,
+      ['infinity-plex-web']
+    );
+    
+    let progressSnapshot = progressRows.length > 0 ? progressRows[0] : null;
     
     let collectionsMap = new Map();
     let notFoundItems = [];
@@ -15668,43 +15917,65 @@ app.get('/api/web-local/generate', async (req, res) => {
     let resuming = false;
     let startServerIndex = 0;
     
-    // Crear/obtener ID de sesión para colecciones temporales
+    // Crear/obtener ID de sesión para tablas temporales MySQL
     if (!progressSnapshot) {
-      progressSnapshot = await webSnapshotsCollection.insertOne({
-        projectName: 'infinity-plex-web',
-        inProgress: true,
-        startedAt: new Date(),
-        progressState: {
+      const sessionId = crypto.randomBytes(16).toString('hex');
+      const now = new Date();
+      
+      await mysqlPool.execute(
+        `INSERT INTO web_snapshots (
+          id, project_name, in_progress, started_at, progress_state
+        ) VALUES (?, ?, TRUE, ?, ?)`,
+        [
+          sessionId,
+          'infinity-plex-web',
+          now,
+          JSON.stringify({
+            collectionsMap: [],
+            notFoundItems: [],
+            processedItems: {},
+            currentServerIndex: 0
+          })
+        ]
+      );
+      
+      progressSnapshot = {
+        id: sessionId,
+        project_name: 'infinity-plex-web',
+        in_progress: true,
+        started_at: now,
+        progress_state: JSON.stringify({
           collectionsMap: [],
           notFoundItems: [],
           processedItems: {},
           currentServerIndex: 0
-        }
-      });
-      progressSnapshot._id = progressSnapshot.insertedId;
+        })
+      };
+      
       sendProgress({ type: 'start', message: 'Iniciando generación de web local...' });
     } else {
       // Hay progreso guardado, continuar desde ahí
       resuming = true;
-      collectionsMap = new Map(progressSnapshot.progressState.collectionsMap || []);
-      notFoundItems = progressSnapshot.progressState.notFoundItems || [];
-      processedItems = progressSnapshot.progressState.processedItems || {};
-      startServerIndex = progressSnapshot.progressState.currentServerIndex || 0;
+      const progressState = typeof progressSnapshot.progress_state === 'string' 
+        ? JSON.parse(progressSnapshot.progress_state)
+        : progressSnapshot.progress_state;
+      
+      collectionsMap = new Map(progressState.collectionsMap || []);
+      notFoundItems = progressState.notFoundItems || [];
+      processedItems = progressState.processedItems || {};
+      startServerIndex = progressState.currentServerIndex || 0;
     }
     
-    // Colecciones temporales MongoDB (única fuente de verdad - NO arrays en RAM)
-    const sessionId = progressSnapshot._id.toString();
-    const db = mongoClient.db(MONGODB_DB);
-    const tempMoviesCollection = db.collection(`temp_movies_${sessionId}`);
-    const tempSeriesCollection = db.collection(`temp_series_${sessionId}`);
-    
-    // Crear índices para búsquedas rápidas
-    await tempMoviesCollection.createIndex({ tmdbId: 1 });
-    await tempSeriesCollection.createIndex({ tmdbId: 1 });
+    // Tablas temporales MySQL (única fuente de verdad - NO arrays en RAM)
+    const sessionId = progressSnapshot.id;
+    const tempMoviesTable = await createTempMoviesTable(sessionId);
+    const tempSeriesTable = await createTempSeriesTable(sessionId);
     
     if (resuming) {
-      const movieCount = await tempMoviesCollection.countDocuments();
-      const seriesCount = await tempSeriesCollection.countDocuments();
+      const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
+      const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+      const movieCount = movieRows[0].count;
+      const seriesCount = seriesRows[0].count;
       sendProgress({ 
         type: 'info', 
         message: `♻️ Continuando generación anterior (${movieCount + seriesCount} items ya procesados)...` 
@@ -15712,45 +15983,26 @@ app.get('/api/web-local/generate', async (req, res) => {
     }
     
     // Función para guardar lote de datos en MongoDB y liberar memoria
-    const saveBatchToMongo = async (batchMovies, batchSeries) => {
+    // Función para guardar progreso en MySQL
+    const saveProgress = async (serverIndex) => {
       try {
-        if (batchMovies.length > 0) {
-          // Guardar películas en colección temporal
-          await webSnapshotsCollection.updateOne(
-            { _id: progressSnapshot._id },
-            { $push: { 'tempMovies': { $each: batchMovies } } }
-          );
-        }
-        if (batchSeries.length > 0) {
-          // Guardar series en colección temporal
-          await webSnapshotsCollection.updateOne(
-            { _id: progressSnapshot._id },
-            { $push: { 'tempSeries': { $each: batchSeries } } }
-          );
-        }
-      } catch (err) {
-        console.error('Error guardando lote:', err);
-      }
-    };
-    
-    // Función para guardar progreso
-    const saveProgress = async (serverIndex, movies, series, collections, notFound, processed) => {
-      try {
-        // Solo guardar metadata de progreso (contadores), NO los arrays completos
-        // para evitar exceder el límite de 16MB de MongoDB
-        await webSnapshotsCollection.updateOne(
-          { _id: progressSnapshot._id },
-          { 
-            $set: { 
-              'progressState.moviesCount': movies.length,
-              'progressState.seriesCount': series.length,
-              'progressState.collectionsCount': collections.size,
-              'progressState.notFoundCount': notFound.length,
-              'progressState.processedItems': processed,
-              'progressState.currentServerIndex': serverIndex,
-              'progressState.lastSavedAt': new Date()
-            } 
-          }
+        // Obtener contadores desde MySQL
+        const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
+        const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+        
+        const progressState = {
+          moviesCount: movieRows[0].count,
+          seriesCount: seriesRows[0].count,
+          collectionsCount: collectionsMap.size,
+          notFoundCount: notFoundItems.length,
+          processedItems: processedItems,
+          currentServerIndex: serverIndex,
+          lastSavedAt: new Date()
+        };
+        
+        await mysqlPool.execute(
+          `UPDATE web_snapshots SET progress_state = ? WHERE id = ?`,
+          [JSON.stringify(progressState), sessionId]
         );
       } catch (err) {
         console.error('Error guardando progreso:', err);
@@ -15878,11 +16130,17 @@ app.get('/api/web-local/generate', async (req, res) => {
               
               // Guardar progreso cada 50 items
               if (processedCount % 50 === 0) {
-                await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
-                const duplicates = processedCount - (allMovies.length + allSeries.length + notFoundItems.length);
+                await saveProgress(actualServerIndex);
+                
+                // Obtener contadores actuales desde MySQL
+                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
+                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+                const totalUnique = movieRows[0].count + seriesRows[0].count;
+                const duplicates = processedCount - (totalUnique + notFoundItems.length);
+                
                 sendProgress({ 
                   type: 'info', 
-                  message: `💾 Progreso: ${allMovies.length + allSeries.length} únicos | ${notFoundItems.length} no encontrados | ~${duplicates} duplicados` 
+                  message: `💾 Progreso: ${totalUnique} únicos | ${notFoundItems.length} no encontrados | ~${duplicates} duplicados` 
                 });
               }
               
@@ -15991,21 +16249,18 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: movie.updatedAt ? new Date(parseInt(movie.updatedAt) * 1000).toISOString() : ''
                   };
                   
-                  // Buscar si ya existe esta película en MongoDB (por tmdbId)
-                  const existingMovie = await tempMoviesCollection.findOne({ tmdbId: tmdbResult.tmdbId });
+                  // Buscar si ya existe esta película en MySQL (por tmdbId)
+                  const [existingRows] = await mysqlPool.execute(
+                    `SELECT id FROM ${tempMoviesTable} WHERE tmdb_id = ?`,
+                    [tmdbResult.tmdbId]
+                  );
                   
-                  if (existingMovie) {
+                  if (existingRows.length > 0) {
                     // Agregar servidor a película existente
-                    await tempMoviesCollection.updateOne(
-                      { _id: existingMovie._id },
-                      { 
-                        $push: { servers: movieData },
-                        $inc: { serverCount: 1 }
-                      }
-                    );
+                    await updateMovieMySQL(tempMoviesTable, tmdbResult.tmdbId, movieData);
                   } else {
                     // Nueva película - insertar directamente
-                    await tempMoviesCollection.insertOne({
+                    await insertMovieMySQL(tempMoviesTable, {
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId,
                       ...tmdbDetails,
@@ -16068,8 +16323,14 @@ app.get('/api/web-local/generate', async (req, res) => {
               
               // Guardar progreso cada 50 items
               if (processedCount % 50 === 0) {
-                await saveProgress(actualServerIndex, allMovies, allSeries, collectionsMap, notFoundItems, processedItems);
-                sendProgress({ type: 'info', message: `💾 Progreso guardado (${allMovies.length + allSeries.length} items)` });
+                await saveProgress(actualServerIndex);
+                
+                // Obtener contadores actuales desde MySQL
+                const [movieRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
+                const [seriesRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+                const totalUnique = movieRows[0].count + seriesRows[0].count;
+                
+                sendProgress({ type: 'info', message: `💾 Progreso guardado (${totalUnique} items)` });
                 
                 // Forzar garbage collection para liberar memoria
                 if (global.gc) {
@@ -16227,26 +16488,18 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: series.updatedAt ? new Date(parseInt(series.updatedAt) * 1000).toISOString() : ''
                   };
                   
-                  // Buscar si ya existe esta serie en MongoDB (por tmdbId)
-                  const existingSeries = await tempSeriesCollection.findOne({ tmdbId: tmdbResult.tmdbId });
+                  // Buscar si ya existe esta serie en MySQL (por tmdbId)
+                  const [existingSeriesRows] = await mysqlPool.execute(
+                    `SELECT id FROM ${tempSeriesTable} WHERE tmdb_id = ?`,
+                    [tmdbResult.tmdbId]
+                  );
                   
-                  if (existingSeries) {
+                  if (existingSeriesRows.length > 0) {
                     // Agregar servidor a serie existente
-                    const updateFields = { 
-                      $push: { servers: seriesDataObj },
-                      $inc: { serverCount: 1 }
-                    };
-                    // Si esta serie tiene más temporadas/episodios, actualizar
-                    if (seasons.length > (existingSeries.seasons?.length || 0)) {
-                      updateFields.$set = { seasons: seasons };
-                    }
-                    await tempSeriesCollection.updateOne(
-                      { _id: existingSeries._id },
-                      updateFields
-                    );
+                    await updateSeriesMySQL(tempSeriesTable, tmdbResult.tmdbId, seriesDataObj, seasons);
                   } else {
                     // Nueva serie - insertar directamente
-                    await tempSeriesCollection.insertOne({
+                    await insertSeriesMySQL(tempSeriesTable, {
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId,
                       ...tmdbDetails,
@@ -16285,24 +16538,29 @@ app.get('/api/web-local/generate', async (req, res) => {
       }
     }
     
-    // NO cargar todo en memoria - consolidar directamente en MongoDB
-    sendProgress({ type: 'progress', message: 'Consolidando datos en MongoDB...', percent: 80 });
-    const finalMovieCount = await tempMoviesCollection.countDocuments();
-    const finalSeriesCount = await tempSeriesCollection.countDocuments();
+    // NO cargar todo en memoria - consolidar directamente en MySQL
+    sendProgress({ type: 'progress', message: 'Consolidando datos en MySQL...', percent: 80 });
+    const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempMoviesTable}`);
+    const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM ${tempSeriesTable}`);
+    const finalMovieCount = movieCountRows[0].count;
+    const finalSeriesCount = seriesCountRows[0].count;
     
     sendProgress({ type: 'progress', message: 'Generando colecciones...', percent: 85 });
     
-    // 3. Generar colecciones usando cursor (sin cargar array completo)
-    const moviesCursor = tempMoviesCollection.find({ collectionId: { $exists: true, $ne: null } });
+    // 3. Generar colecciones leyendo de MySQL
+    const [moviesWithCollection] = await mysqlPool.execute(
+      `SELECT * FROM ${tempMoviesTable} WHERE collection_id IS NOT NULL`
+    );
     
-    for await (const movie of moviesCursor) {
-      if (movie.collectionId) {
-        if (!collectionsMap.has(movie.collectionId)) {
-          collectionsMap.set(movie.collectionId, {
-            collectionId: movie.collectionId,
-            name: movie.collectionName,
-            poster: movie.collectionPoster,
-            backdrop: movie.collectionBackdrop,
+    for (const movie of moviesWithCollection) {
+      const collectionId = movie.collection_id;
+      if (collectionId) {
+        if (!collectionsMap.has(collectionId)) {
+          collectionsMap.set(collectionId, {
+            collectionId: collectionId,
+            name: movie.collection_name,
+            poster: movie.collection_poster,
+            backdrop: movie.collection_backdrop,
             overview: '',
             movieIds: [],
             movieCount: 0,
@@ -16313,13 +16571,18 @@ app.get('/api/web-local/generate', async (req, res) => {
           });
         }
         
-        const collection = collectionsMap.get(movie.collectionId);
-        collection.movieIds.push(movie.tmdbId);
+        const collection = collectionsMap.get(collectionId);
+        collection.movieIds.push(movie.tmdb_id);
         collection.movieCount++;
-        collection.serverCount += movie.serverCount;
-        collection.releaseYears.push(movie.year);
-        movie.genres.forEach(g => collection.genres.add(g));
-        movie.servers.forEach(s => collection.availableQualities.add(s.quality));
+        collection.serverCount += movie.server_count;
+        collection.releaseYears.push(movie.release_year);
+        
+        // Parse JSON fields
+        const genres = JSON.parse(movie.genres || '[]');
+        const servers = JSON.parse(movie.servers || '[]');
+        
+        genres.forEach(g => collection.genres.add(g));
+        servers.forEach(s => collection.availableQualities.add(s.videoResolution || 'Unknown'));
       }
     }
     
@@ -16338,86 +16601,109 @@ app.get('/api/web-local/generate', async (req, res) => {
       lastReleaseYear: Math.max(...col.releaseYears)
     }));
     
-    sendProgress({ type: 'progress', message: 'Guardando snapshot en MongoDB...', percent: 90 });
+    sendProgress({ type: 'progress', message: 'Guardando snapshot en MySQL...', percent: 90 });
     
-    // 4. Limpiar snapshots antiguos (mantener solo 2: actual + anterior)
-    const existingSnapshots = await webSnapshotsCollection
-      .find()
-      .sort({ generatedAt: -1 })
-      .toArray();
+    // 4. Limpiar snapshots antiguos de MySQL (mantener solo el más reciente)
+    const [existingSnapshots] = await mysqlPool.execute(
+      `SELECT * FROM web_snapshots ORDER BY generated_at DESC`
+    );
     
-    if (existingSnapshots.length >= 2) {
-      // Eliminar todos excepto el más reciente (que será el anterior cuando insertemos el nuevo)
-      const toDelete = existingSnapshots.slice(1);
+    // En MySQL, eliminar TODOS los snapshots antiguos excepto el que vamos a crear
+    if (existingSnapshots.length >= 1) {
+      const toDelete = existingSnapshots; // Eliminar todos los anteriores
       if (toDelete.length > 0) {
-        await webSnapshotsCollection.deleteMany({
-          _id: { $in: toDelete.map(s => s._id) }
-        });
-        // También eliminar mappings asociados
-        await manualMappingsCollection.deleteMany({
-          snapshotId: { $in: toDelete.map(s => s._id) }
-        });
-        sendProgress({ type: 'info', message: `🗑️ Limpiados ${toDelete.length} snapshots antiguos` });
+        // Eliminar tablas temporales de snapshots antiguos
+        for (const oldSnapshot of toDelete) {
+          if (oldSnapshot.temp_movies_table) {
+            try {
+              await mysqlPool.execute(`DROP TABLE IF EXISTS ${oldSnapshot.temp_movies_table}`);
+            } catch (err) {}
+          }
+          if (oldSnapshot.temp_series_table) {
+            try {
+              await mysqlPool.execute(`DROP TABLE IF EXISTS ${oldSnapshot.temp_series_table}`);
+            } catch (err) {}
+          }
+        }
+        
+        await mysqlPool.execute(
+          `DELETE FROM web_snapshots WHERE id IN (${toDelete.map(() => '?').join(',')})`,
+          toDelete.map(s => s.id)
+        );
+        
+        sendProgress({ type: 'info', message: `🗑️ Limpiados ${toDelete.length} snapshots antiguos (ahorro de espacio)` });
       }
     }
     
     // 5. Desactivar todos los snapshots anteriores y eliminar snapshot de progreso
-    await webSnapshotsCollection.updateMany({}, { $set: { isActive: false } });
-    await webSnapshotsCollection.deleteOne({ _id: progressSnapshot._id }); // Eliminar progreso guardado
+    await mysqlPool.execute(`UPDATE web_snapshots SET is_active = FALSE`);
+    await mysqlPool.execute(`DELETE FROM web_snapshots WHERE id = ?`, [sessionId]);
     
-    const snapshot = await webSnapshotsCollection.insertOne({
-      projectName: 'infinity-plex-web',
-      generatedAt: new Date(),
-      version: 1,
-      stats: {
-        totalMovies: finalMovieCount,
-        totalSeries: finalSeriesCount,
-        totalCollections: collections.length,
-        totalEpisodes: await (async () => {
-          let total = 0;
-          const seriesCursor = tempSeriesCollection.find({});
-          for await (const s of seriesCursor) {
-            total += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
-          }
-          return total;
-        })(),
-        notFoundCount: notFoundItems.length,
-        serversCount: activeServers.length,
-        generationTimeMs: Date.now() - startTime
-      },
-      includedServers: activeServers.map(s => ({
-        machineIdentifier: s.machineIdentifier,
-        name: s.name,
-        included: true
-      })),
-      processedItems,
-      notFoundItems,
-      tempMoviesCollection: `temp_movies_${sessionId}`,
-      tempSeriesCollection: `temp_series_${sessionId}`,
-      collections,
-      activeServers,
-      isActive: true
-    });
+    // Calcular total de episodios
+    let totalEpisodes = 0;
+    const [seriesRows] = await mysqlPool.execute(`SELECT seasons, servers FROM ${tempSeriesTable}`);
+    for (const s of seriesRows) {
+      const servers = JSON.parse(s.servers || '[]');
+      servers.forEach(srv => {
+        const seasons = JSON.parse(srv.seasons || '[]');
+        seasons.forEach(season => {
+          totalEpisodes += season.episodeCount || 0;
+        });
+      });
+    }
+    
+    // Guardar snapshot final en MySQL
+    const finalSessionId = crypto.randomBytes(16).toString('hex');
+    const generatedAt = new Date();
+    
+    await mysqlPool.execute(
+      `INSERT INTO web_snapshots (
+        id, project_name, generated_at, version, is_active,
+        temp_movies_table, temp_series_table,
+        stats_total_movies, stats_total_series, stats_total_collections,
+        stats_total_episodes, stats_not_found_count, stats_servers_count,
+        stats_generation_time_ms, included_servers, processed_items,
+        not_found_items, collections, active_servers
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        finalSessionId,
+        'infinity-plex-web',
+        generatedAt,
+        1,
+        true,
+        tempMoviesTable,
+        tempSeriesTable,
+        finalMovieCount,
+        finalSeriesCount,
+        collections.length,
+        totalEpisodes,
+        notFoundItems.length,
+        activeServers.length,
+        Date.now() - startTime,
+        JSON.stringify(activeServers.map(s => ({
+          machineIdentifier: s.machineIdentifier,
+          name: s.name,
+          included: true
+        }))),
+        JSON.stringify(processedItems),
+        JSON.stringify(notFoundItems),
+        JSON.stringify(collections),
+        JSON.stringify(activeServers)
+      ]
+    );
     
     sendProgress({ type: 'progress', message: 'Generando archivos web...', percent: 95 });
     
     // 6. Generar metadata.json
     const metadataJson = JSON.stringify({
-      generatedAt: new Date().toISOString(),
+      generatedAt: generatedAt.toISOString(),
       version: 1,
-      snapshotId: snapshot.insertedId.toString(),
+      snapshotId: finalSessionId,
       stats: {
         movies: finalMovieCount,
         series: finalSeriesCount,
         collections: collections.length,
-        episodes: await (async () => {
-          let total = 0;
-          const cursor = tempSeriesCollection.find({});
-          for await (const s of cursor) {
-            total += s.servers.reduce((sum, srv) => sum + srv.seasons.reduce((ep, season) => ep + season.episodeCount, 0), 0);
-          }
-          return total;
-        })(),
+        episodes: totalEpisodes,
         notFound: notFoundItems.length,
         servers: activeServers.length
       },
@@ -16441,7 +16727,7 @@ app.get('/api/web-local/generate', async (req, res) => {
       type: 'complete', 
       message: `✅ Web local generada en ${totalTime} minutos!`, 
       percent: 100, 
-      snapshotId: snapshot.insertedId.toString(),
+      snapshotId: finalSessionId,
       stats: {
         movies: finalMovieCount,
         series: finalSeriesCount,
@@ -16452,13 +16738,8 @@ app.get('/api/web-local/generate', async (req, res) => {
       }
     });
     
-    // Limpiar colecciones temporales de MongoDB
-    try {
-      await tempMoviesCollection.drop();
-      await tempSeriesCollection.drop();
-    } catch (err) {
-      // Ignorar si no existen
-    }
+    // NO eliminar tablas temporales aquí - se necesitan para descargar el ZIP
+    // Se limpiarán automáticamente cuando se eliminen snapshots antiguos
     
     cleanup();
     res.end();
@@ -16467,15 +16748,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     console.error('Error generando web:', error);
     sendProgress({ type: 'error', message: `❌ Error: ${error.message}. El progreso se ha guardado, puedes continuar más tarde.` });
     
-    // Limpiar colecciones temporales en caso de error también
-    try {
-      if (tempMoviesCollection) await tempMoviesCollection.drop();
-      if (tempSeriesCollection) await tempSeriesCollection.drop();
-    } catch (err) {
-      // Ignorar
-    }
-    
-    // NO eliminamos el progreso en caso de error, para poder continuar después
+    // NO eliminamos el progreso ni las colecciones temporales en caso de error, para poder continuar después
     cleanup();
     res.end();
   }
@@ -16484,14 +16757,33 @@ app.get('/api/web-local/generate', async (req, res) => {
 // Endpoint: Cancelar generación y limpiar progreso
 app.delete('/api/web-local/progress', async (req, res) => {
   try {
-    const result = await webSnapshotsCollection.deleteMany({ 
-      inProgress: true,
-      projectName: 'infinity-plex-web' 
-    });
+    // Obtener snapshots de progreso antes de eliminarlos para poder borrar sus tablas
+    const [progressSnapshots] = await mysqlPool.execute(
+      `SELECT * FROM web_snapshots WHERE in_progress = TRUE AND project_name = 'infinity-plex-web'`
+    );
+    
+    // Eliminar tablas temporales de cada snapshot en progreso
+    for (const snapshot of progressSnapshots) {
+      if (snapshot.temp_movies_table) {
+        try {
+          await mysqlPool.execute(`DROP TABLE IF EXISTS ${snapshot.temp_movies_table}`);
+        } catch (err) {}
+      }
+      if (snapshot.temp_series_table) {
+        try {
+          await mysqlPool.execute(`DROP TABLE IF EXISTS ${snapshot.temp_series_table}`);
+        } catch (err) {}
+      }
+    }
+    
+    // Eliminar snapshots de progreso
+    const [result] = await mysqlPool.execute(
+      `DELETE FROM web_snapshots WHERE in_progress = TRUE AND project_name = 'infinity-plex-web'`
+    );
     
     res.json({ 
       success: true, 
-      message: `Progreso eliminado. ${result.deletedCount} snapshot(s) de progreso eliminados.` 
+      message: `Progreso eliminado. ${result.affectedRows} snapshot(s) de progreso eliminados.` 
     });
   } catch (error) {
     console.error('Error eliminando progreso:', error);
@@ -16502,6 +16794,12 @@ app.delete('/api/web-local/progress', async (req, res) => {
 const port = process.env.PORT || 3000;
 const host = process.env.HOST || '0.0.0.0';
 
-app.listen(port, host, () => {
+app.listen(port, host, async () => {
   console.log(`✅ Servidor Infinity Scrap escuchando en http://${host}:${port}`);
+  
+  // Conectar a MongoDB (servers, tokens, mappings)
+  await connectMongoDB();
+  
+  // Conectar a MySQL (web offline - opcional)
+  await connectMySQL();
 });
