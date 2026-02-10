@@ -9202,29 +9202,7 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [movies] = await mysqlPool.execute(`SELECT * FROM movies`);
           for (const movie of movies) {
-                        // Extraer campos formateados y combinados
-                        let genresString = Array.isArray(genres) ? genres.join(', ') : '';
-                        let countries = movie.countries || [];
-                        let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
-                        let rating = movie.rating !== undefined ? parseFloat(movie.rating).toFixed(1) : 'N/A';
-                        let voteCount = movie.vote_count ? movie.vote_count.toLocaleString('es-ES') : 'N/A';
-                        let year = movie.release_year || null;
-                        let trailerKey = movie.trailer_key || null;
-                        let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : 'N/A';
-                        let runtime = movie.runtime || null;
-                        let runtimeMinutes = movie.runtime_minutes || null;
-                        let budget = movie.budget || null;
-                        let revenue = movie.revenue || null;
-                        let director = movie.director || null;
-                        let cast = movie.cast || null;
-                        let tagline = movie.tagline || null;
-                        let releaseDate = movie.release_date || null;
-                        let posterPath = movie.poster_path || null;
-                        let backdropPath = movie.backdrop_path || null;
-                        let originalTitle = movie.original_title || null;
-            if (!firstMovie) moviesStream.write(',');
-            
-            // Convertir campos JSON string a objetos
+            // Convertir campos JSON string a objetos primero
             let genres = movie.genres || '[]';
             if (typeof genres === 'string') {
               try { genres = JSON.parse(genres); } catch (e) { genres = []; }
@@ -9233,6 +9211,28 @@ app.get('/library', async (req, res) => {
             if (typeof servers === 'string') {
               try { servers = JSON.parse(servers); } catch (e) { servers = []; }
             }
+
+            // Extraer campos formateados y combinados
+            let genresString = Array.isArray(genres) ? genres.join(', ') : '';
+            let countries = movie.countries || [];
+            let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
+            let rating = movie.rating !== undefined ? parseFloat(movie.rating).toFixed(1) : 'N/A';
+            let voteCount = movie.vote_count ? movie.vote_count.toLocaleString('es-ES') : 'N/A';
+            let year = movie.release_year || null;
+            let trailerKey = movie.trailer_key || null;
+            let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : 'N/A';
+            let runtime = movie.runtime || null;
+            let runtimeMinutes = movie.runtime_minutes || null;
+            let budget = movie.budget || null;
+            let revenue = movie.revenue || null;
+            let director = movie.director || null;
+            let cast = movie.cast || null;
+            let tagline = movie.tagline || null;
+            let releaseDate = movie.release_date || null;
+            let posterPath = movie.poster_path || null;
+            let backdropPath = movie.backdrop_path || null;
+            let originalTitle = movie.original_title || null;
+            if (!firstMovie) moviesStream.write(',');
             const movieObj = {
             id: movie.id,
             tmdbId: movie.tmdb_id,
@@ -9292,27 +9292,7 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [series] = await mysqlPool.execute(`SELECT * FROM series`);
           for (const s of series) {
-                        // Extraer campos formateados y combinados para series
-                        let genresString = Array.isArray(genres) ? genres.join(', ') : '';
-                        let countries = s.countries || [];
-                        let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
-                        let rating = s.rating !== undefined ? parseFloat(s.rating).toFixed(1) : 'N/A';
-                        let voteCount = s.vote_count ? s.vote_count.toLocaleString('es-ES') : 'N/A';
-                        let year = s.first_air_year || null;
-                        let trailerKey = s.trailer_key || null;
-                        let originalLanguage = s.original_language ? s.original_language.toUpperCase() : 'N/A';
-                        let episodeRuntime = s.episode_runtime || null;
-                        let creators = s.creators || null;
-                        let cast = s.cast || null;
-                        let tagline = s.tagline || null;
-                        let firstAirDate = s.first_air_date || null;
-                        let lastAirDate = s.last_air_date || null;
-                        let posterPath = s.poster_path || null;
-                        let backdropPath = s.backdrop_path || null;
-                        let originalTitle = s.original_title || null;
-            if (!firstSeries) seriesStream.write(',');
-            
-            // Convertir campos JSON string a objetos
+            // Convertir campos JSON string a objetos primero
             let genres = s.genres || '[]';
             if (typeof genres === 'string') {
               try { genres = JSON.parse(genres); } catch (e) { genres = []; }
@@ -9325,6 +9305,26 @@ app.get('/library', async (req, res) => {
             if (typeof seasons === 'string') {
               try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
             }
+
+            // Extraer campos formateados y combinados para series
+            let genresString = Array.isArray(genres) ? genres.join(', ') : '';
+            let countries = s.countries || [];
+            let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
+            let rating = s.rating !== undefined ? parseFloat(s.rating).toFixed(1) : 'N/A';
+            let voteCount = s.vote_count ? s.vote_count.toLocaleString('es-ES') : 'N/A';
+            let year = s.first_air_year || null;
+            let trailerKey = s.trailer_key || null;
+            let originalLanguage = s.original_language ? s.original_language.toUpperCase() : 'N/A';
+            let episodeRuntime = s.episode_runtime || null;
+            let creators = s.creators || null;
+            let cast = s.cast || null;
+            let tagline = s.tagline || null;
+            let firstAirDate = s.first_air_date || null;
+            let lastAirDate = s.last_air_date || null;
+            let posterPath = s.poster_path || null;
+            let backdropPath = s.backdrop_path || null;
+            let originalTitle = s.original_title || null;
+            if (!firstSeries) seriesStream.write(',');
             const seriesObj = {
               id: s.id,
               tmdbId: s.tmdb_id,
@@ -17269,4 +17269,3 @@ app.get('/api/debug/database', async (req, res) => {
 });
   await connectMySQL();
 });
-
