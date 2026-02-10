@@ -16124,6 +16124,10 @@ app.get('/api/web-local/generate', async (req, res) => {
     let resuming = false;
     let startServerIndex = 0;
     
+    // Sets para rastrear contenido verificado en esta generación
+    const verifiedMovies = new Set(); // Formato: "tmdbId_serverId"
+    const verifiedSeries = new Set(); // Formato: "tmdbId_serverId"
+    
     // Crear/obtener ID de sesión para tablas temporales MySQL
     if (!progressSnapshot) {
       const sessionId = crypto.randomBytes(16).toString('hex');
@@ -16455,6 +16459,9 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: movie.updatedAt ? new Date(parseInt(movie.updatedAt) * 1000).toISOString() : ''
                   };
                   
+                  // Registrar que esta película en este servidor fue verificada
+                  verifiedMovies.add(`${tmdbResult.tmdbId}_${server.machineIdentifier}`);
+                  
                   // Buscar si ya existe esta película en MySQL (por tmdbId)
                   const [existingRows] = await mysqlPool.execute(
                     `SELECT id FROM movies WHERE tmdb_id = ?`,
@@ -16704,6 +16711,9 @@ app.get('/api/web-local/generate', async (req, res) => {
                     updatedAt: series.updatedAt ? new Date(parseInt(series.updatedAt) * 1000).toISOString() : ''
                   };
                   
+                  // Registrar que esta serie en este servidor fue verificada
+                  verifiedSeries.add(`${tmdbResult.tmdbId}_${server.machineIdentifier}`);
+                  
                   // Buscar si ya existe esta serie en MySQL (por tmdbId)
                   const [existingSeriesRows] = await mysqlPool.execute(
                     `SELECT id FROM series WHERE tmdb_id = ?`,
@@ -16760,6 +16770,77 @@ app.get('/api/web-local/generate', async (req, res) => {
       } catch (error) {
         sendProgress({ type: 'warning', message: `Error escaneando ${server.name}: ${error.message}` });
       }
+    }
+    
+    // Limpiar contenido y servidores no verificados
+    sendProgress({ type: 'progress', message: 'Limpiando contenido obsoleto...', percent: 75 });
+    
+    let removedMovies = 0;
+    let removedSeries = 0;
+    let removedMovieServers = 0;
+    let removedSeriesServers = 0;
+    
+    // Procesar películas
+    const [allMovies] = await mysqlPool.execute(`SELECT tmdb_id, servers FROM movies`);
+    for (const movie of allMovies) {
+      let servers = movie.servers;
+      if (typeof servers === 'string') {
+        try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+      }
+      if (!Array.isArray(servers)) servers = [];
+      
+      // Filtrar servidores verificados
+      const verifiedServers = servers.filter(srv => 
+        verifiedMovies.has(`${movie.tmdb_id}_${srv.serverId}`)
+      );
+      
+      if (verifiedServers.length === 0) {
+        // No quedan servidores, eliminar película
+        await mysqlPool.execute(`DELETE FROM movies WHERE tmdb_id = ?`, [movie.tmdb_id]);
+        removedMovies++;
+      } else if (verifiedServers.length < servers.length) {
+        // Algunos servidores fueron eliminados, actualizar
+        await mysqlPool.execute(
+          `UPDATE movies SET servers = ?, server_count = ? WHERE tmdb_id = ?`,
+          [JSON.stringify(verifiedServers), verifiedServers.length, movie.tmdb_id]
+        );
+        removedMovieServers += (servers.length - verifiedServers.length);
+      }
+    }
+    
+    // Procesar series
+    const [allSeries] = await mysqlPool.execute(`SELECT tmdb_id, servers FROM series`);
+    for (const serie of allSeries) {
+      let servers = serie.servers;
+      if (typeof servers === 'string') {
+        try { servers = JSON.parse(servers); } catch (e) { servers = []; }
+      }
+      if (!Array.isArray(servers)) servers = [];
+      
+      // Filtrar servidores verificados
+      const verifiedServers = servers.filter(srv => 
+        verifiedSeries.has(`${serie.tmdb_id}_${srv.serverId}`)
+      );
+      
+      if (verifiedServers.length === 0) {
+        // No quedan servidores, eliminar serie
+        await mysqlPool.execute(`DELETE FROM series WHERE tmdb_id = ?`, [serie.tmdb_id]);
+        removedSeries++;
+      } else if (verifiedServers.length < servers.length) {
+        // Algunos servidores fueron eliminados, actualizar
+        await mysqlPool.execute(
+          `UPDATE series SET servers = ?, server_count = ? WHERE tmdb_id = ?`,
+          [JSON.stringify(verifiedServers), verifiedServers.length, serie.tmdb_id]
+        );
+        removedSeriesServers += (servers.length - verifiedServers.length);
+      }
+    }
+    
+    if (removedMovies > 0 || removedSeries > 0 || removedMovieServers > 0 || removedSeriesServers > 0) {
+      sendProgress({ 
+        type: 'info', 
+        message: `🗑️ Limpieza: ${removedMovies} películas y ${removedSeries} series eliminadas. ${removedMovieServers + removedSeriesServers} servidores obsoletos removidos.` 
+      });
     }
     
     // NO cargar todo en memoria - consolidar directamente en MySQL
