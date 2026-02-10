@@ -15595,21 +15595,23 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
     }
   }
   
-  // PRIORIDAD 3: Buscar en cache por título
-  const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-  
-  const cached = await tmdbCacheCollection.findOne({
-    'searchQuery.title': normalizedTitle,
-    'searchQuery.year': parseInt(year) || 0,
-    'searchQuery.type': type
-  });
-  
-  if (cached) {
-    await tmdbCacheCollection.updateOne(
-      { _id: cached._id },
-      { $set: { lastUsed: new Date() }, $inc: { timesUsed: 1 } }
-    );
-    return { tmdbId: cached.tmdbId, imdbId: cached.imdbId, fromCache: true, source: 'cache' };
+  // PRIORIDAD 3: Buscar en cache por título (solo si MongoDB está disponible)
+  if (tmdbCacheCollection) {
+    const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+    
+    const cached = await tmdbCacheCollection.findOne({
+      'searchQuery.title': normalizedTitle,
+      'searchQuery.year': parseInt(year) || 0,
+      'searchQuery.type': type
+    });
+    
+    if (cached) {
+      await tmdbCacheCollection.updateOne(
+        { _id: cached._id },
+        { $set: { lastUsed: new Date() }, $inc: { timesUsed: 1 } }
+      );
+      return { tmdbId: cached.tmdbId, imdbId: cached.imdbId, fromCache: true, source: 'cache' };
+    }
   }
   
   // PRIORIDAD 4: Buscar en TMDB API por título + año
@@ -15654,30 +15656,33 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
       const tmdbId = result.id;
       const imdbId = result.imdb_id || null;
       
-      // Guardar en cache
-      await tmdbCacheCollection.updateOne(
-        {
-          'searchQuery.title': normalizedTitle,
-          'searchQuery.year': parseInt(year) || 0,
-          'searchQuery.type': type
-        },
-        {
-          $set: {
-            searchQuery: { title: normalizedTitle, year: parseInt(year) || 0, type },
-            tmdbId,
-            imdbId,
-            verified: {
-              title: result.title || result.name,
-              releaseYear: parseInt((result.release_date || result.first_air_date || '').substring(0, 4))
-            },
-            firstSearched: new Date(),
-            lastUsed: new Date(),
-            timesUsed: 1,
-            matchScore: 1.0
-          }
-        },
-        { upsert: true }
-      );
+      // Guardar en cache (solo si MongoDB está disponible)
+      if (tmdbCacheCollection) {
+        const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+        await tmdbCacheCollection.updateOne(
+          {
+            'searchQuery.title': normalizedTitle,
+            'searchQuery.year': parseInt(year) || 0,
+            'searchQuery.type': type
+          },
+          {
+            $set: {
+              searchQuery: { title: normalizedTitle, year: parseInt(year) || 0, type },
+              tmdbId,
+              imdbId,
+              verified: {
+                title: result.title || result.name,
+                releaseYear: parseInt((result.release_date || result.first_air_date || '').substring(0, 4))
+              },
+              firstSearched: new Date(),
+              lastUsed: new Date(),
+              timesUsed: 1,
+              matchScore: 1.0
+            }
+          },
+          { upsert: true }
+        );
+      }
       
       return { tmdbId, imdbId, fromCache: false, source: 'search' };
     }
@@ -16263,8 +16268,18 @@ app.get('/api/web-local/generate', async (req, res) => {
                     // Nueva película - insertar directamente
                     await insertMovieMySQL(tempMoviesTable, {
                       tmdbId: tmdbResult.tmdbId,
-                      imdbId: tmdbResult.imdbId,
-                      ...tmdbDetails,
+                      imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
+                      title: tmdbDetails.title,
+                      posterPath: tmdbDetails.posterPath,
+                      backdropPath: tmdbDetails.backdropPath,
+                      overview: tmdbDetails.overview,
+                      releaseYear: tmdbDetails.releaseYear,
+                      rating: tmdbDetails.voteAverage, // Mapear voteAverage → rating
+                      genres: tmdbDetails.genres,
+                      collectionId: tmdbDetails.collectionId,
+                      collectionName: tmdbDetails.collectionName,
+                      collectionPoster: tmdbDetails.collectionPoster,
+                      collectionBackdrop: tmdbDetails.collectionBackdrop,
                       servers: [movieData],
                       serverCount: 1
                     });
@@ -16502,8 +16517,16 @@ app.get('/api/web-local/generate', async (req, res) => {
                     // Nueva serie - insertar directamente
                     await insertSeriesMySQL(tempSeriesTable, {
                       tmdbId: tmdbResult.tmdbId,
-                      imdbId: tmdbResult.imdbId,
-                      ...tmdbDetails,
+                      imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
+                      title: tmdbDetails.title,
+                      posterPath: tmdbDetails.posterPath,
+                      backdropPath: tmdbDetails.backdropPath,
+                      overview: tmdbDetails.overview,
+                      firstAirYear: tmdbDetails.releaseYear, // Mapear releaseYear → firstAirYear
+                      rating: tmdbDetails.voteAverage, // Mapear voteAverage → rating
+                      genres: tmdbDetails.genres,
+                      numberOfSeasons: tmdbDetails.numberOfSeasons,
+                      numberOfEpisodes: tmdbDetails.numberOfEpisodes,
                       seasons: seasons,
                       servers: [seriesDataObj],
                       serverCount: 1
