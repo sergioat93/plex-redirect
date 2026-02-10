@@ -15842,7 +15842,7 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
       const imdbId = result.imdb_id || null;
       
       // Guardar en cache (MySQL)
-      const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s](/g, '');
+      const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
       const searchKey = `${normalizedTitle}_${year || 0}_${type}`;
       
       await mysqlPool.execute(
