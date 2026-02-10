@@ -172,6 +172,53 @@ async function createPermanentTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   
+  // Tabla de caché de TMDB
+  await mysqlPool.execute(`
+    CREATE TABLE IF NOT EXISTS tmdb_cache (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      search_key VARCHAR(500) UNIQUE,
+      tmdb_id INT,
+      imdb_id VARCHAR(20),
+      title VARCHAR(500),
+      media_type VARCHAR(20),
+      cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_search (search_key(255))
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  
+  // Tabla de mapeos manuales
+  await mysqlPool.execute(`
+    CREATE TABLE IF NOT EXISTS manual_mappings (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      snapshot_id VARCHAR(100),
+      composite_id VARCHAR(200),
+      rating_key VARCHAR(50),
+      server_id VARCHAR(100),
+      tmdb_id INT,
+      title VARCHAR(500),
+      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      assigned_by VARCHAR(100) DEFAULT 'admin',
+      status VARCHAR(20) DEFAULT 'pending',
+      INDEX idx_snapshot (snapshot_id),
+      INDEX idx_composite (composite_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  
+  // Tabla de items ignorados
+  await mysqlPool.execute(`
+    CREATE TABLE IF NOT EXISTS ignored_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      snapshot_id VARCHAR(100),
+      composite_id VARCHAR(200) UNIQUE,
+      rating_key VARCHAR(50),
+      server_id VARCHAR(100),
+      title VARCHAR(500),
+      reason TEXT,
+      ignored_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_snapshot (snapshot_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  
   console.log('✅ Tablas permanentes verificadas');
 }
 
@@ -321,50 +368,12 @@ async function updateSeriesMySQL(tmdbId, newServer, newSeasons) {
 // Inicializar colecciones de Web Local (DEPRECADO - ahora está en MySQL)
 async function initializeWebLocalCollections() {
   try {
-    const db = mongoClient.db(MONGODB_DB);
-    const collections = await db.listCollections().toArray();
-    const collectionNames = collections.map(c => c.name);
-    
-    // Crear colección web_snapshots (DEPRECADO)
-    if (!collectionNames.includes('web_snapshots')) {
-      await db.createCollection('web_snapshots');
-      webSnapshotsCollection = db.collection('web_snapshots');
-      await webSnapshotsCollection.createIndex({ generatedAt: -1 });
-      await webSnapshotsCollection.createIndex({ isActive: 1 });
-      console.log('✅ Colección "web_snapshots" creada');
-    } else {
-      webSnapshotsCollection = db.collection('web_snapshots');
-    }
-    
-    // Crear colección tmdb_cache
-    if (!collectionNames.includes('tmdb_cache')) {
-      await db.createCollection('tmdb_cache');
-      tmdbCacheCollection = db.collection('tmdb_cache');
-      await tmdbCacheCollection.createIndex({
-        'searchQuery.title': 1,
-        'searchQuery.year': 1,
-        'searchQuery.type': 1
-      }, { unique: true });
-      await tmdbCacheCollection.createIndex({ lastUsed: 1 });
-      console.log('✅ Colección "tmdb_cache" creada');
-    } else {
-      tmdbCacheCollection = db.collection('tmdb_cache');
-    }
-    
-    // Crear colección manual_mappings
-    if (!collectionNames.includes('manual_mappings')) {
-      await db.createCollection('manual_mappings');
-      manualMappingsCollection = db.collection('manual_mappings');
-      await manualMappingsCollection.createIndex({ snapshotId: 1 });
-      console.log('✅ Colección "manual_mappings" creada');
-    } else {
-      manualMappingsCollection = db.collection('manual_mappings');
-    }
-    
-    console.log('🗄️ Colecciones de Web Local inicializadas');
+    // MongoDB ahora solo se usa para servers/tokens
+    // web_snapshots, tmdb_cache, y manual_mappings están en MySQL
+    console.log('🗄️ MongoDB configurado para servidores y tokens');
     
   } catch (error) {
-    console.error('❌ Error al inicializar colecciones Web Local:', error);
+    console.error('❌ Error en inicialización de MongoDB:', error);
   }
 }
 
@@ -9078,6 +9087,21 @@ app.get('/library', async (req, res) => {
         return res.status(404).send('No hay web generada disponible');
       }
       
+      // Transformar snapshot a formato con stats
+      const formattedSnapshot = {
+        ...snapshot,
+        generatedAt: snapshot.generated_at,
+        stats: {
+          totalMovies: snapshot.stats_total_movies || 0,
+          totalSeries: snapshot.stats_total_series || 0,
+          totalCollections: snapshot.stats_total_collections || 0,
+          totalEpisodes: snapshot.stats_total_episodes || 0,
+          notFoundCount: snapshot.stats_not_found_count || 0,
+          serversCount: snapshot.stats_servers_count || 0,
+          generationTimeMs: snapshot.stats_generation_time_ms || 0
+        }
+      };
+      
       // Contar documentos para stats (tablas permanentes)
       const [movieCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM movies`);
       const [seriesCountRows] = await mysqlPool.execute(`SELECT COUNT(*) as count FROM series`);
@@ -9108,19 +9132,19 @@ app.get('/library', async (req, res) => {
       }
       
       // Parsear JSON fields del snapshot
-      let collections = snapshot.collections || '[]';
+      let collections = formattedSnapshot.collections || '[]';
       if (typeof collections === 'string') {
         try { collections = JSON.parse(collections); } catch (e) { collections = []; }
       }
       if (!Array.isArray(collections)) collections = [];
       
-      let notFoundItems = snapshot.not_found_items || '[]';
+      let notFoundItems = formattedSnapshot.not_found_items || '[]';
       if (typeof notFoundItems === 'string') {
         try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
       }
       if (!Array.isArray(notFoundItems)) notFoundItems = [];
       
-      let activeServers = snapshot.active_servers || '[]';
+      let activeServers = formattedSnapshot.active_servers || '[]';
       if (typeof activeServers === 'string') {
         try { activeServers = JSON.parse(activeServers); } catch (e) { activeServers = []; }
       }
@@ -9128,9 +9152,9 @@ app.get('/library', async (req, res) => {
       
       // Regenerar JSON desde los datos del snapshot
       const metadataJson = JSON.stringify({
-        generatedAt: snapshot.generated_at,
-        version: snapshot.version || 1,
-        snapshotId: snapshot.id,
+        generatedAt: formattedSnapshot.generatedAt,
+        version: formattedSnapshot.version || 1,
+        snapshotId: formattedSnapshot.id,
         stats: {
           movies: movieCount,
           series: seriesCount,
@@ -12234,15 +12258,15 @@ app.get('/library', async (req, res) => {
       // Agregar README
       const readmeContent = `# Infinity Scrap - Web Local
 
-Generada el: ${new Date(snapshot.generatedAt).toLocaleString('es-ES')}
+Generada el: ${new Date(formattedSnapshot.generatedAt).toLocaleString('es-ES')}
 
 ## Contenido
 
-- **${snapshot.stats.totalMovies}** películas
-- **${snapshot.stats.totalCollections}** colecciones
-- **${snapshot.stats.totalSeries}** series
-- **${snapshot.stats.totalEpisodes || 0}** episodios
-- **${snapshot.stats.serversCount}** servidores incluidos
+- **${formattedSnapshot.stats.totalMovies}** películas
+- **${formattedSnapshot.stats.totalCollections}** colecciones
+- **${formattedSnapshot.stats.totalSeries}** series
+- **${formattedSnapshot.stats.totalEpisodes || 0}** episodios
+- **${formattedSnapshot.stats.serversCount}** servidores incluidos
 
 ## Uso
 
@@ -12314,32 +12338,23 @@ Generado por Infinity Scrap`;
     }
     
     try {
-      // Guardar en manual_mappings (MongoDB)
+      // Guardar en manual_mappings (MySQL)
       const compositeId = `${ratingKey}_${serverId}`;
       
-      await manualMappingsCollection.updateOne(
-        { snapshotId: new ObjectId(snapshotId) },
-        {
-          $set: {
-            [`manualMappings.${compositeId}`]: {
-              tmdbId: parseInt(tmdbId),
-              assignedAt: new Date(),
-              assignedBy: 'admin',
-              status: 'pending'
-            }
-          }
-        },
-        { upsert: true }
+      await mysqlPool.execute(
+        `INSERT INTO manual_mappings (snapshot_id, composite_id, rating_key, server_id, tmdb_id, assigned_by, status)
+         VALUES (?, ?, ?, ?, ?, 'admin', 'pending')
+         ON DUPLICATE KEY UPDATE tmdb_id = VALUES(tmdb_id), assigned_at = CURRENT_TIMESTAMP`,
+        [snapshotId, compositeId, ratingKey, serverId, parseInt(tmdbId)]
       );
       
       // Eliminar de not_found_items en el snapshot de MySQL
-      if (mysqlPool) {
-        const [snapshots] = await mysqlPool.execute(
-          `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
-          [snapshotId]
-        );
-        
-        if (snapshots.length > 0) {
+      const [snapshots] = await mysqlPool.execute(
+        `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
+        [snapshotId]
+      );
+      
+      if (snapshots.length > 0) {
           let notFoundItems = snapshots[0].not_found_items || '[]';
           if (typeof notFoundItems === 'string') {
             try { notFoundItems = JSON.parse(notFoundItems); } catch (e) { notFoundItems = []; }
@@ -12381,24 +12396,15 @@ Generado por Infinity Scrap`;
     try {
       const compositeId = `${ratingKey}_${serverId}`;
       
-      await manualMappingsCollection.updateOne(
-        { snapshotId: new ObjectId(snapshotId) },
-        {
-          $push: {
-            ignored: {
-              compositeId,
-              title: title || 'Sin título',
-              reason: 'No es contenido catalogable',
-              ignoredAt: new Date()
-            }
-          }
-        },
-        { upsert: true }
+      await mysqlPool.execute(
+        `INSERT INTO ignored_items (snapshot_id, composite_id, rating_key, server_id, title, reason)
+         VALUES (?, ?, ?, ?, ?, 'No es contenido catalogable')
+         ON DUPLICATE KEY UPDATE ignored_at = CURRENT_TIMESTAMP`,
+        [snapshotId, compositeId, ratingKey, serverId, title || 'Sin título']
       );
       
       // Eliminar de not_found_items en el snapshot de MySQL
-      if (mysqlPool) {
-        const [snapshots] = await mysqlPool.execute(
+      const [snapshots] = await mysqlPool.execute(
           `SELECT not_found_items FROM web_snapshots WHERE id = ?`,
           [snapshotId]
         );
@@ -15782,23 +15788,17 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
     }
   }
   
-  // PRIORIDAD 3: Buscar en cache por título (solo si MongoDB está disponible)
-  if (tmdbCacheCollection) {
-    const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-    
-    const cached = await tmdbCacheCollection.findOne({
-      'searchQuery.title': normalizedTitle,
-      'searchQuery.year': parseInt(year) || 0,
-      'searchQuery.type': type
-    });
-    
-    if (cached) {
-      await tmdbCacheCollection.updateOne(
-        { _id: cached._id },
-        { $set: { lastUsed: new Date() }, $inc: { timesUsed: 1 } }
-      );
-      return { tmdbId: cached.tmdbId, imdbId: cached.imdbId, fromCache: true, source: 'cache' };
-    }
+  // PRIORIDAD 3: Buscar en cache por título (MySQL)
+  const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+  const searchKey = `${normalizedTitle}_${year || 0}_${type}`;
+  
+  const [cachedRows] = await mysqlPool.execute(
+    `SELECT tmdb_id, imdb_id FROM tmdb_cache WHERE search_key = ?`,
+    [searchKey]
+  );
+  
+  if (cachedRows.length > 0) {
+    return { tmdbId: cachedRows[0].tmdb_id, imdbId: cachedRows[0].imdb_id, fromCache: true, source: 'cache' };
   }
   
   // PRIORIDAD 4: Buscar en TMDB API por título + año
@@ -15843,33 +15843,16 @@ async function searchTMDBWithCache(title, year, type = 'movie', guid = null) {
       const tmdbId = result.id;
       const imdbId = result.imdb_id || null;
       
-      // Guardar en cache (solo si MongoDB está disponible)
-      if (tmdbCacheCollection) {
-        const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-        await tmdbCacheCollection.updateOne(
-          {
-            'searchQuery.title': normalizedTitle,
-            'searchQuery.year': parseInt(year) || 0,
-            'searchQuery.type': type
-          },
-          {
-            $set: {
-              searchQuery: { title: normalizedTitle, year: parseInt(year) || 0, type },
-              tmdbId,
-              imdbId,
-              verified: {
-                title: result.title || result.name,
-                releaseYear: parseInt((result.release_date || result.first_air_date || '').substring(0, 4))
-              },
-              firstSearched: new Date(),
-              lastUsed: new Date(),
-              timesUsed: 1,
-              matchScore: 1.0
-            }
-          },
-          { upsert: true }
-        );
-      }
+      // Guardar en cache (MySQL)
+      const normalizedTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s](/g, '');
+      const searchKey = `${normalizedTitle}_${year || 0}_${type}`;
+      
+      await mysqlPool.execute(
+        `INSERT INTO tmdb_cache (search_key, tmdb_id, imdb_id, title, media_type) 
+         VALUES (?, ?, ?, ?, ?) 
+         ON DUPLICATE KEY UPDATE tmdb_id = VALUES(tmdb_id), cached_at = CURRENT_TIMESTAMP`,
+        [searchKey, tmdbId, imdbId, result.title || result.name, type]
+      );
       
       return { tmdbId, imdbId, fromCache: false, source: 'search' };
     }
