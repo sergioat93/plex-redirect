@@ -146,6 +146,20 @@ function formatSQLDatetime(val) {
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+// Helper: convierte varios formatos de fecha a ISO string (o null)
+function formatToISOString(val) {
+  if (!val) return null;
+  if (val instanceof Date) return val.toISOString();
+  const s = String(val);
+  // Si ya parece ISO
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s)) return new Date(s).toISOString();
+  // Si es MySQL DATETIME 'YYYY-MM-DD HH:MM:SS'
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z').toISOString();
+  const d = new Date(s);
+  if (isNaN(d)) return null;
+  return d.toISOString();
+}
+
 // Crear tablas permanentes (reemplazan a las temporales)
 async function createPermanentTables() {
   // Tabla movies permanente
@@ -9393,8 +9407,12 @@ app.get('/library', async (req, res) => {
             let genresString = Array.isArray(genres) ? genres.join(', ') : '';
             let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
             let productionCompaniesNames = Array.isArray(productionCompanies) ? productionCompanies.map(pc => pc.name || pc).join(', ') : '';
-            let rating = movie.rating !== undefined && movie.rating !== null && !isNaN(movie.rating) ? parseFloat(movie.rating).toFixed(1) : 'N/A';
-            let voteCount = movie.vote_count ? movie.vote_count.toLocaleString('es-ES') : 'N/A';
+            // Normalizar valores de rating/votes
+            let ratingNum = (movie.rating !== undefined && movie.rating !== null && !isNaN(movie.rating)) ? parseFloat(movie.rating) : null;
+            let rating = ratingNum !== null ? parseFloat(ratingNum.toFixed(1)) : null;
+            let ratingFormatted = ratingNum !== null ? ratingNum.toFixed(1) : 'N/A';
+            let voteCountNum = (movie.vote_count !== undefined && movie.vote_count !== null && !isNaN(movie.vote_count)) ? parseInt(movie.vote_count, 10) : null;
+            let voteCount = voteCountNum !== null ? voteCountNum.toLocaleString('es-ES') : 'N/A';
             let year = movie.release_year || null;
             let trailerKey = movie.trailer_key || movie.trailerKey || null;
             let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : (movie.originalLanguage ? movie.originalLanguage.toUpperCase() : 'N/A');
@@ -9409,7 +9427,11 @@ app.get('/library', async (req, res) => {
             let backdropPath = movie.backdrop_path || movie.backdropPath || null;
             let originalTitle = movie.original_title || movie.originalTitle || null;
             let ratingKey = movie.rating_key || movie.ratingKey || null;
-            let addedAt = movie.added_at || movie.addedAt || movie.created_at || null;
+            let addedAt = formatToISOString(movie.added_at || movie.addedAt || movie.created_at || null);
+            // Preparar estructuras alternativas que el frontend pueda esperar
+            let genresObjects = Array.isArray(genres) ? genres.map(g => (typeof g === 'string') ? { name: g } : g) : [];
+            let productionCompaniesArray = Array.isArray(productionCompanies) ? productionCompanies : [];
+            let countriesArray = Array.isArray(countries) ? countries : (typeof countries === 'string' && countries ? countries.split(',').map(s => s.trim()) : []);
             if (!firstMovie) moviesStream.write(',');
             const movieObj = {
               id: movie.id,
@@ -9430,14 +9452,19 @@ app.get('/library', async (req, res) => {
               genres: Array.isArray(genres) ? genres : [],
               genresString,
               rating,
+              ratingFormatted,
               voteCount,
+              voteCountNum,
               budget,
               revenue,
               director,
-              cast: Array.isArray(cast) ? cast : (typeof cast === 'string' ? cast : []),
+              cast: Array.isArray(cast) ? cast : (typeof cast === 'string' ? JSON.parse(cast || '[]') : []),
               originalLanguage,
               countries: countriesString,
+              countriesArray,
               productionCompanies: productionCompaniesNames,
+              production_companies: productionCompaniesArray,
+              genresObjects,
               trailerKey,
               collectionId: movie.collection_id,
               collectionName: movie.collection_name,
@@ -9445,8 +9472,8 @@ app.get('/library', async (req, res) => {
               collectionBackdrop: movie.collection_backdrop,
               servers: Array.isArray(servers) ? servers : [],
               serverCount: movie.server_count,
-              createdAt: movie.created_at,
-              updatedAt: movie.updated_at,
+              createdAt: formatToISOString(movie.created_at),
+              updatedAt: formatToISOString(movie.updated_at),
               addedAt
             };
 
@@ -9510,14 +9537,17 @@ app.get('/library', async (req, res) => {
             // Extraer campos formateados y combinados para series
             let genresString = Array.isArray(genres) ? genres.join(', ') : '';
             let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
-            let rating = s.rating !== undefined && s.rating !== null && !isNaN(s.rating) ? parseFloat(s.rating).toFixed(1) : 'N/A';
-            let voteCount = s.vote_count ? s.vote_count.toLocaleString('es-ES') : 'N/A';
+            let ratingNum = (s.rating !== undefined && s.rating !== null && !isNaN(s.rating)) ? parseFloat(s.rating) : null;
+            let rating = ratingNum !== null ? parseFloat(ratingNum.toFixed(1)) : null;
+            let ratingFormatted = ratingNum !== null ? ratingNum.toFixed(1) : 'N/A';
+            let voteCountNum = (s.vote_count !== undefined && s.vote_count !== null && !isNaN(s.vote_count)) ? parseInt(s.vote_count, 10) : null;
+            let voteCount = voteCountNum !== null ? voteCountNum.toLocaleString('es-ES') : 'N/A';
             let year = s.first_air_year || null;
             let trailerKey = s.trailer_key || s.trailerKey || null;
             let originalLanguage = s.original_language ? s.original_language.toUpperCase() : (s.originalLanguage ? s.originalLanguage.toUpperCase() : 'N/A');
             let episodeRuntime = s.episode_runtime || s.episodeRuntime || null;
             let creatorsStr = Array.isArray(creators) ? (creators.map(c => c.name || c).join(', ')) : (typeof creators === 'string' ? creators : '');
-            let castArr = Array.isArray(cast) ? cast : (typeof cast === 'string' ? cast : []);
+            let castArr = Array.isArray(cast) ? cast : (typeof cast === 'string' ? JSON.parse(cast || '[]') : []);
             let tagline = s.tagline || null;
             let firstAirDate = s.first_air_date || null;
             let lastAirDate = s.last_air_date || null;
@@ -9525,7 +9555,9 @@ app.get('/library', async (req, res) => {
             let backdropPath = s.backdrop_path || s.backdropPath || null;
             let originalTitle = s.original_title || s.originalTitle || null;
             let ratingKey = s.rating_key || s.ratingKey || null;
-            let addedAt = s.added_at || s.addedAt || s.created_at || null;
+            let addedAt = formatToISOString(s.added_at || s.addedAt || s.created_at || null);
+            let genresObjects = Array.isArray(genres) ? genres.map(g => (typeof g === 'string') ? { name: g } : g) : [];
+            let countriesArray = Array.isArray(countries) ? countries : (typeof countries === 'string' && countries ? countries.split(',').map(x => x.trim()) : []);
             if (!firstSeries) seriesStream.write(',');
             const seriesObj = {
               id: s.id,
