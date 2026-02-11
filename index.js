@@ -9412,7 +9412,8 @@ app.get('/library', async (req, res) => {
             let rating = ratingNum !== null ? parseFloat(ratingNum.toFixed(1)) : null;
             let ratingFormatted = ratingNum !== null ? ratingNum.toFixed(1) : 'N/A';
             let voteCountNum = (movie.vote_count !== undefined && movie.vote_count !== null && !isNaN(movie.vote_count)) ? parseInt(movie.vote_count, 10) : null;
-            let voteCount = voteCountNum !== null ? voteCountNum.toLocaleString('es-ES') : 'N/A';
+            let voteCount = voteCountNum !== null ? voteCountNum : null;
+            let voteCountFormatted = voteCountNum !== null ? voteCountNum.toLocaleString('es-ES') : 'N/A';
             let year = movie.release_year || null;
             let trailerKey = movie.trailer_key || movie.trailerKey || null;
             let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : (movie.originalLanguage ? movie.originalLanguage.toUpperCase() : 'N/A');
@@ -9447,13 +9448,18 @@ app.get('/library', async (req, res) => {
               backdropPath,
               releaseDate,
               year,
+              // Campo que el frontend espera para filtros
+              releaseYear: year,
               runtime,
               runtimeMinutes,
               genres: Array.isArray(genres) ? genres : [],
               genresString,
+              // Rating/votes: mantener varias representaciones
               rating,
+              voteAverage: ratingNum !== null ? ratingNum : null,
               ratingFormatted,
               voteCount,
+              voteCountFormatted,
               voteCountNum,
               budget,
               revenue,
@@ -9462,7 +9468,8 @@ app.get('/library', async (req, res) => {
               originalLanguage,
               countries: countriesString,
               countriesArray,
-              productionCompanies: productionCompaniesNames,
+              // Para compatibilidad con frontend actual que usa productionCompanies para poblar países
+              productionCompanies: countriesString,
               production_companies: productionCompaniesArray,
               genresObjects,
               trailerKey,
@@ -9501,6 +9508,7 @@ app.get('/library', async (req, res) => {
       
       const seriesPromise = (async () => {
         try {
+          console.log('🔁 series export: start');
           seriesStream.write('window.seriesData = [');
           let firstSeries = true;
           
@@ -9574,6 +9582,8 @@ app.get('/library', async (req, res) => {
               firstAirDate,
               lastAirDate,
               year,
+              // Campo que el frontend espera
+              releaseYear: year,
               status: s.status || null,
               numberOfSeasons: s.number_of_seasons,
               numberOfEpisodes: s.number_of_episodes,
@@ -9581,11 +9591,16 @@ app.get('/library', async (req, res) => {
               genres: Array.isArray(genres) ? genres : [],
               genresString,
               rating,
+              voteAverage: ratingNum !== null ? ratingNum : null,
+              ratingFormatted,
               voteCount,
+              voteCountFormatted,
+              voteCountNum,
               creators: creatorsStr,
               cast: castArr,
               originalLanguage,
               countries: countriesString,
+              countriesArray,
               networks: s.networks || null,
               trailerKey,
               inProduction: s.in_production || null,
@@ -9606,6 +9621,7 @@ app.get('/library', async (req, res) => {
           }
           seriesStream.write('];');
           seriesStream.end();
+          console.log('🔁 series export: finished');
         } catch (err) {
           console.error('Error streaming series:', err);
           try { seriesStream.write('];'); } catch (e) { /* ignore */ }
