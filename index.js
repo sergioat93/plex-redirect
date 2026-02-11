@@ -330,7 +330,7 @@ async function insertMovieMySQL(movieData) {
     JSON.stringify(movieData.servers || []),
     movieData.serverCount || 0,
     movieData.ratingKey || movieData.rating_key || null,
-    movieData.addedAt || movieData.added_at || null
+    formatSQLDatetime(movieData.addedAt || movieData.added_at)
   ];
 
   const placeholders = cols.map(() => '?').join(', ');
