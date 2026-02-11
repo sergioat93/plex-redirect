@@ -189,6 +189,41 @@ async function createPermanentTables() {
       INDEX idx_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Asegurar columnas adicionales necesarias por el frontend (no fallar si ya existen)
+  await mysqlPool.execute(`ALTER TABLE movies
+    ADD COLUMN IF NOT EXISTS rating_key VARCHAR(50) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS original_title VARCHAR(500) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS release_date VARCHAR(50) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS runtime INT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS runtime_minutes INT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS vote_count INT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS production_countries JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS production_companies JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS trailer_key VARCHAR(255) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS original_language VARCHAR(20) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS budget BIGINT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS revenue BIGINT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS director VARCHAR(500) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS cast JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS added_at DATETIME DEFAULT NULL
+  `);
+
+  await mysqlPool.execute(`ALTER TABLE series
+    ADD COLUMN IF NOT EXISTS rating_key VARCHAR(50) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS original_title VARCHAR(500) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS first_air_date VARCHAR(50) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS last_air_date VARCHAR(50) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS episode_runtime INT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS creators JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS cast JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS production_countries JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS networks JSON DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS trailer_key VARCHAR(255) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS original_language VARCHAR(20) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS in_production TINYINT(1) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS added_at DATETIME DEFAULT NULL
+  `);
   
   // Tabla de mapeos manuales
   await mysqlPool.execute(`
@@ -234,27 +269,44 @@ async function createPermanentTables() {
 async function insertMovieMySQL(movieData) {
   const sql = `
     INSERT INTO movies (
-      tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
-      release_year, rating, genres, collection_id, collection_name,
-      collection_poster, collection_backdrop, servers, server_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      tmdb_id, imdb_id, title, original_title, poster_path, backdrop_path, overview,
+      release_year, release_date, runtime, runtime_minutes, rating, vote_count, genres,
+      production_countries, production_companies, budget, revenue, director, cast,
+      trailer_key, original_language, collection_id, collection_name, collection_poster,
+      collection_backdrop, servers, server_count, rating_key, added_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
     movieData.tmdbId,
     movieData.imdbId || null,
     movieData.title,
+    movieData.originalTitle || null,
     movieData.posterPath || null,
     movieData.backdropPath || null,
     movieData.overview || null,
     movieData.releaseYear || null,
+    movieData.releaseDate || null,
+    movieData.runtime || null,
+    movieData.runtimeMinutes || null,
     movieData.rating || null,
+    movieData.voteCount || null,
     JSON.stringify(movieData.genres || []),
+    JSON.stringify(movieData.production_countries || movieData.productionCountries || []),
+    JSON.stringify(movieData.production_companies || movieData.productionCompanies || []),
+    movieData.budget || null,
+    movieData.revenue || null,
+    movieData.director || null,
+    JSON.stringify(movieData.cast || []),
+    movieData.trailerKey || movieData.trailer_key || null,
+    movieData.originalLanguage || movieData.original_language || null,
     movieData.collectionId || null,
     movieData.collectionName || null,
     movieData.collectionPoster || null,
     movieData.collectionBackdrop || null,
-    JSON.stringify(movieData.servers),
-    movieData.serverCount
+    JSON.stringify(movieData.servers || []),
+    movieData.serverCount || 0,
+    movieData.ratingKey || movieData.rating_key || null,
+    movieData.addedAt || movieData.added_at || null
   ];
   await mysqlPool.execute(sql, values);
 }
@@ -291,26 +343,41 @@ async function updateMovieMySQL(tmdbId, newServer) {
 async function insertSeriesMySQL(seriesData) {
   const sql = `
     INSERT INTO series (
-      tmdb_id, imdb_id, title, poster_path, backdrop_path, overview,
-      first_air_year, rating, genres, number_of_seasons, number_of_episodes, 
-      seasons, servers, server_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      tmdb_id, imdb_id, title, original_title, poster_path, backdrop_path, overview,
+      first_air_year, first_air_date, last_air_date, episode_runtime, rating, vote_count, genres,
+      number_of_seasons, number_of_episodes, seasons, creators, cast, production_countries,
+      networks, trailer_key, original_language, in_production, servers, server_count, rating_key, added_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
     seriesData.tmdbId,
     seriesData.imdbId || null,
     seriesData.title,
+    seriesData.originalTitle || null,
     seriesData.posterPath || null,
     seriesData.backdropPath || null,
     seriesData.overview || null,
     seriesData.firstAirYear || null,
+    seriesData.firstAirDate || null,
+    seriesData.lastAirDate || null,
+    seriesData.episodeRuntime || seriesData.episode_runtime || null,
     seriesData.rating || null,
+    seriesData.voteCount || null,
     JSON.stringify(seriesData.genres || []),
     seriesData.numberOfSeasons || null,
     seriesData.numberOfEpisodes || null,
     JSON.stringify(seriesData.seasons || []),
-    JSON.stringify(seriesData.servers),
-    seriesData.serverCount
+    JSON.stringify(seriesData.creators || seriesData.created_by || []),
+    JSON.stringify(seriesData.cast || []),
+    JSON.stringify(seriesData.production_countries || []),
+    JSON.stringify(seriesData.networks || []),
+    seriesData.trailerKey || seriesData.trailer_key || null,
+    seriesData.originalLanguage || seriesData.original_language || null,
+    seriesData.inProduction || seriesData.in_production || 0,
+    JSON.stringify(seriesData.servers || []),
+    seriesData.serverCount || 0,
+    seriesData.ratingKey || seriesData.rating_key || null,
+    seriesData.addedAt || seriesData.added_at || null
   ];
   await mysqlPool.execute(sql, values);
 }
@@ -9202,6 +9269,7 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [movies] = await mysqlPool.execute(`SELECT * FROM movies`);
           for (const movie of movies) {
+            try {
             // Convertir campos JSON string a objetos primero
             let genres = movie.genres || '[]';
             if (typeof genres === 'string') {
@@ -9287,12 +9355,18 @@ app.get('/library', async (req, res) => {
 
             moviesStream.write(JSON.stringify(movieObj));
             firstMovie = false;
+            } catch (rowErr) {
+              console.error('Error procesando movie id', movie && (movie.id || movie.tmdb_id || movie.rating_key), rowErr);
+              // continuar con la siguiente fila sin romper todo el stream
+              continue;
+            }
           }
           moviesStream.write('];');
           moviesStream.end();
         } catch (err) {
           console.error('Error streaming movies:', err);
-          moviesStream.write('window.moviesData = [];');
+          // Cerrar correctamente el array para evitar contenido corrupto en el archivo
+          try { moviesStream.write('];'); } catch (e) { /* ignore */ }
           moviesStream.end();
         }
       })();
@@ -9309,6 +9383,7 @@ app.get('/library', async (req, res) => {
           // Streaming desde MySQL (tabla permanente)
           const [series] = await mysqlPool.execute(`SELECT * FROM series`);
           for (const s of series) {
+            try {
             // Convertir campos JSON string a objetos primero
             let genres = s.genres || '[]';
             if (typeof genres === 'string') {
@@ -9395,12 +9470,16 @@ app.get('/library', async (req, res) => {
 
             seriesStream.write(JSON.stringify(seriesObj));
             firstSeries = false;
+            } catch (rowErr) {
+              console.error('Error procesando series id', s && (s.id || s.tmdb_id || s.rating_key), rowErr);
+              continue;
+            }
           }
           seriesStream.write('];');
           seriesStream.end();
         } catch (err) {
           console.error('Error streaming series:', err);
-          seriesStream.write('window.seriesData = [];');
+          try { seriesStream.write('];'); } catch (e) { /* ignore */ }
           seriesStream.end();
         }
       })();
@@ -16594,18 +16673,33 @@ app.get('/api/web-local/generate', async (req, res) => {
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
                       title: tmdbDetails.title,
+                      originalTitle: tmdbDetails.originalTitle || null,
                       posterPath: tmdbDetails.posterPath,
                       backdropPath: tmdbDetails.backdropPath,
                       overview: tmdbDetails.overview,
                       releaseYear: tmdbDetails.releaseYear,
+                      releaseDate: tmdbDetails.releaseDate || null,
+                      runtime: tmdbDetails.runtime || null,
+                      runtimeMinutes: tmdbDetails.runtime || null,
                       rating: tmdbDetails.voteAverage, // Mapear voteAverage → rating
+                      voteCount: tmdbDetails.voteCount || 0,
                       genres: tmdbDetails.genres,
+                      production_countries: tmdbDetails.countries || [],
+                      production_companies: tmdbDetails.productionCompanies || [],
+                      budget: tmdbDetails.budget || null,
+                      revenue: tmdbDetails.revenue || null,
+                      director: tmdbDetails.director || null,
+                      cast: tmdbDetails.cast || [],
+                      trailerKey: tmdbDetails.trailerKey || null,
+                      originalLanguage: tmdbDetails.languages || null,
                       collectionId: tmdbDetails.collectionId,
                       collectionName: tmdbDetails.collectionName,
                       collectionPoster: tmdbDetails.collectionPoster,
                       collectionBackdrop: tmdbDetails.collectionBackdrop,
                       servers: [movieData],
-                      serverCount: 1
+                      serverCount: 1,
+                      ratingKey: movie.ratingKey,
+                      addedAt: movieData.addedAt
                     });
                   }
                   
