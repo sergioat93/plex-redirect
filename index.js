@@ -377,7 +377,12 @@ async function insertMovieMySQL(movieData) {
     console.error('SQL:', sql);
     console.error('Final cols length:', finalCols.length);
     console.error('Final values length:', finalValues.length);
-    try { console.error('Values sample:', JSON.stringify(finalValues.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    console.error('Final cols:', finalCols.join(', '));
+    try { console.error('Final placeholders count:', finalPlaceholders.split(',').length); } catch (e) { /* ignore */ }
+    try { console.error('Final values (full):', JSON.stringify(finalValues)); } catch (e) { console.error('Final values contain non-serializable items'); }
+    try {
+      console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
+    } catch (e) { /* ignore */ }
     throw err;
   }
 }
@@ -483,7 +488,12 @@ async function insertSeriesMySQL(seriesData) {
     console.error('SQL:', sql);
     console.error('Final cols length:', finalCols.length);
     console.error('Final values length:', finalValues.length);
-    try { console.error('Values sample:', JSON.stringify(finalValues.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    console.error('Final cols:', finalCols.join(', '));
+    try { console.error('Final placeholders count:', finalPlaceholders.split(',').length); } catch (e) { /* ignore */ }
+    try { console.error('Final values (full):', JSON.stringify(finalValues)); } catch (e) { console.error('Final values contain non-serializable items'); }
+    try {
+      console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
+    } catch (e) { /* ignore */ }
     throw err;
   }
 }
