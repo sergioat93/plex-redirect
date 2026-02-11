@@ -1,4 +1,21 @@
+const express = require('express');
+const https = require('https');
+const { MongoClient, ObjectId } = require('mongodb');
+const mysql = require('mysql2/promise');
+const crypto = require('crypto');
+const archiver = require('archiver');
+const stream = require('stream');
+
 const app = express();
+
+let mongoClient = null;
+let serversCollection = null;
+let webSnapshotsCollection = null;
+let tmdbCacheCollection = null;
+let manualMappingsCollection = null;
+
+// Pool de conexiones MySQL (solo para generación web offline)
+let mysqlPool = null;
 
 // Middleware para parsear JSON en el body de las peticiones
 app.use(express.json());
