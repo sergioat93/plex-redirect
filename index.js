@@ -120,6 +120,32 @@ async function connectMySQL() {
   }
 }
 
+// Helper: formatea una fecha/valor a formato MySQL DATETIME 'YYYY-MM-DD HH:MM:SS'
+function formatSQLDatetime(val) {
+  if (!val) return null;
+  // Si viene como número (segundos epoch) o string numérica
+  if (typeof val === 'number' || /^[0-9]+$/.test(String(val))) {
+    // Interpretar como segundos desde epoch si tiene 10 dígitos, ms si 13
+    const s = String(val);
+    let ms = parseInt(val, 10);
+    if (s.length === 10) ms = ms * 1000;
+    const d = new Date(ms);
+    if (isNaN(d)) return null;
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  // Si es Date
+  if (val instanceof Date) {
+    return val.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  // Si es string, intentar parsear
+  const str = String(val);
+  // Si ya está en formato MySQL DATETIME aceptable, devolver tal cual (simple heurística)
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d)) return null;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 // Crear tablas permanentes (reemplazan a las temporales)
 async function createPermanentTables() {
   // Tabla movies permanente
@@ -308,14 +334,41 @@ async function insertMovieMySQL(movieData) {
   ];
 
   const placeholders = cols.map(() => '?').join(', ');
-  const sql = `INSERT INTO movies (${cols.join(', ')}) VALUES (${placeholders})`;
+  // Filtrar columnas que realmente existen en la tabla `movies`
+  let finalCols = cols;
+  let finalValues = values;
   try {
-    await mysqlPool.execute(sql, values);
+    const [colRows] = await mysqlPool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+      [MYSQL_DB, 'movies']
+    );
+    const existing = new Set(colRows.map(r => r.COLUMN_NAME));
+    finalCols = [];
+    finalValues = [];
+    for (let i = 0; i < cols.length; i++) {
+      if (existing.has(cols[i])) {
+        finalCols.push(cols[i]);
+        finalValues.push(values[i]);
+      }
+    }
+  } catch (e) {
+    // En caso de error leyendo información del esquema, caer de forma segura usando todas las columnas
+    finalCols = cols;
+    finalValues = values;
+  }
+
+  if (finalCols.length === 0) throw new Error('No writable columns found for movies table');
+
+  const finalPlaceholders = finalCols.map(() => '?').join(', ');
+  const sql = `INSERT INTO movies (${finalCols.join(', ')}) VALUES (${finalPlaceholders})`;
+  try {
+    await mysqlPool.execute(sql, finalValues);
   } catch (err) {
     console.error('MySQL INSERT error (movies):', err.message);
     console.error('SQL:', sql);
-    console.error('Values length:', values.length);
-    try { console.error('Values sample:', JSON.stringify(values.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    console.error('Final cols length:', finalCols.length);
+    console.error('Final values length:', finalValues.length);
+    try { console.error('Values sample:', JSON.stringify(finalValues.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
     throw err;
   }
 }
@@ -384,18 +437,44 @@ async function insertSeriesMySQL(seriesData) {
     JSON.stringify(seriesData.servers || []),
     seriesData.serverCount || 0,
     seriesData.ratingKey || seriesData.rating_key || null,
-    seriesData.addedAt || seriesData.added_at || null
+    formatSQLDatetime(seriesData.addedAt || seriesData.added_at)
   ];
 
   const placeholders = cols.map(() => '?').join(', ');
-  const sql = `INSERT INTO series (${cols.join(', ')}) VALUES (${placeholders})`;
+  // Filtrar columnas que realmente existen en la tabla `series`
+  let finalCols = cols;
+  let finalValues = values;
   try {
-    await mysqlPool.execute(sql, values);
+    const [colRows] = await mysqlPool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+      [MYSQL_DB, 'series']
+    );
+    const existing = new Set(colRows.map(r => r.COLUMN_NAME));
+    finalCols = [];
+    finalValues = [];
+    for (let i = 0; i < cols.length; i++) {
+      if (existing.has(cols[i])) {
+        finalCols.push(cols[i]);
+        finalValues.push(values[i]);
+      }
+    }
+  } catch (e) {
+    finalCols = cols;
+    finalValues = values;
+  }
+
+  if (finalCols.length === 0) throw new Error('No writable columns found for series table');
+
+  const finalPlaceholders = finalCols.map(() => '?').join(', ');
+  const sql = `INSERT INTO series (${finalCols.join(', ')}) VALUES (${finalPlaceholders})`;
+  try {
+    await mysqlPool.execute(sql, finalValues);
   } catch (err) {
     console.error('MySQL INSERT error (series):', err.message);
     console.error('SQL:', sql);
-    console.error('Values length:', values.length);
-    try { console.error('Values sample:', JSON.stringify(values.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    console.error('Final cols length:', finalCols.length);
+    console.error('Final values length:', finalValues.length);
+    try { console.error('Values sample:', JSON.stringify(finalValues.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
     throw err;
   }
 }
