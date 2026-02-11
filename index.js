@@ -383,6 +383,23 @@ async function insertMovieMySQL(movieData) {
     try {
       console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
     } catch (e) { /* ignore */ }
+    try {
+      let debugSql = sql;
+      for (let i = 0; i < finalValues.length; i++) {
+        const val = finalValues[i];
+        let rep;
+        if (val === null || val === undefined) rep = 'NULL';
+        else if (typeof val === 'number' || typeof val === 'boolean') rep = String(val);
+        else if (typeof val === 'string') rep = `'${val.replace(/'/g, "''")}'`;
+        else {
+          try { rep = `'${JSON.stringify(val).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
+        }
+        debugSql = debugSql.replace('?', rep);
+      }
+      console.error('Debug SQL:', debugSql);
+    } catch (e) {
+      console.error('Error generating debug SQL:', e.message);
+    }
     throw err;
   }
 }
@@ -494,6 +511,23 @@ async function insertSeriesMySQL(seriesData) {
     try {
       console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
     } catch (e) { /* ignore */ }
+    try {
+      let debugSql = sql;
+      for (let i = 0; i < finalValues.length; i++) {
+        const val = finalValues[i];
+        let rep;
+        if (val === null || val === undefined) rep = 'NULL';
+        else if (typeof val === 'number' || typeof val === 'boolean') rep = String(val);
+        else if (typeof val === 'string') rep = `'${val.replace(/'/g, "''")}'`;
+        else {
+          try { rep = `'${JSON.stringify(val).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
+        }
+        debugSql = debugSql.replace('?', rep);
+      }
+      console.error('Debug SQL:', debugSql);
+    } catch (e) {
+      console.error('Error generating debug SQL:', e.message);
+    }
     throw err;
   }
 }
