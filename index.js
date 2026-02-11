@@ -370,7 +370,8 @@ async function insertMovieMySQL(movieData) {
   const finalPlaceholders = finalCols.map(() => '?').join(', ');
   const sql = `INSERT INTO movies (${finalCols.join(', ')}) VALUES (${finalPlaceholders})`;
   try {
-    await mysqlPool.execute(sql, finalValues);
+    // Usar query en lugar de execute para evitar errores de prepared statements
+    await mysqlPool.query(sql, finalValues);
   } catch (err) {
     console.error('MySQL INSERT error (movies):', err.message);
     console.error('SQL:', sql);
@@ -476,7 +477,7 @@ async function insertSeriesMySQL(seriesData) {
   const finalPlaceholders = finalCols.map(() => '?').join(', ');
   const sql = `INSERT INTO series (${finalCols.join(', ')}) VALUES (${finalPlaceholders})`;
   try {
-    await mysqlPool.execute(sql, finalValues);
+    await mysqlPool.query(sql, finalValues);
   } catch (err) {
     console.error('MySQL INSERT error (series):', err.message);
     console.error('SQL:', sql);
