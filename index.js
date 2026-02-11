@@ -154,6 +154,46 @@ function formatToISOString(val) {
   return d.toISOString();
 }
 
+// Helper: reconstruir SQL con valores para debug (evita reemplazar '?' dentro de los valores)
+function buildDebugSQL(sql, values) {
+  try {
+    const parts = sql.split('?');
+    if (!Array.isArray(parts) || parts.length === 0) return sql;
+    // Si el número de partes no coincide con values+1, caer a reemplazo secuencial seguro
+    if (parts.length !== values.length + 1) {
+      let debug = sql;
+      for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        let rep;
+        if (v === null || v === undefined) rep = 'NULL';
+        else if (typeof v === 'number' || typeof v === 'boolean') rep = String(v);
+        else if (typeof v === 'string') rep = `'${v.replace(/'/g, "''")}'`;
+        else {
+          try { rep = `'${JSON.stringify(v).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
+        }
+        debug = debug.replace('?', rep);
+      }
+      return debug;
+    }
+
+    let result = parts[0];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      let rep;
+      if (v === null || v === undefined) rep = 'NULL';
+      else if (typeof v === 'number' || typeof v === 'boolean') rep = String(v);
+      else if (typeof v === 'string') rep = `'${v.replace(/'/g, "''")}'`;
+      else {
+        try { rep = `'${JSON.stringify(v).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
+      }
+      result += rep + parts[i+1];
+    }
+    return result;
+  } catch (e) {
+    return sql;
+  }
+}
+
 // Crear tablas permanentes (reemplazan a las temporales)
 async function createPermanentTables() {
   // Tabla movies permanente
@@ -384,18 +424,7 @@ async function insertMovieMySQL(movieData) {
       console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
     } catch (e) { /* ignore */ }
     try {
-      let debugSql = sql;
-      for (let i = 0; i < finalValues.length; i++) {
-        const val = finalValues[i];
-        let rep;
-        if (val === null || val === undefined) rep = 'NULL';
-        else if (typeof val === 'number' || typeof val === 'boolean') rep = String(val);
-        else if (typeof val === 'string') rep = `'${val.replace(/'/g, "''")}'`;
-        else {
-          try { rep = `'${JSON.stringify(val).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
-        }
-        debugSql = debugSql.replace('?', rep);
-      }
+      const debugSql = buildDebugSQL(sql, finalValues);
       console.error('Debug SQL:', debugSql);
     } catch (e) {
       console.error('Error generating debug SQL:', e.message);
@@ -512,18 +541,7 @@ async function insertSeriesMySQL(seriesData) {
       console.error('Final values types:', finalValues.map(v => Object.prototype.toString.call(v) + ' / ' + typeof v));
     } catch (e) { /* ignore */ }
     try {
-      let debugSql = sql;
-      for (let i = 0; i < finalValues.length; i++) {
-        const val = finalValues[i];
-        let rep;
-        if (val === null || val === undefined) rep = 'NULL';
-        else if (typeof val === 'number' || typeof val === 'boolean') rep = String(val);
-        else if (typeof val === 'string') rep = `'${val.replace(/'/g, "''")}'`;
-        else {
-          try { rep = `'${JSON.stringify(val).replace(/'/g, "''")}'`; } catch (e) { rep = `'[UNSERIALIZABLE]'`; }
-        }
-        debugSql = debugSql.replace('?', rep);
-      }
+      const debugSql = buildDebugSQL(sql, finalValues);
       console.error('Debug SQL:', debugSql);
     } catch (e) {
       console.error('Error generating debug SQL:', e.message);
