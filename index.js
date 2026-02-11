@@ -267,15 +267,13 @@ async function createPermanentTables() {
 
 // Insertar película en MySQL (tabla permanente)
 async function insertMovieMySQL(movieData) {
-  const sql = `
-    INSERT INTO movies (
-      tmdb_id, imdb_id, title, original_title, poster_path, backdrop_path, overview,
-      release_year, release_date, runtime, runtime_minutes, rating, vote_count, genres,
-      production_countries, production_companies, budget, revenue, director, cast,
-      trailer_key, original_language, collection_id, collection_name, collection_poster,
-      collection_backdrop, servers, server_count, rating_key, added_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  const cols = [
+    'tmdb_id', 'imdb_id', 'title', 'original_title', 'poster_path', 'backdrop_path', 'overview',
+    'release_year', 'release_date', 'runtime', 'runtime_minutes', 'rating', 'vote_count', 'genres',
+    'production_countries', 'production_companies', 'budget', 'revenue', 'director', 'cast',
+    'trailer_key', 'original_language', 'collection_id', 'collection_name', 'collection_poster',
+    'collection_backdrop', 'servers', 'server_count', 'rating_key', 'added_at'
+  ];
   const values = [
     movieData.tmdbId,
     movieData.imdbId || null,
@@ -308,7 +306,18 @@ async function insertMovieMySQL(movieData) {
     movieData.ratingKey || movieData.rating_key || null,
     movieData.addedAt || movieData.added_at || null
   ];
-  await mysqlPool.execute(sql, values);
+
+  const placeholders = cols.map(() => '?').join(', ');
+  const sql = `INSERT INTO movies (${cols.join(', ')}) VALUES (${placeholders})`;
+  try {
+    await mysqlPool.execute(sql, values);
+  } catch (err) {
+    console.error('MySQL INSERT error (movies):', err.message);
+    console.error('SQL:', sql);
+    console.error('Values length:', values.length);
+    try { console.error('Values sample:', JSON.stringify(values.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    throw err;
+  }
 }
 
 // Actualizar película en MySQL (agregar servidor)
@@ -341,14 +350,12 @@ async function updateMovieMySQL(tmdbId, newServer) {
 
 // Insertar serie en MySQL
 async function insertSeriesMySQL(seriesData) {
-  const sql = `
-    INSERT INTO series (
-      tmdb_id, imdb_id, title, original_title, poster_path, backdrop_path, overview,
-      first_air_year, first_air_date, last_air_date, episode_runtime, rating, vote_count, genres,
-      number_of_seasons, number_of_episodes, seasons, creators, cast, production_countries,
-      networks, trailer_key, original_language, in_production, servers, server_count, rating_key, added_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  const cols = [
+    'tmdb_id', 'imdb_id', 'title', 'original_title', 'poster_path', 'backdrop_path', 'overview',
+    'first_air_year', 'first_air_date', 'last_air_date', 'episode_runtime', 'rating', 'vote_count', 'genres',
+    'number_of_seasons', 'number_of_episodes', 'seasons', 'creators', 'cast', 'production_countries',
+    'networks', 'trailer_key', 'original_language', 'in_production', 'servers', 'server_count', 'rating_key', 'added_at'
+  ];
   const values = [
     seriesData.tmdbId,
     seriesData.imdbId || null,
@@ -379,7 +386,18 @@ async function insertSeriesMySQL(seriesData) {
     seriesData.ratingKey || seriesData.rating_key || null,
     seriesData.addedAt || seriesData.added_at || null
   ];
-  await mysqlPool.execute(sql, values);
+
+  const placeholders = cols.map(() => '?').join(', ');
+  const sql = `INSERT INTO series (${cols.join(', ')}) VALUES (${placeholders})`;
+  try {
+    await mysqlPool.execute(sql, values);
+  } catch (err) {
+    console.error('MySQL INSERT error (series):', err.message);
+    console.error('SQL:', sql);
+    console.error('Values length:', values.length);
+    try { console.error('Values sample:', JSON.stringify(values.slice(0, 5))); } catch (e) { console.error('Values contain non-serializable items'); }
+    throw err;
+  }
 }
 
 // Actualizar serie en MySQL (agregar servidor)
@@ -16983,7 +17001,8 @@ app.get('/api/web-local/generate', async (req, res) => {
         
         serverProgress += progressPerServer;
       } catch (error) {
-        sendProgress({ type: 'warning', message: `Error escaneando ${server.name}: ${error.message}` });
+        const displayName = server.serverName || server.name || server.baseURI || 'unknown';
+        sendProgress({ type: 'warning', message: `Error escaneando ${displayName}: ${error.message}` });
       }
     }
     
