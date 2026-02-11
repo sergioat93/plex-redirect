@@ -9211,63 +9211,80 @@ app.get('/library', async (req, res) => {
             if (typeof servers === 'string') {
               try { servers = JSON.parse(servers); } catch (e) { servers = []; }
             }
+            let countries = movie.countries || movie.production_countries || '[]';
+            if (typeof countries === 'string') {
+              try { countries = JSON.parse(countries); } catch (e) { /* keep as string */ }
+            }
+            let productionCompanies = movie.production_companies || '[]';
+            if (typeof productionCompanies === 'string') {
+              try { productionCompanies = JSON.parse(productionCompanies); } catch (e) { productionCompanies = []; }
+            }
+            let cast = movie.cast || '[]';
+            if (typeof cast === 'string') {
+              try { cast = JSON.parse(cast); } catch (e) { cast = []; }
+            }
 
             // Extraer campos formateados y combinados
             let genresString = Array.isArray(genres) ? genres.join(', ') : '';
-            let countries = movie.countries || [];
             let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
-            let rating = movie.rating !== undefined ? parseFloat(movie.rating).toFixed(1) : 'N/A';
+            let productionCompaniesNames = Array.isArray(productionCompanies) ? productionCompanies.map(pc => pc.name || pc).join(', ') : '';
+            let rating = movie.rating !== undefined && movie.rating !== null && !isNaN(movie.rating) ? parseFloat(movie.rating).toFixed(1) : 'N/A';
             let voteCount = movie.vote_count ? movie.vote_count.toLocaleString('es-ES') : 'N/A';
             let year = movie.release_year || null;
-            let trailerKey = movie.trailer_key || null;
-            let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : 'N/A';
+            let trailerKey = movie.trailer_key || movie.trailerKey || null;
+            let originalLanguage = movie.original_language ? movie.original_language.toUpperCase() : (movie.originalLanguage ? movie.originalLanguage.toUpperCase() : 'N/A');
             let runtime = movie.runtime || null;
-            let runtimeMinutes = movie.runtime_minutes || null;
+            let runtimeMinutes = movie.runtime_minutes || movie.runtimeMinutes || null;
             let budget = movie.budget || null;
             let revenue = movie.revenue || null;
-            let director = movie.director || null;
-            let cast = movie.cast || null;
+            let director = movie.director || movie.director_name || null;
             let tagline = movie.tagline || null;
             let releaseDate = movie.release_date || null;
-            let posterPath = movie.poster_path || null;
-            let backdropPath = movie.backdrop_path || null;
-            let originalTitle = movie.original_title || null;
+            let posterPath = movie.poster_path || movie.posterPath || null;
+            let backdropPath = movie.backdrop_path || movie.backdropPath || null;
+            let originalTitle = movie.original_title || movie.originalTitle || null;
+            let ratingKey = movie.rating_key || movie.ratingKey || null;
+            let addedAt = movie.added_at || movie.addedAt || movie.created_at || null;
             if (!firstMovie) moviesStream.write(',');
             const movieObj = {
-            id: movie.id,
-            tmdbId: movie.tmdb_id,
-            imdbId: movie.imdb_id,
-            title: movie.title,
-            originalTitle,
-            tagline,
-            overview: movie.overview,
-            posterPath,
-            backdropPath,
-            releaseDate,
-            year,
-            runtime,
-            runtimeMinutes,
-            genres: Array.isArray(genres) ? genres : [],
-            genresString,
-            rating,
-            voteCount,
-            budget,
-            revenue,
-            director,
-            cast,
-            originalLanguage,
-            countries: countriesString,
-            trailerKey,
-            collectionId: movie.collection_id,
-            collectionName: movie.collection_name,
-            collectionPoster: movie.collection_poster,
-            collectionBackdrop: movie.collection_backdrop,
-            servers: Array.isArray(servers) ? servers : [],
-            serverCount: movie.server_count,
-            createdAt: movie.created_at,
-            updatedAt: movie.updated_at
-          };
-            
+              id: movie.id,
+              ratingKey,
+              tmdbId: movie.tmdb_id,
+              imdbId: movie.imdb_id,
+              title: movie.title,
+              originalTitle,
+              tagline,
+              overview: movie.overview || movie.summary || null,
+              summary: movie.overview || movie.summary || null,
+              posterPath,
+              backdropPath,
+              releaseDate,
+              year,
+              runtime,
+              runtimeMinutes,
+              genres: Array.isArray(genres) ? genres : [],
+              genresString,
+              rating,
+              voteCount,
+              budget,
+              revenue,
+              director,
+              cast: Array.isArray(cast) ? cast : (typeof cast === 'string' ? cast : []),
+              originalLanguage,
+              countries: countriesString,
+              productionCompanies: productionCompaniesNames,
+              trailerKey,
+              collectionId: movie.collection_id,
+              collectionName: movie.collection_name,
+              collectionPoster: movie.collection_poster,
+              collectionBackdrop: movie.collection_backdrop,
+              servers: Array.isArray(servers) ? servers : [],
+              serverCount: movie.server_count,
+              createdAt: movie.created_at,
+              updatedAt: movie.updated_at,
+              addedAt
+            };
+
             moviesStream.write(JSON.stringify(movieObj));
             firstMovie = false;
           }
@@ -9305,34 +9322,49 @@ app.get('/library', async (req, res) => {
             if (typeof seasons === 'string') {
               try { seasons = JSON.parse(seasons); } catch (e) { seasons = []; }
             }
+            let countries = s.countries || s.production_countries || '[]';
+            if (typeof countries === 'string') {
+              try { countries = JSON.parse(countries); } catch (e) { /* keep as string */ }
+            }
+            let creators = s.creators || s.created_by || '[]';
+            if (typeof creators === 'string') {
+              try { creators = JSON.parse(creators); } catch (e) { creators = []; }
+            }
+            let cast = s.cast || '[]';
+            if (typeof cast === 'string') {
+              try { cast = JSON.parse(cast); } catch (e) { cast = []; }
+            }
 
             // Extraer campos formateados y combinados para series
             let genresString = Array.isArray(genres) ? genres.join(', ') : '';
-            let countries = s.countries || [];
             let countriesString = Array.isArray(countries) ? countries.join(', ') : (typeof countries === 'string' ? countries : '');
-            let rating = s.rating !== undefined ? parseFloat(s.rating).toFixed(1) : 'N/A';
+            let rating = s.rating !== undefined && s.rating !== null && !isNaN(s.rating) ? parseFloat(s.rating).toFixed(1) : 'N/A';
             let voteCount = s.vote_count ? s.vote_count.toLocaleString('es-ES') : 'N/A';
             let year = s.first_air_year || null;
-            let trailerKey = s.trailer_key || null;
-            let originalLanguage = s.original_language ? s.original_language.toUpperCase() : 'N/A';
-            let episodeRuntime = s.episode_runtime || null;
-            let creators = s.creators || null;
-            let cast = s.cast || null;
+            let trailerKey = s.trailer_key || s.trailerKey || null;
+            let originalLanguage = s.original_language ? s.original_language.toUpperCase() : (s.originalLanguage ? s.originalLanguage.toUpperCase() : 'N/A');
+            let episodeRuntime = s.episode_runtime || s.episodeRuntime || null;
+            let creatorsStr = Array.isArray(creators) ? (creators.map(c => c.name || c).join(', ')) : (typeof creators === 'string' ? creators : '');
+            let castArr = Array.isArray(cast) ? cast : (typeof cast === 'string' ? cast : []);
             let tagline = s.tagline || null;
             let firstAirDate = s.first_air_date || null;
             let lastAirDate = s.last_air_date || null;
-            let posterPath = s.poster_path || null;
-            let backdropPath = s.backdrop_path || null;
-            let originalTitle = s.original_title || null;
+            let posterPath = s.poster_path || s.posterPath || null;
+            let backdropPath = s.backdrop_path || s.backdropPath || null;
+            let originalTitle = s.original_title || s.originalTitle || null;
+            let ratingKey = s.rating_key || s.ratingKey || null;
+            let addedAt = s.added_at || s.addedAt || s.created_at || null;
             if (!firstSeries) seriesStream.write(',');
             const seriesObj = {
               id: s.id,
+              ratingKey,
               tmdbId: s.tmdb_id,
               imdbId: s.imdb_id,
               title: s.title,
               originalTitle,
               tagline,
-              overview: s.overview,
+              overview: s.overview || null,
+              summary: s.overview || null,
               posterPath,
               backdropPath,
               firstAirDate,
@@ -9346,8 +9378,8 @@ app.get('/library', async (req, res) => {
               genresString,
               rating,
               voteCount,
-              creators,
-              cast,
+              creators: creatorsStr,
+              cast: castArr,
               originalLanguage,
               countries: countriesString,
               networks: s.networks || null,
@@ -9357,9 +9389,10 @@ app.get('/library', async (req, res) => {
               servers: Array.isArray(servers) ? servers : [],
               serverCount: s.server_count,
               createdAt: s.created_at,
-              updatedAt: s.updated_at
+              updatedAt: s.updated_at,
+              addedAt
             };
-            
+
             seriesStream.write(JSON.stringify(seriesObj));
             firstSeries = false;
           }
