@@ -1,12 +1,3 @@
-const express = require('express');
-const https = require('https');
-const { MongoClient, ObjectId } = require('mongodb');
-const mysql = require('mysql2/promise');
-const crypto = require('crypto');
-const archiver = require('archiver');
-const stream = require('stream');
-// const compression = require('compression');
-// const NodeCache = require('node-cache');
 const app = express();
 
 // Middleware para parsear JSON en el body de las peticiones
@@ -43,19 +34,8 @@ if (missingVars.length > 0) {
 
 console.log('✅ Variables de entorno cargadas correctamente');
 
-let mongoClient = null;
-let serversCollection = null;
-let webSnapshotsCollection = null; // DEPRECADO - ahora en MySQL
-let tmdbCacheCollection = null; // DEPRECADO - ahora en MySQL  
-let manualMappingsCollection = null;
-
-// Pool de conexiones MySQL (solo para web offline)
-let mysqlPool = null;
-
-// Conectar a MongoDB (solo servers, tokens, mappings)
 async function connectMongoDB() {
   if (mongoClient) return mongoClient;
-  
   try {
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
@@ -68,9 +48,6 @@ async function connectMongoDB() {
     await serversCollection.createIndex({ 'tokens.tokenHash': 1 });
     
     console.log('✅ Conectado a MongoDB Atlas');
-    
-    // Inicializar colecciones de Web Local (DEPRECADO - ahora en MySQL)
-    // await initializeWebLocalCollections();
     
     return mongoClient;
   } catch (error) {
@@ -16239,28 +16216,23 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
     
     // Extraer director (películas) o creador (series)
     let director = '';
-    let createdBy = '';
+    let createdBy = [];
     if (type === 'movie' && data.credits && data.credits.crew) {
       const directorObj = data.credits.crew.find(person => person.job === 'Director');
       if (directorObj) director = directorObj.name;
     } else if (type === 'tv' && data.created_by) {
-      createdBy = data.created_by.map(c => c.name).join(', ');
+      createdBy = Array.isArray(data.created_by) ? data.created_by.map(c => ({ id: c.id, name: c.name })) : [];
     }
     
     // Productoras
-    const productionCompanies = data.production_companies 
-      ? data.production_companies.map(c => c.name).join(', ')
-      : '';
+    const productionCompanies = data.production_companies || [];
     
     // Países
-    const countries = data.production_countries 
-      ? data.production_countries.map(c => c.name).join(', ')
-      : '';
+    const countries = data.production_countries || [];
     
-    // Idiomas
-    const languages = data.spoken_languages
-      ? data.spoken_languages.map(l => l.english_name).join(', ')
-      : '';
+    // Idiomas hablados
+    const languages = data.spoken_languages ? data.spoken_languages.map(l => l.english_name) : [];
+    const originalLanguage = data.original_language || null;
     
     // Trailer (YouTube)
     let trailerKey = '';
@@ -16287,11 +16259,12 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
       revenue: data.revenue || 0,
       imdbId,
       director,
-      createdBy,
+      creators: createdBy,
       cast,
       productionCompanies,
-      countries,
+      productionCountries: countries,
       languages,
+      originalLanguage,
       trailerKey,
       // Colección (solo películas)
       collectionId: data.belongs_to_collection ? data.belongs_to_collection.id : null,
@@ -16304,7 +16277,8 @@ async function getTMDBDetails(tmdbId, type = 'movie') {
       numberOfSeasons: data.number_of_seasons || 0,
       numberOfEpisodes: data.number_of_episodes || 0,
       firstAirDate: data.first_air_date || '',
-      lastAirDate: data.last_air_date || ''
+      lastAirDate: data.last_air_date || '',
+      networks: data.networks || []
     };
   } catch (error) {
     console.error('Error obteniendo detalles de TMDB:', error);
@@ -17089,15 +17063,29 @@ app.get('/api/web-local/generate', async (req, res) => {
                       tmdbId: tmdbResult.tmdbId,
                       imdbId: tmdbResult.imdbId || tmdbDetails.imdbId,
                       title: tmdbDetails.title,
+                      originalTitle: tmdbDetails.originalTitle || null,
                       posterPath: tmdbDetails.posterPath,
                       backdropPath: tmdbDetails.backdropPath,
                       overview: tmdbDetails.overview,
                       firstAirYear: tmdbDetails.releaseYear, // Mapear releaseYear → firstAirYear
+                      firstAirDate: tmdbDetails.firstAirDate || null,
+                      lastAirDate: tmdbDetails.lastAirDate || null,
+                      episodeRuntime: tmdbDetails.runtime || null,
                       rating: tmdbDetails.voteAverage, // Mapear voteAverage → rating
+                      voteCount: tmdbDetails.voteCount || 0,
                       genres: tmdbDetails.genres,
                       numberOfSeasons: tmdbDetails.numberOfSeasons,
                       numberOfEpisodes: tmdbDetails.numberOfEpisodes,
                       seasons: seasons,
+                      creators: tmdbDetails.creators || tmdbDetails.createdBy || [],
+                      cast: tmdbDetails.cast || [],
+                      production_countries: tmdbDetails.productionCountries || tmdbDetails.production_countries || [],
+                      production_companies: tmdbDetails.productionCompanies || [],
+                      networks: tmdbDetails.networks || [],
+                      trailerKey: tmdbDetails.trailerKey || null,
+                      originalLanguage: tmdbDetails.originalLanguage || null,
+                      ratingKey: seriesDataObj.ratingKey || null,
+                      addedAt: seriesDataObj.addedAt || null,
                       servers: [seriesDataObj],
                       serverCount: 1
                     });
