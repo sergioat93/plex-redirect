@@ -6,6 +6,16 @@ const crypto = require('crypto');
 const archiver = require('archiver');
 const stream = require('stream');
 
+// Integración opcional con Vercel Fluid Compute para gestionar correctamente pools de BD.
+let attachDatabasePool = null;
+if (process.env.VERCEL === '1') {
+  try {
+    ({ attachDatabasePool } = require('@vercel/functions'));
+  } catch (error) {
+    console.warn('⚠️ @vercel/functions no disponible; el pool MySQL funcionará sin attachDatabasePool');
+  }
+}
+
 const app = express();
 
 let mongoClient = null;
@@ -25,7 +35,7 @@ app.use(express.json());
 // ========================================
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_DB = process.env.MONGO_DB; // Railway usa MONGO_DB
+const MONGODB_DB = process.env.MONGO_DB;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // Variables MySQL (solo para generación web offline)
@@ -45,7 +55,7 @@ if (!ADMIN_PASSWORD) missingVars.push('ADMIN_PASSWORD');
 if (missingVars.length > 0) {
   console.error('❌ ERROR: Faltan las siguientes variables de entorno:');
   missingVars.forEach(v => console.error(`   - ${v}`));
-  console.error('\nConfigúralas en Railway: Settings → Variables');
+  console.error('\nConfigúralas en la plataforma de despliegue (Vercel: Settings → Environment Variables)');
   process.exit(1);
 }
 
@@ -96,6 +106,12 @@ async function connectMySQL() {
       enableKeepAlive: true,
       keepAliveInitialDelay: 0
     });
+
+    // En Vercel Fluid Compute, registrar el pool para liberar conexiones ociosas
+    // antes de que una instancia quede suspendida.
+    if (process.env.VERCEL === '1' && typeof attachDatabasePool === 'function') {
+      attachDatabasePool(mysqlPool);
+    }
     
     // Verificar conexión
     const connection = await mysqlPool.getConnection();
@@ -104,12 +120,25 @@ async function connectMySQL() {
     
     console.log('✅ Conectado a MySQL en Synology NAS');
     
-    // Crear tablas permanentes si no existen
-    await createPermanentTables();
+    // Railway/local conservan la inicialización histórica del esquema.
+    // En Vercel no ejecutar CREATE/ALTER en cada nueva instancia: se usa el esquema existente.
+    if (process.env.VERCEL !== '1') {
+      await createPermanentTables();
+    } else {
+      console.log('ℹ️ Vercel: usando esquema MySQL existente (DDL automático deshabilitado)');
+    }
     
     return mysqlPool;
   } catch (error) {
     console.error('❌ Error conectando a MySQL:', error.message);
+
+    // Permitir que una petición posterior pueda reintentar la conexión.
+    const failedPool = mysqlPool;
+    mysqlPool = null;
+    if (failedPool) {
+      try { await failedPool.end(); } catch (closeError) { /* ignore */ }
+    }
+
     return null;
   }
 }
@@ -640,7 +669,7 @@ if (!isAdminPanel) {
 </script>
 `;
 
-// Iniciar conexión al arrancar
+// Iniciar conexión a MongoDB al arrancar.
 connectMongoDB();
 
 // ========================================
@@ -3474,7 +3503,7 @@ app.get('/list', async (req, res) => {
           const baseURI = urlObj.origin;
           const partKey = urlObj.pathname;
           
-          const redirectorUrl = 'https://plex-redirect-git-main-sergioat93s-projects.vercel.app/?'
+          const redirectorUrl = window.location.origin + '/?'
             + 'accessToken=' + encodeURIComponent(accessToken)
             + '&partKey=' + encodeURIComponent(partKey)
             + '&baseURI=' + encodeURIComponent(baseURI)
@@ -12713,6 +12742,13 @@ Generado por Infinity Scrap`;
     }
     
     try {
+      if (!mysqlPool) {
+        await connectMySQL();
+      }
+      if (!mysqlPool) {
+        return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+      }
+
       const [snapshots] = await mysqlPool.execute(`SELECT * FROM web_snapshots WHERE is_active = TRUE LIMIT 1`);
       const snapshot = snapshots[0];
       
@@ -12751,6 +12787,13 @@ Generado por Infinity Scrap`;
     }
     
     try {
+      if (!mysqlPool) {
+        await connectMySQL();
+      }
+      if (!mysqlPool) {
+        return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+      }
+
       // Guardar en manual_mappings (MySQL)
       const compositeId = `${ratingKey}_${serverId}`;
       
@@ -12806,6 +12849,13 @@ Generado por Infinity Scrap`;
     }
     
     try {
+      if (!mysqlPool) {
+        await connectMySQL();
+      }
+      if (!mysqlPool) {
+        return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+      }
+
       const compositeId = `${ratingKey}_${serverId}`;
       
       await mysqlPool.execute(
@@ -16496,7 +16546,7 @@ app.get('/api/web-local/generate', async (req, res) => {
     }
     
     if (!mysqlPool) {
-      sendProgress({ type: 'error', message: '❌ MySQL no configurado - configura variables MYSQL_* en Railway' });
+      sendProgress({ type: 'error', message: '❌ MySQL no configurado - configura las variables MYSQL_* en Vercel' });
       cleanup();
       return res.end();
     }
@@ -16918,7 +16968,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Rate limiting TMDB (optimizado para Railway)
+              // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 15)); // ~66 req/s (dentro del límite de 50/s de TMDB)
             }
           }
@@ -17188,7 +17238,7 @@ app.get('/api/web-local/generate', async (req, res) => {
                 });
               }
               
-              // Rate limiting TMDB (optimizado para Railway)
+              // Rate limiting TMDB
               await new Promise(resolve => setTimeout(resolve, 15)); // ~66 req/s
             }
           }
@@ -17510,6 +17560,13 @@ app.get('/api/web-local/generate', async (req, res) => {
 app.delete('/api/web-local/progress', async (req, res) => {
   try {
     const clearTables = req.query.clearTables === 'true';
+
+    if (!mysqlPool) {
+      await connectMySQL();
+    }
+    if (!mysqlPool) {
+      return res.status(500).json({ error: 'Error de conexión a la base de datos' });
+    }
     
     // Obtener snapshots de progreso antes de eliminarlos para poder borrar sus tablas
     const [progressSnapshots] = await mysqlPool.execute(
@@ -17548,19 +17605,13 @@ app.delete('/api/web-local/progress', async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 3000;
-const host = process.env.HOST || '0.0.0.0';
-
-app.listen(port, host, async () => {
-  console.log(`✅ Servidor Infinity Scrap escuchando en http://${host}:${port}`);
-  
-  // Conectar a MongoDB (servers, tokens, mappings)
-  await connectMongoDB();
-  
-  // Endpoint de diagnóstico para verificar datos en BD
+// Endpoint de diagnóstico para verificar datos en BD
 app.get('/api/debug/database', async (req, res) => {
   try {
     // Verificar conexión MySQL
+    if (!mysqlPool) {
+      await connectMySQL();
+    }
     if (!mysqlPool) {
       return res.json({ error: 'MySQL no conectado' });
     }
@@ -17608,5 +17659,18 @@ app.get('/api/debug/database', async (req, res) => {
     res.json({ error: error.message, stack: error.stack });
   }
 });
-  await connectMySQL();
-});
+
+// Vercel detecta este CommonJS export y ejecuta toda la app Express como una Function.
+module.exports = app;
+
+// Mantener compatibilidad con ejecución directa (Railway/local: `node index.js`).
+if (require.main === module) {
+  const port = process.env.PORT || 3000;
+  const host = process.env.HOST || '0.0.0.0';
+
+  app.listen(port, host, async () => {
+    console.log(`✅ Servidor Infinity Scrap escuchando en http://${host}:${port}`);
+    await connectMongoDB();
+    await connectMySQL();
+  });
+}
