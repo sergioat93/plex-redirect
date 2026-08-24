@@ -3474,7 +3474,7 @@ app.get('/list', async (req, res) => {
           const baseURI = urlObj.origin;
           const partKey = urlObj.pathname;
           
-          const redirectorUrl = 'https://plex-redirect-production.up.railway.app/?'
+          const redirectorUrl = 'https://plex-redirect-git-main-sergioat93s-projects.vercel.app/?'
             + 'accessToken=' + encodeURIComponent(accessToken)
             + '&partKey=' + encodeURIComponent(partKey)
             + '&baseURI=' + encodeURIComponent(baseURI)
